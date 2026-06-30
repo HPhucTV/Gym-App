@@ -23,6 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.myapplication.feature.onboarding.OnboardingRoute
 import kotlinx.coroutines.flow.map
 
 sealed interface GymRootState {
@@ -38,14 +39,22 @@ fun GymApp(container: AppContainer) {
             .map { goal -> if (goal == null) GymRootState.NoGoal else GymRootState.ActiveGoal }
     }
     val rootState by rootStateFlow.collectAsStateWithLifecycle(initialValue = GymRootState.Loading)
-    GymApp(rootState = rootState)
+    GymApp(rootState = rootState) {
+        OnboardingRoute(
+            programs = container.catalogRepository.programs,
+            workoutRepository = container.workoutRepository,
+        )
+    }
 }
 
 @Composable
-fun GymApp(rootState: GymRootState) {
+fun GymApp(
+    rootState: GymRootState,
+    noGoalContent: @Composable () -> Unit = { DestinationScreen(AppDestination.ONBOARDING.heading) },
+) {
     when (rootState) {
         GymRootState.Loading -> LoadingScreen()
-        GymRootState.NoGoal -> DestinationScreen(AppDestination.ONBOARDING.heading)
+        GymRootState.NoGoal -> noGoalContent()
         GymRootState.ActiveGoal -> ActiveGoalNavigation()
     }
 }
