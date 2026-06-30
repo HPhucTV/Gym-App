@@ -9,7 +9,10 @@ object SchedulePlanner {
             var dueEpochDay = startEpochDay
             add(dueEpochDay)
             for (index in 1 until restDaysAfter.size) {
-                dueEpochDay += 1L + restDaysAfter[index - 1]
+                dueEpochDay = Math.addExact(
+                    dueEpochDay,
+                    Math.addExact(1L, restDaysAfter[index - 1].toLong()),
+                )
                 add(dueEpochDay)
             }
         }
@@ -23,11 +26,12 @@ object SchedulePlanner {
         if (completedIndex !in dueEpochDays.indices) {
             throw IndexOutOfBoundsException("Completed index $completedIndex is outside the schedule")
         }
-        val lateness = (completionEpochDay - dueEpochDays[completedIndex]).coerceAtLeast(0L)
+        val lateness = Math.subtractExact(completionEpochDay, dueEpochDays[completedIndex])
+            .coerceAtLeast(0L)
         if (lateness == 0L) return dueEpochDays.toList()
 
         return dueEpochDays.mapIndexed { index, dueEpochDay ->
-            if (index > completedIndex) dueEpochDay + lateness else dueEpochDay
+            if (index > completedIndex) Math.addExact(dueEpochDay, lateness) else dueEpochDay
         }
     }
 }
