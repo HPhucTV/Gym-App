@@ -1,6 +1,7 @@
 package com.example.myapplication.core.catalog
 
 import com.example.myapplication.core.model.ExerciseDefinition
+import com.example.myapplication.core.model.ProgramTemplate
 
 object CatalogValidator {
     private val validId = Regex("[a-z0-9_]+")
@@ -36,6 +37,54 @@ object CatalogValidator {
             }
         }
 
+        return issues
+    }
+
+    fun validatePrograms(
+        programs: List<ProgramTemplate>,
+        exercisesById: Map<String, ExerciseDefinition>,
+    ): List<String> {
+        val issues = mutableListOf<String>()
+        programs.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys.sorted().forEach {
+            issues += "Duplicate program id: $it"
+        }
+        programs.groupingBy {
+            listOf(it.goal, it.level, it.equipmentProfile, it.sessionsPerWeek, it.durationWeeks)
+        }.eachCount().filterValues { it > 1 }.keys.forEach {
+            issues += "Duplicate program match key: ${it.joinToString()}"
+        }
+        programs.forEach { program ->
+            val expectedWorkoutCount = program.sessionsPerWeek * program.durationWeeks
+            if (program.workouts.size != expectedWorkoutCount) issues += "Program '${program.id}' workouts.size must be $expectedWorkoutCount"
+            if (program.workouts.map { it.sequence }.sorted() != (0 until program.workouts.size).toList()) {
+                issues += "Program '${program.id}' sequences must be contiguous starting at 0"
+            }
+            program.workouts.forEach { workout ->
+                val workoutLabel = "Program '${program.id}' workout ${workout.sequence}"
+                if (workout.week !in 1..program.durationWeeks) issues += "$workoutLabel week must be in 1..${program.durationWeeks}"
+                if (workout.estimatedMinutes !in 10..90) issues += "$workoutLabel estimatedMinutes must be in 10..90"
+                if (workout.restDaysAfter !in 0..3) issues += "$workoutLabel restDaysAfter must be in 0..3"
+                workout.exercises.forEachIndexed { index, prescription ->
+                    val exerciseLabel = "$workoutLabel exercise $index"
+                    if (prescription.exerciseId !in exercisesById) issues += "$exerciseLabel: Unknown exercise '${prescription.exerciseId}'"
+                    if (prescription.sets !in 1..6) issues += "$exerciseLabel sets must be in 1..6"
+                    if (prescription.restSeconds !in 15..300) issues += "$exerciseLabel restSeconds must be in 15..300"
+                    val validReps = prescription.repsMin != null && prescription.repsMax != null &&
+                        prescription.repsMin in 1..50 && prescription.repsMax in prescription.repsMin..100 &&
+                        prescription.durationSeconds == null
+                    val validDuration = prescription.durationSeconds != null && prescription.durationSeconds in 10..3600 &&
+                        prescription.repsMin == null && prescription.repsMax == null
+                    if (validReps == validDuration) issues += "$exerciseLabel prescription must use exactly one valid reps or duration mode"
+                }
+            }
+            (1..program.durationWeeks).forEach { week ->
+                val weeklyWorkouts = program.workouts.filter { it.week == week }
+                if (weeklyWorkouts.size != program.sessionsPerWeek) issues += "Program '${program.id}' week $week must contain ${program.sessionsPerWeek} workouts"
+                if (weeklyWorkouts.size + weeklyWorkouts.sumOf { it.restDaysAfter } != 7) {
+                    issues += "Program '${program.id}' week $week weekly schedule must total 7 days"
+                }
+            }
+        }
         return issues
     }
 }

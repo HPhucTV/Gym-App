@@ -47,7 +47,7 @@ Do not import all records. Some source fields are incomplete and a very large ca
 - verify every exercise used by a program
 - record source URL, retrieval date, and Unlicense provenance with the imported assets
 
-The dataset supplies exercise content only. Program design remains a separate, reviewed artifact. General program checks should cover all major muscle groups, avoid unsuitable consecutive loading, include recovery, and follow conservative public guidance such as the [CDC adult activity guidance](https://www.cdc.gov/physical-activity-basics/guidelines/adults.html) and [American Heart Association strength guidance](https://www.heart.org/en/healthy-living/exercise-and-physical-activity/fitness-basics/strength-and-resistance-training-exercise).
+The dataset supplies exercise content only. Program design remains a separate, reviewed artifact. General program checks should cover all major muscle groups, include recovery, and avoid loading the same primary muscle on consecutive training days when the earlier workout has `restDaysAfter == 0`. Workouts separated by one or more declared recovery days are not consecutive training days for this rule. Programs should follow conservative public guidance such as the [CDC adult activity guidance](https://www.cdc.gov/physical-activity-basics/guidelines/adults.html) and [American Heart Association strength guidance](https://www.heart.org/en/healthy-living/exercise-and-physical-activity/fitness-basics/strength-and-resistance-training-exercise).
 
 This app provides general fitness planning and is not medical advice or an injury-rehabilitation tool.
 
