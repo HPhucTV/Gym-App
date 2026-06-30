@@ -4,12 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -106,7 +108,7 @@ private fun EditingContent(
         state.saveError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
         item {
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.step != OnboardingStep.GOAL) OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Quay lại") }
+                if (state.step != OnboardingStep.GOAL) OutlinedButton(onClick = onBack, enabled = !state.isSaving, modifier = Modifier.weight(1f)) { Text("Quay lại") }
                 Button(
                     onClick = if (state.step == OnboardingStep.REVIEW) onCreate else onNext,
                     enabled = !state.isSaving && canAdvance(state),
@@ -119,13 +121,16 @@ private fun EditingContent(
 }
 
 @Composable private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
+    Surface(
         border = BorderStroke(1.dp, if (selected) Orange else Color(0xFFE5E7EB)),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = if (selected) Color(0xFFFFF7ED) else Color.White, contentColor = Navy),
+        color = if (selected) Color(0xFFFFF7ED) else Color.White,
+        contentColor = Navy,
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-    ) { Text(label, modifier = Modifier.fillMaxWidth()) }
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+    ) { Text(label, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) }
 }
 
 @Composable private fun ReviewCard(draft: OnboardingDraft) {

@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.myapplication.core.model.*
 import com.example.myapplication.ui.theme.GymAppTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,10 +19,11 @@ class OnboardingScreenTest {
         var selected: FitnessGoal? = null
         var nextCalls = 0
         setContent(editing(OnboardingStep.GOAL, OnboardingDraft(goal = FitnessGoal.MUSCLE_GAIN)), onGoal = { goal -> selected = goal }, onNext = { nextCalls++ })
-        composeRule.onNodeWithText("Tăng cơ").performClick()
-        composeRule.runOnIdle { assert(selected == FitnessGoal.MUSCLE_GAIN) }
+        composeRule.onNodeWithText("Tăng cơ").assertIsSelected().performClick()
+        composeRule.onNodeWithText("Thể lực tổng quát").assertIsNotSelected()
+        composeRule.runOnIdle { assertSame(FitnessGoal.MUSCLE_GAIN, selected) }
         composeRule.onNodeWithText("Tiếp tục").performClick()
-        composeRule.runOnIdle { assert(nextCalls == 1) }
+        composeRule.runOnIdle { assertEquals(1, nextCalls) }
         composeRule.onAllNodesWithText("Trình độ").assertCountEquals(0)
     }
 
@@ -32,6 +35,7 @@ class OnboardingScreenTest {
         composeRule.onNodeWithText("3 buổi/tuần · 4 tuần").assertIsDisplayed()
         composeRule.onNodeWithText("Phục hồi nhẹ").assertIsDisplayed()
         composeRule.onNodeWithText("Đang tạo…").assertIsNotEnabled()
+        composeRule.onNodeWithText("Quay lại").assertIsNotEnabled()
     }
 
     @Test fun unsupportedShowsExplanationAndAlternative() {

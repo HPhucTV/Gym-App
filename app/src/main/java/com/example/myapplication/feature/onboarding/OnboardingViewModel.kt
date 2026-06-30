@@ -6,6 +6,7 @@ import com.example.myapplication.core.model.*
 import com.example.myapplication.core.program.ProgramSelectionResult
 import com.example.myapplication.core.program.ProgramSelector
 import com.example.myapplication.data.WorkoutRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +40,7 @@ class OnboardingViewModel(
 
     fun next() {
         val state = _uiState.value as? OnboardingUiState.Editing ?: return
+        if (state.isSaving) return
         val valid = when (state.step) {
             OnboardingStep.GOAL -> state.draft.goal != null
             OnboardingStep.LEVEL -> state.draft.level != null
@@ -52,7 +54,7 @@ class OnboardingViewModel(
 
     fun back() {
         when (val state = _uiState.value) {
-            is OnboardingUiState.Editing -> if (state.step != OnboardingStep.GOAL) {
+            is OnboardingUiState.Editing -> if (!state.isSaving && state.step != OnboardingStep.GOAL) {
                 _uiState.value = editing(OnboardingStep.entries[state.step.ordinal - 1], state.draft)
             }
             is OnboardingUiState.Unsupported -> _uiState.value = editing(OnboardingStep.REVIEW, state.draft)
@@ -84,6 +86,8 @@ class OnboardingViewModel(
                     try {
                         workoutRepository.createGoal(config, selection.program, currentEpochDay())
                         _uiState.value = OnboardingUiState.Created
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (_: Exception) {
                         _uiState.value = editing(state.step, draft).copy(saveError = "Không thể lưu mục tiêu. Vui lòng thử lại.")
                     }
@@ -94,6 +98,7 @@ class OnboardingViewModel(
 
     private fun updateDraft(transform: (OnboardingDraft) -> OnboardingDraft) {
         val state = _uiState.value as? OnboardingUiState.Editing ?: return
+        if (state.isSaving) return
         _uiState.value = editing(state.step, transform(state.draft))
     }
 

@@ -4,11 +4,13 @@ import com.example.myapplication.core.model.*
 import com.example.myapplication.data.CompleteWorkoutResult
 import com.example.myapplication.data.WorkoutRepository
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -66,13 +68,53 @@ class OnboardingViewModelTest {
             val gate = CompletableDeferred<Unit>()
             val repository = FakeWorkoutRepository(gate = gate)
             val vm = viewModel(repository); completeGeneral(vm)
-            vm.createGoal(); vm.createGoal(); advanceUntilIdle()
+            vm.createGoal(); vm.createGoal(); runCurrent()
             assertEquals(1, repository.createAttempts)
             assertTrue((vm.uiState.value as OnboardingUiState.Editing).isSaving)
             gate.complete(Unit); advanceUntilIdle()
             assertEquals(1, repository.creations.size)
     }
 
+    @Test fun `saving locks step draft and all navigation mutations`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repository = FakeWorkoutRepository(gate = gate)
+        val vm = viewModel(repository)
+        completeGeneral(vm)
+        repeat(5) { vm.next() }
+        assertStep(vm, OnboardingStep.REVIEW)
+
+        vm.createGoal()
+        runCurrent()
+        val saving = vm.uiState.value as OnboardingUiState.Editing
+        vm.back()
+        vm.selectGoal(FitnessGoal.MUSCLE_GAIN)
+        vm.selectLevel(ExperienceLevel.INTERMEDIATE)
+        vm.selectEquipment(EquipmentProfile.FULL_GYM)
+        vm.selectCommitment(4, 8)
+        vm.selectRestDayMode(RestDayMode.LIGHT_RECOVERY)
+        vm.next()
+        repeat(3) { vm.createGoal() }
+
+        assertEquals(saving, vm.uiState.value)
+        assertEquals(OnboardingStep.REVIEW, saving.step)
+        assertTrue(saving.isSaving)
+        assertEquals(1, repository.createAttempts)
+        gate.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test fun `cancellation is not converted into persistence error`() = runTest(dispatcher) {
+        val repository = FakeWorkoutRepository(cancelOnCreate = true)
+        val vm = viewModel(repository)
+        completeGeneral(vm)
+        vm.createGoal()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value as OnboardingUiState.Editing
+        assertTrue(state.isSaving)
+        assertNull(state.saveError)
+        assertEquals(1, repository.createAttempts)
+    }
     @Test fun `unsupported exact combination never substitutes and shows alternatives`() = runTest(dispatcher) {
             val repository = FakeWorkoutRepository()
             val vm = viewModel(repository)
@@ -123,6 +165,7 @@ private data class Creation(val config: GoalConfig, val program: ProgramTemplate
 private class FakeWorkoutRepository(
     private val gate: CompletableDeferred<Unit>? = null,
     var failuresRemaining: Int = 0,
+    private val cancelOnCreate: Boolean = false,
 ) : WorkoutRepository {
     val creations = mutableListOf<Creation>()
     var createAttempts = 0
@@ -131,6 +174,7 @@ private class FakeWorkoutRepository(
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = flowOf(emptyList())
     override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) {
         createAttempts++; gate?.await()
+        if (cancelOnCreate) throw CancellationException("cancelled")
         if (failuresRemaining-- > 0) error("disk full")
         creations += Creation(config, program, startEpochDay)
     }
