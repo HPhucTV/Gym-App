@@ -36,20 +36,30 @@ class ProgramValidatorBoundaryTest {
 
     @Test
     fun `validator rejects frequency duration and empty workout bounds`() {
-        val invalidFrequency = validProgram.copy(id = "frequency", sessionsPerWeek = 8)
-        val invalidDuration = validProgram.copy(id = "duration", durationWeeks = 53)
+        listOf(0, 8).forEach { sessionsPerWeek ->
+            val issues = CatalogValidator.validatePrograms(
+                listOf(validProgram.copy(id = "frequency_$sessionsPerWeek", sessionsPerWeek = sessionsPerWeek)),
+                mapOf(exercise.id to exercise),
+            )
+            assertTrue(issues.any { "sessionsPerWeek must be in 1..7" in it })
+        }
+        listOf(0, 53).forEach { durationWeeks ->
+            val issues = CatalogValidator.validatePrograms(
+                listOf(validProgram.copy(id = "duration_$durationWeeks", durationWeeks = durationWeeks)),
+                mapOf(exercise.id to exercise),
+            )
+            assertTrue(issues.any { "durationWeeks must be in 1..52" in it })
+        }
         val emptyWorkout = validProgram.copy(
             id = "empty",
             workouts = validWorkouts.mapIndexed { index, workout ->
                 if (index == 0) workout.copy(exercises = emptyList()) else workout
             },
         )
-        val issues = CatalogValidator.validatePrograms(
-            listOf(invalidFrequency, invalidDuration, emptyWorkout),
+        val emptyWorkoutIssues = CatalogValidator.validatePrograms(
+            listOf(emptyWorkout),
             mapOf(exercise.id to exercise),
         )
-        assertTrue(issues.any { "sessionsPerWeek must be in 1..7" in it })
-        assertTrue(issues.any { "durationWeeks must be in 1..52" in it })
-        assertTrue(issues.any { "must contain exercises" in it })
+        assertTrue(emptyWorkoutIssues.any { "must contain exercises" in it })
     }
 }

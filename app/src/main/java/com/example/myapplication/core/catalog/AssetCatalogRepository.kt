@@ -8,8 +8,8 @@ class AssetCatalogRepository internal constructor(
     private val assetReader: (String) -> String,
 ) {
     constructor(context: Context) : this(
-        assetReader = { path ->
-            context.applicationContext.assets.open(path).bufferedReader().use { it.readText() }
+        assetReader = context.applicationContext.assets.let { assets ->
+            { path -> assets.open(path).bufferedReader().use { it.readText() } }
         },
     )
 

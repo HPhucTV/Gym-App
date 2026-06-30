@@ -37,11 +37,17 @@ class ProgramPhaseConsistencyTest {
                     compounds(slot),
                     compounds(phaseTwoSequence),
                 )
-                val accessoryDifference =
-                    accessories(slot).toSet() xor accessories(phaseTwoSequence).toSet()
+                val phaseOneAccessories = accessories(slot)
+                val phaseTwoAccessories = accessories(phaseTwoSequence)
+                assertEquals(
+                    "Accessory count changed in week $phaseTwoWeek slot $slot",
+                    phaseOneAccessories.size,
+                    phaseTwoAccessories.size,
+                )
+                val accessoryChanges = maxAccessoryChanges(phaseOneAccessories, phaseTwoAccessories)
                 assertTrue(
-                    "Too many accessory changes in week $phaseTwoWeek slot $slot: $accessoryDifference",
-                    accessoryDifference.size / 2 <= 2,
+                    "Too many accessory changes in week $phaseTwoWeek slot $slot",
+                    accessoryChanges <= 2,
                 )
             }
         }
@@ -51,5 +57,14 @@ class ProgramPhaseConsistencyTest {
         assertTrue(lowerB.any { it.exerciseId == "conventional_deadlift" })
     }
 
-    private infix fun <T> Set<T>.xor(other: Set<T>): Set<T> = (this - other) + (other - this)
+    @Test
+    fun `accessory comparison counts one-sided deletion`() {
+        assertEquals(1, maxAccessoryChanges(listOf("a"), emptyList()))
+    }
+
+    private fun maxAccessoryChanges(baseline: List<String>, candidate: List<String>): Int {
+        val removed = baseline.toSet() - candidate.toSet()
+        val added = candidate.toSet() - baseline.toSet()
+        return maxOf(removed.size, added.size)
+    }
 }
