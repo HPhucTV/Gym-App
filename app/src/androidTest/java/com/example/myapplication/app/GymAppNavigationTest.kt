@@ -8,6 +8,12 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.myapplication.core.model.FitnessGoal
+import com.example.myapplication.feature.onboarding.OnboardingDraft
+import com.example.myapplication.feature.onboarding.OnboardingOptions
+import com.example.myapplication.feature.onboarding.OnboardingScreen
+import com.example.myapplication.feature.onboarding.OnboardingStep
+import com.example.myapplication.feature.onboarding.OnboardingUiState
 import com.example.myapplication.ui.theme.GymAppTheme
 import org.junit.Rule
 import org.junit.Test
@@ -70,5 +76,41 @@ class GymAppNavigationTest {
         composeRule.onAllNodesWithText("Hôm nay").assertCountEquals(0)
         composeRule.onAllNodesWithText("Tiến độ").assertCountEquals(0)
         composeRule.onAllNodesWithText("Cài đặt").assertCountEquals(0)
+    }
+    @Test
+    fun noGoal_passesReplacementModeToRealOnboardingContent() {
+        val replacementMode = mutableStateOf(true)
+        val onboarding = OnboardingUiState.Editing(
+            step = OnboardingStep.GOAL,
+            draft = OnboardingDraft(),
+            options = OnboardingOptions(
+                goals = setOf(FitnessGoal.GENERAL_FITNESS),
+                levels = emptySet(),
+                equipment = emptySet(),
+                commitments = emptySet(),
+                restDayModes = emptySet(),
+            ),
+        )
+
+        composeRule.setContent {
+            GymAppTheme {
+                GymApp(
+                    rootState = GymRootState.NoGoal,
+                    replacementMode = replacementMode.value,
+                    noGoalContent = { replacing ->
+                        OnboardingScreen(state = onboarding, replacementMode = replacing)
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Đổi mục tiêu").assertIsDisplayed()
+        composeRule.onNodeWithText("Lịch sử tập luyện đã hoàn thành vẫn được giữ lại.").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Tạo mục tiêu").assertCountEquals(0)
+
+        composeRule.runOnIdle { replacementMode.value = false }
+        composeRule.onNodeWithText("Tạo mục tiêu").assertIsDisplayed()
+        composeRule.onNodeWithText("Chọn chương trình có sẵn để nhận bài tập mỗi ngày.").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Đổi mục tiêu").assertCountEquals(0)
     }
 }

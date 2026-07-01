@@ -72,10 +72,12 @@ fun GymApp(container: AppContainer) {
     }
     GymApp(
         rootState = rootState,
-        noGoalContent = {
+        replacementMode = replacementMode,
+        noGoalContent = { replacing ->
             OnboardingRoute(
                 programs = container.catalogRepository.programs,
                 workoutRepository = container.workoutRepository,
+                replacementMode = replacing,
             )
         },
         todayContent = {
@@ -139,14 +141,15 @@ fun GymApp(container: AppContainer) {
 @Composable
 fun GymApp(
     rootState: GymRootState,
-    noGoalContent: @Composable () -> Unit = { DestinationScreen(AppDestination.ONBOARDING.heading) },
+    replacementMode: Boolean = false,
+    noGoalContent: @Composable (Boolean) -> Unit = { DestinationScreen(AppDestination.ONBOARDING.heading) },
     todayContent: @Composable () -> Unit = { DestinationScreen(AppDestination.TODAY.heading) },
     progressContent: @Composable () -> Unit = { DestinationScreen(AppDestination.PROGRESS.heading) },
     settingsContent: @Composable () -> Unit = { DestinationScreen(AppDestination.SETTINGS.heading) },
 ) {
     when (rootState) {
         GymRootState.Loading -> LoadingScreen()
-        GymRootState.NoGoal -> noGoalContent()
+        GymRootState.NoGoal -> noGoalContent(replacementMode)
         GymRootState.ActiveGoal -> ActiveGoalNavigation(todayContent, progressContent, settingsContent)
     }
 }
