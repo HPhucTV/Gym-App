@@ -16,6 +16,12 @@ class TodayViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     @get:Rule val mainRule = MainDispatcherRule(dispatcher)
 
+    @Test fun `settings rest override controls recovery`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(RestDayMode.FULL_REST), workout(due = 101))
+        val override = MutableStateFlow<RestDayMode?>(RestDayMode.LIGHT_RECOVERY)
+        val vm = TodayViewModel(repository, catalog, override) { 100 }; runCurrent()
+        assertEquals(RecoveryKind.LIGHT_RECOVERY, (vm.uiState.value as TodayUiState.Recovery).kind)
+    }
     @Test fun `maps due workout and mutations use persisted identity`() = runTest(dispatcher) {
         val repository = FakeTodayRepository(goal(), workout())
         val vm = TodayViewModel(repository, catalog) { 100 }

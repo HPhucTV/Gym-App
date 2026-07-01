@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import com.example.myapplication.core.catalog.AssetCatalogRepository
 import com.example.myapplication.data.RoomWorkoutRepository
+import com.example.myapplication.data.DataStoreSettingsRepository
+import com.example.myapplication.notification.AlarmReminderScheduler
 import com.example.myapplication.data.local.GymDatabase
 
 class AppContainer(context: Context) {
@@ -17,4 +19,6 @@ class AppContainer(context: Context) {
 
     val catalogRepository = AssetCatalogRepository(applicationContext)
     val workoutRepository = RoomWorkoutRepository(database)
+    val settingsRepository = DataStoreSettingsRepository(applicationContext)
+    val reminderScheduler = AlarmReminderScheduler(applicationContext)
 }

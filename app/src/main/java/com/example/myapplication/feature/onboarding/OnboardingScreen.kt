@@ -26,7 +26,7 @@ private val Orange = Color(0xFFF97316)
 private val LightGray = Color(0xFFF3F4F6)
 
 @Composable
-fun OnboardingRoute(programs: List<ProgramTemplate>, workoutRepository: WorkoutRepository) {
+fun OnboardingRoute(programs: List<ProgramTemplate>, workoutRepository: WorkoutRepository, replacementMode: Boolean = false) {
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -36,6 +36,7 @@ fun OnboardingRoute(programs: List<ProgramTemplate>, workoutRepository: WorkoutR
     val state by vm.uiState.collectAsStateWithLifecycle()
     OnboardingScreen(
         state = state,
+        replacementMode = replacementMode,
         onGoalSelected = vm::selectGoal,
         onLevelSelected = vm::selectLevel,
         onEquipmentSelected = vm::selectEquipment,
@@ -50,6 +51,7 @@ fun OnboardingRoute(programs: List<ProgramTemplate>, workoutRepository: WorkoutR
 @Composable
 fun OnboardingScreen(
     state: OnboardingUiState,
+    replacementMode: Boolean = false,
     onGoalSelected: (FitnessGoal) -> Unit = {},
     onLevelSelected: (ExperienceLevel) -> Unit = {},
     onEquipmentSelected: (EquipmentProfile) -> Unit = {},
@@ -61,7 +63,7 @@ fun OnboardingScreen(
 ) {
     Surface(color = Color.White, modifier = Modifier.fillMaxSize()) {
         when (state) {
-            is OnboardingUiState.Editing -> EditingContent(state, onGoalSelected, onLevelSelected,
+            is OnboardingUiState.Editing -> EditingContent(state, replacementMode, onGoalSelected, onLevelSelected,
                 onEquipmentSelected, onCommitmentSelected, onRestDayModeSelected, onNext, onBack, onCreateGoal)
             is OnboardingUiState.Unsupported -> UnsupportedContent(state, onBack)
             OnboardingUiState.Created -> Box(Modifier.fillMaxSize())
@@ -72,6 +74,7 @@ fun OnboardingScreen(
 @Composable
 private fun EditingContent(
     state: OnboardingUiState.Editing,
+    replacementMode: Boolean,
     onGoal: (FitnessGoal) -> Unit,
     onLevel: (ExperienceLevel) -> Unit,
     onEquipment: (EquipmentProfile) -> Unit,
@@ -94,9 +97,9 @@ private fun EditingContent(
         contentPadding = PaddingValues(vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { Text("Tạo mục tiêu", color = Orange, style = MaterialTheme.typography.labelLarge) }
+        item { Text(if (replacementMode) "Đổi mục tiêu" else "Tạo mục tiêu", color = Orange, style = MaterialTheme.typography.labelLarge) }
         item { Text(title, color = Navy, style = MaterialTheme.typography.headlineMedium) }
-        item { Text("Chọn chương trình có sẵn để nhận bài tập mỗi ngày.", color = Navy.copy(alpha = .72f)) }
+        item { Text(if (replacementMode) "Lịch sử tập luyện đã hoàn thành vẫn được giữ lại." else "Chọn chương trình có sẵn để nhận bài tập mỗi ngày.", color = Navy.copy(alpha = .72f)) }
         when (state.step) {
             OnboardingStep.GOAL -> items(state.options.goals.toList()) { value -> Choice(value.labelVi(), state.draft.goal == value) { onGoal(value) } }
             OnboardingStep.LEVEL -> items(state.options.levels.toList()) { value -> Choice(value.labelVi(), state.draft.level == value) { onLevel(value) } }

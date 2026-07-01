@@ -49,6 +49,12 @@ class OnboardingScreenTest {
         composeRule.onNodeWithText("Thay đổi lựa chọn").assertIsDisplayed()
     }
 
+    @Test fun replacementModeHasDistinctHeadingAndExplanation() {
+        setContent(editing(OnboardingStep.GOAL), replacementMode = true)
+        composeRule.onNodeWithText("Đổi mục tiêu").assertIsDisplayed()
+        composeRule.onNodeWithText("Lịch sử tập luyện đã hoàn thành vẫn được giữ lại.").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Tạo mục tiêu").assertCountEquals(0)
+    }
     @Test fun forbiddenAccountAndBodyFieldsAreAbsent() {
         setContent(editing(OnboardingStep.GOAL))
         listOf("Tài khoản", "Cân nặng", "Số đo", "Dinh dưỡng", "AI").forEach {
@@ -60,9 +66,10 @@ class OnboardingScreenTest {
         state: OnboardingUiState,
         onGoal: (FitnessGoal) -> Unit = {},
         onNext: () -> Unit = {},
+        replacementMode: Boolean = false,
     ) = composeRule.setContent {
         GymAppTheme {
-            OnboardingScreen(state, onGoalSelected = onGoal, onNext = onNext)
+            OnboardingScreen(state, replacementMode = replacementMode, onGoalSelected = onGoal, onNext = onNext)
         }
     }
 

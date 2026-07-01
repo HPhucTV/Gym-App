@@ -13,8 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -32,6 +35,12 @@ import com.example.myapplication.feature.today.TodayScreen
 import com.example.myapplication.feature.today.TodayViewModel
 import com.example.myapplication.feature.progress.ProgressScreen
 import com.example.myapplication.feature.progress.ProgressViewModel
+import com.example.myapplication.feature.settings.SettingsRoute
+import com.example.myapplication.feature.settings.SettingsViewModel
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -52,6 +61,15 @@ fun GymApp(container: AppContainer) {
             .map { goal -> if (goal == null) GymRootState.NoGoal else GymRootState.ActiveGoal }
     }
     val rootState by rootStateFlow.collectAsStateWithLifecycle(initialValue = GymRootState.Loading)
+    var replacementMode by rememberSaveable { mutableStateOf(false) }
+    var replacementWasShown by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(rootState) {
+        when (rootState) {
+            GymRootState.NoGoal -> if (replacementMode) replacementWasShown = true
+            GymRootState.ActiveGoal -> if (replacementWasShown) { replacementMode = false; replacementWasShown = false }
+            GymRootState.Loading -> Unit
+        }
+    }
     GymApp(
         rootState = rootState,
         noGoalContent = {
@@ -64,9 +82,8 @@ fun GymApp(container: AppContainer) {
             val factory = remember(container) {
                 viewModelFactory {
                     initializer {
-                        TodayViewModel(container.workoutRepository, container.catalogRepository.exercises) {
-                            LocalDate.now().toEpochDay()
-                        }
+                        TodayViewModel(container.workoutRepository, container.catalogRepository.exercises,
+                            container.settingsRepository.settings.map { it.restDayMode }) { LocalDate.now().toEpochDay() }
                     }
                 }
             }
@@ -102,6 +119,20 @@ fun GymApp(container: AppContainer) {
             val state by progressViewModel.uiState.collectAsStateWithLifecycle()
             ProgressScreen(state, progressViewModel::previousMonth, progressViewModel::nextMonth)
         },
+        settingsContent = {
+            val factory = remember(container) { viewModelFactory { initializer {
+                SettingsViewModel(container.workoutRepository, container.settingsRepository, container.reminderScheduler)
+            } } }
+            val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
+            val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            SettingsRoute(
+                viewModel = settingsViewModel,
+                onRequestNotificationPermission = {
+                    if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
+                onNavigateToOnboarding = { replacing -> replacementMode = replacing },
+            )
+        },
     )
 }
 
@@ -111,16 +142,17 @@ fun GymApp(
     noGoalContent: @Composable () -> Unit = { DestinationScreen(AppDestination.ONBOARDING.heading) },
     todayContent: @Composable () -> Unit = { DestinationScreen(AppDestination.TODAY.heading) },
     progressContent: @Composable () -> Unit = { DestinationScreen(AppDestination.PROGRESS.heading) },
+    settingsContent: @Composable () -> Unit = { DestinationScreen(AppDestination.SETTINGS.heading) },
 ) {
     when (rootState) {
         GymRootState.Loading -> LoadingScreen()
         GymRootState.NoGoal -> noGoalContent()
-        GymRootState.ActiveGoal -> ActiveGoalNavigation(todayContent, progressContent)
+        GymRootState.ActiveGoal -> ActiveGoalNavigation(todayContent, progressContent, settingsContent)
     }
 }
 
 @Composable
-private fun ActiveGoalNavigation(todayContent: @Composable () -> Unit, progressContent: @Composable () -> Unit) {
+private fun ActiveGoalNavigation(todayContent: @Composable () -> Unit, progressContent: @Composable () -> Unit, settingsContent: @Composable () -> Unit) {
     val navController = rememberNavController()
     val destinations = listOf(
         AppDestination.TODAY,
@@ -162,6 +194,7 @@ private fun ActiveGoalNavigation(todayContent: @Composable () -> Unit, progressC
                     when (destination) {
                         AppDestination.TODAY -> todayContent()
                         AppDestination.PROGRESS -> progressContent()
+                        AppDestination.SETTINGS -> settingsContent()
                         else -> DestinationScreen(destination.heading)
                     }
                 }

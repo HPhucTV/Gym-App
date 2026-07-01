@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 class TodayViewModel(
     private val repository: WorkoutRepository,
     exercises: List<ExerciseDefinition>,
+    private val restDayOverride: Flow<RestDayMode?> = flowOf(null),
     private val currentEpochDay: () -> Long,
 ) : ViewModel() {
     private data class Operations(
@@ -32,8 +33,8 @@ class TodayViewModel(
 
     init {
         viewModelScope.launch {
-            combine(repository.observeActiveGoal(), repository.observeCurrentWorkout(), today, operations) { goal, session, day, ops ->
-                resolve(goal, session, day, ops)
+            combine(repository.observeActiveGoal(), repository.observeCurrentWorkout(), today, operations, restDayOverride) { goal, session, day, ops, rest ->
+                resolve(goal, session, day, ops, rest)
             }.collect { _uiState.value = it }
         }
     }
@@ -97,12 +98,12 @@ class TodayViewModel(
         }
     }
 
-    private fun resolve(goal: ActiveGoal?, session: WorkoutSession?, day: Long, ops: Operations): TodayUiState {
+    private fun resolve(goal: ActiveGoal?, session: WorkoutSession?, day: Long, ops: Operations, restOverride: RestDayMode?): TodayUiState {
         ops.completionError?.takeIf { it.first == session?.id }?.let { return TodayUiState.Error(it.second, canRetry = true) }
         if (goal == null) return TodayUiState.Error("Không tìm thấy mục tiêu đang hoạt động.")
         if (session == null) return TodayUiState.GoalComplete
         if (session.dueEpochDay > day) return TodayUiState.Recovery(
-            if (goal.config.restDayMode == RestDayMode.FULL_REST) RecoveryKind.FULL_REST else RecoveryKind.LIGHT_RECOVERY,
+            if ((restOverride ?: goal.config.restDayMode) == RestDayMode.FULL_REST) RecoveryKind.FULL_REST else RecoveryKind.LIGHT_RECOVERY,
             session.dueEpochDay)
         val rows = session.exercises.sortedBy { it.orderIndex }.map { exercise ->
             val definition = catalog[exercise.exerciseId] ?: return TodayUiState.Error(
@@ -120,6 +121,6 @@ class TodayViewModel(
 
 private fun ExercisePrescription.displayText(): String = when {
     durationSeconds != null -> "$durationSeconds giây"
-    repsMin != null && repsMax != null -> if (repsMin == repsMax) "$sets × $repsMin" else "$sets × $repsMin–$repsMax"
+    repsMin != null && repsMax != null -> if (repsMin == repsMax) "$sets × $repsMin" else "$sets × ${repsMin}–${repsMax}"
     else -> "$sets hiệp"
 }
