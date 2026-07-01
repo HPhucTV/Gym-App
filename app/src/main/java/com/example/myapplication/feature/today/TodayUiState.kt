@@ -13,6 +13,8 @@ sealed interface TodayUiState {
         val total: Int,
         val canComplete: Boolean,
         val isCompleting: Boolean,
+        val pendingOrderIndices: Set<Int> = emptySet(),
+        val interactionError: String? = null,
     ) : TodayUiState
 
     data class Recovery(val kind: RecoveryKind, val nextDueEpochDay: Long) : TodayUiState
@@ -29,4 +31,5 @@ data class WorkoutRowUi(
     val restSeconds: Int,
     val instructionsVi: List<String>,
     val checked: Boolean,
+    val exerciseId: String = nameVi,
 )

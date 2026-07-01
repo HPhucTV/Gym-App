@@ -87,11 +87,53 @@ class TodayViewModelTest {
         vm.completeWorkout(); advanceUntilIdle()
         assertFalse((vm.uiState.value as TodayUiState.Workout).isCompleting)
     }
+    @Test fun `pending uncheck prevents completion race`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { checkGate = gate }
+        val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
+        vm.setChecked(0, false); vm.completeWorkout(); runCurrent()
+        assertEquals(0, repository.completions)
+        assertFalse((vm.uiState.value as TodayUiState.Workout).canComplete)
+        gate.complete(Unit); advanceUntilIdle()
+        assertFalse((vm.uiState.value as TodayUiState.Workout).canComplete)
+    }
+
+    @Test fun `new session is interactive while old completion is gated`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { completionGate = gate }
+        val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
+        vm.completeWorkout(); runCurrent()
+        repository.current.value = workout(checked = true).copy(id = 8, titleVi = "Buổi mới"); runCurrent()
+        val newer = vm.uiState.value as TodayUiState.Workout
+        assertEquals(8L, newer.sessionId); assertFalse(newer.isCompleting)
+        gate.complete(Unit); advanceUntilIdle()
+    }
+
+    @Test fun `checkbox error stays inline and retry clears after flow truth`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout()).apply { failCheck = true }
+        val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
+        vm.setChecked(0, true); advanceUntilIdle()
+        val failed = vm.uiState.value as TodayUiState.Workout
+        assertNotNull(failed.interactionError); assertTrue(failed.pendingOrderIndices.isEmpty())
+        repository.failCheck = false; vm.setChecked(0, true); advanceUntilIdle()
+        assertTrue((vm.uiState.value as TodayUiState.Workout).interactionError == null)
+    }
+
+    @Test fun `refresh today resolves recovery without repository emission`() = runTest(dispatcher) {
+        var today = 100L
+        val repository = FakeTodayRepository(goal(), workout(due = 101))
+        val vm = TodayViewModel(repository, catalog) { today }; runCurrent()
+        assertTrue(vm.uiState.value is TodayUiState.Recovery)
+        today = 101; vm.refreshToday(); runCurrent()
+        assertTrue(vm.uiState.value is TodayUiState.Workout)
+    }
     @Test fun `checkbox failure is recoverable and flow can restore workout`() = runTest(dispatcher) {
         val repository = FakeTodayRepository(goal(), workout()).apply { failCheck = true }
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         vm.setChecked(0, true); advanceUntilIdle()
-        assertTrue(vm.uiState.value is TodayUiState.Error)
+        val failed = vm.uiState.value as TodayUiState.Workout
+        assertNotNull(failed.interactionError)
+        assertTrue(failed.pendingOrderIndices.isEmpty())
         repository.failCheck = false; repository.current.value = workout(checked = true); runCurrent()
         assertTrue(vm.uiState.value is TodayUiState.Workout)
     }
@@ -112,13 +154,15 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
     val checks = mutableListOf<Triple<Long, Int, Boolean>>(); var completions = 0
     var completionGate: CompletableDeferred<Unit>? = null; var failCompletion = false; var failCheck = false
     var completionResult: CompleteWorkoutResult = CompleteWorkoutResult.Completed
+    var checkGate: CompletableDeferred<Unit>? = null
     var cancelCompletion = false
     val completionArguments = mutableListOf<Pair<Long, Long>>()
     override fun observeActiveGoal(): Flow<ActiveGoal?> = active
     override fun observeCurrentWorkout(): Flow<WorkoutSession?> = current
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = flowOf(emptyList())
     override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) {
-        checks += Triple(sessionId, orderIndex, checked); if (failCheck) error("disk")
+        checks += Triple(sessionId, orderIndex, checked); checkGate?.await(); if (failCheck) error("disk")
+        current.value = current.value?.copy(exercises = current.value!!.exercises.map { if (it.orderIndex == orderIndex) it.copy(checked = checked) else it })
     }
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult {
         completions++; completionArguments += sessionId to completedEpochDay; completionGate?.await()

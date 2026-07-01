@@ -8,7 +8,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -18,11 +22,12 @@ import com.example.myapplication.ui.theme.*
 
 @Composable
 fun ExerciseCard(
+    sessionId: Long,
     row: WorkoutRowUi,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    var expanded by remember(row.orderIndex) { mutableStateOf(false) }
+    var expanded by rememberSaveable(sessionId, row.orderIndex, row.exerciseId) { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().background(SurfaceGray, RoundedCornerShape(16.dp))
             .border(1.dp, BorderGray, RoundedCornerShape(16.dp)).padding(16.dp),
@@ -35,20 +40,13 @@ fun ExerciseCard(
             }
             if (row.checked) Text("✓", color = SuccessGreen,
                 modifier = Modifier.semantics { contentDescription = "Đã hoàn thành ${row.nameVi}" })
-            Checkbox(
-                checked = row.checked,
-                onCheckedChange = onCheckedChange,
-                enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = "Đánh dấu ${row.nameVi} hoàn thành" },
-            )
+            Checkbox(checked = row.checked, onCheckedChange = onCheckedChange, enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = "Đánh dấu ${row.nameVi} hoàn thành" })
         }
-        Text(
-            if (expanded) "Ẩn hướng dẫn" else "Xem hướng dẫn",
-            color = EnergyOrange,
+        Text(if (expanded) "Ẩn hướng dẫn" else "Xem hướng dẫn", color = EnergyOrange,
             modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { expanded = !expanded }
                 .semantics { contentDescription = if (expanded) "Đóng hướng dẫn ${row.nameVi}" else "Mở hướng dẫn ${row.nameVi}" }
-                .padding(vertical = 10.dp),
-        )
+                .padding(vertical = 10.dp))
         if (expanded) row.instructionsVi.forEachIndexed { index, instruction ->
             Text("${index + 1}. $instruction", color = Navy)
         }

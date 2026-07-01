@@ -12,6 +12,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.*
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun TodayScreen(
@@ -24,9 +26,9 @@ fun TodayScreen(
         TodayUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EnergyOrange, modifier = Modifier.semantics { contentDescription = "Đang tải bài tập" }) }
         TodayUiState.GoalComplete -> MessageScreen("Hoàn thành mục tiêu", "Bạn đã hoàn thành tất cả buổi tập trong chương trình. Tuyệt vời!")
         is TodayUiState.Recovery -> if (state.kind == RecoveryKind.FULL_REST) {
-            MessageScreen("Nghỉ ngơi hoàn toàn", "Hôm nay hãy nghỉ ngơi. Buổi tập tiếp theo vào ngày ${state.nextDueEpochDay}.")
+            MessageScreen("Nghỉ ngơi hoàn toàn", "Hôm nay hãy nghỉ ngơi. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.")
         } else {
-            MessageScreen("Phục hồi nhẹ", "Bạn có thể đi bộ hoặc vận động nhẹ. Buổi tập tiếp theo vào ngày ${state.nextDueEpochDay}.")
+            MessageScreen("Phục hồi nhẹ", "Bạn có thể đi bộ hoặc vận động nhẹ. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.")
         }
         is TodayUiState.Error -> MessageScreen("Đã có lỗi", state.message, if (state.canRetry) "Thử lại" else null, onRetry)
         is TodayUiState.Workout -> WorkoutContent(state, onCheckedChange, onComplete)
@@ -48,8 +50,11 @@ private fun WorkoutContent(state: TodayUiState.Workout, onCheckedChange: (Int, B
             Spacer(Modifier.height(8.dp))
             Text("${state.checkedCount}/${state.total} bài đã xong", color = SuccessGreen, style = MaterialTheme.typography.titleMedium)
         }
-        items(state.rows, key = { it.orderIndex }) { row ->
-            ExerciseCard(row, enabled = !state.isCompleting) { checked -> onCheckedChange(row.orderIndex, checked) }
+        items(state.rows, key = { "${state.sessionId}:${it.orderIndex}:${it.exerciseId}" }) { row ->
+            ExerciseCard(state.sessionId, row, enabled = !state.isCompleting && row.orderIndex !in state.pendingOrderIndices) { checked -> onCheckedChange(row.orderIndex, checked) }
+        }
+        state.interactionError?.let { message ->
+            item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
         item {
             Button(
@@ -71,3 +76,6 @@ private fun MessageScreen(title: String, message: String, action: String? = null
         if (action != null) { Spacer(Modifier.height(20.dp)); Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange)) { Text(action) } }
     }
 }
+
+private val todayDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+private fun formatEpochDay(epochDay: Long): String = LocalDate.ofEpochDay(epochDay).format(todayDateFormatter)

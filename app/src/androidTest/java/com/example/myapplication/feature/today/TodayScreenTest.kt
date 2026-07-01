@@ -1,5 +1,6 @@
 package com.example.myapplication.feature.today
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -35,6 +36,7 @@ class TodayScreenTest {
     @Test fun recovery_goal_and_error_have_distinct_copy_and_retry() {
         setState(TodayUiState.Recovery(RecoveryKind.FULL_REST, 101))
         rule.onNodeWithText("Nghỉ ngơi hoàn toàn").assertIsDisplayed()
+        rule.onNodeWithText("12/04/1970", substring = true).assertIsDisplayed()
         setState(TodayUiState.Recovery(RecoveryKind.LIGHT_RECOVERY, 101))
         rule.onNodeWithText("Phục hồi nhẹ").assertIsDisplayed()
         setState(TodayUiState.GoalComplete)
@@ -66,6 +68,30 @@ class TodayScreenTest {
         rule.onNodeWithText("Hoàn thành buổi tập").performClick()
         rule.runOnIdle { assertEquals(1, calls) }
     }
+    @Test fun pending_and_inline_error_are_visible_and_not_actionable() {
+        setState(TodayUiState.Workout(7, "Toàn thân", "Ngực", 25,
+            listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf("Một", "Hai"), true, "push_up")),
+            1, 1, canComplete = false, isCompleting = false,
+            pendingOrderIndices = setOf(0), interactionError = "Không thể cập nhật bài tập. Vui lòng thử lại."))
+        rule.onNodeWithContentDescription("Đánh dấu Chống đẩy hoàn thành").assertIsNotEnabled()
+        rule.onNodeWithText("Hoàn thành buổi tập").assertIsNotEnabled()
+        rule.onNodeWithText("Không thể cập nhật bài tập. Vui lòng thử lại.").assertIsDisplayed()
+    }
+
+    @Test fun expansion_does_not_carry_to_new_session() {
+        val state = mutableStateOf(workoutState(7, "Bước cũ"))
+        rule.setContent { GymAppTheme { TodayScreen(state.value, { _, _ -> }, {}, {}) } }
+        rule.onNodeWithContentDescription("Mở hướng dẫn Chống đẩy").performClick()
+        rule.onNodeWithText("1. Bước cũ").assertIsDisplayed()
+        rule.runOnIdle { state.value = workoutState(8, "Bước mới") }
+        rule.onAllNodesWithText("1. Bước cũ").assertCountEquals(0)
+        rule.onAllNodesWithText("1. Bước mới").assertCountEquals(0)
+    }
+
+    private fun workoutState(sessionId: Long, instruction: String) = TodayUiState.Workout(
+        sessionId, "Toàn thân", "Ngực", 25,
+        listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf(instruction, "Bước hai"), false, "push_up")),
+        0, 1, false, false)
     private fun set(row: WorkoutRowUi, complete: Boolean, onCheck: () -> Unit = {}) = setState(
         TodayUiState.Workout(7, "Toàn thân", "Ngực", 25, listOf(row), if (row.checked) 1 else 0, 1, complete, false),
         onCheckedChange = { _, _ -> onCheck() })
