@@ -19,6 +19,9 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
+internal val CompletedDayBackgroundColor = SuccessGreen
+internal val CompletedDayContentColor = Navy
+
 @Composable
 fun MonthCalendar(
     selectedMonth: YearMonth,
@@ -95,12 +98,12 @@ private fun CalendarDay(date: LocalDate, completed: Boolean, modifier: Modifier 
     ) {
         Box(
             modifier = Modifier.size(38.dp).clip(CircleShape)
-                .background(if (completed) SuccessGreen else Color.Transparent),
+                .background(if (completed) CompletedDayBackgroundColor else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
-            Text(date.dayOfMonth.toString(), color = if (completed) White else Navy, fontWeight = FontWeight.SemiBold)
+            Text(date.dayOfMonth.toString(), color = if (completed) CompletedDayContentColor else Navy, fontWeight = FontWeight.SemiBold)
             if (completed) {
-                Text("✓", color = White, style = MaterialTheme.typography.labelSmall,
+                Text("✓", color = CompletedDayContentColor, style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp))
             }
         }
