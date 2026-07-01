@@ -59,6 +59,34 @@ class TodayViewModelTest {
         assertEquals(3, repository.completions)
     }
 
+    @Test fun `completion uses current session and injected day then restores while flow catches up`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val vm = TodayViewModel(repository, catalog) { 4321 }; runCurrent()
+        vm.completeWorkout(); advanceUntilIdle()
+        assertEquals(7L to 4321L, repository.completionArguments.single())
+        val state = vm.uiState.value as TodayUiState.Workout
+        assertFalse(state.isCompleting)
+        assertTrue(state.canComplete)
+    }
+
+    @Test fun `blocked and already completed results never leave workout stuck`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
+        repository.completionResult = CompleteWorkoutResult.BlockedByUncheckedExercises
+        vm.completeWorkout(); advanceUntilIdle()
+        assertTrue(vm.uiState.value is TodayUiState.Error || vm.uiState.value is TodayUiState.Workout)
+        repository.current.value = workout(checked = true, due = 99); runCurrent()
+        repository.completionResult = CompleteWorkoutResult.AlreadyCompleted
+        vm.completeWorkout(); advanceUntilIdle()
+        assertFalse((vm.uiState.value as TodayUiState.Workout).isCompleting)
+    }
+
+    @Test fun `completion cancellation runs cleanup and leaves surviving workout interactive`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { cancelCompletion = true }
+        val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
+        vm.completeWorkout(); advanceUntilIdle()
+        assertFalse((vm.uiState.value as TodayUiState.Workout).isCompleting)
+    }
     @Test fun `checkbox failure is recoverable and flow can restore workout`() = runTest(dispatcher) {
         val repository = FakeTodayRepository(goal(), workout()).apply { failCheck = true }
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
@@ -83,6 +111,9 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
     val active = MutableStateFlow(goal); val current = MutableStateFlow(workout)
     val checks = mutableListOf<Triple<Long, Int, Boolean>>(); var completions = 0
     var completionGate: CompletableDeferred<Unit>? = null; var failCompletion = false; var failCheck = false
+    var completionResult: CompleteWorkoutResult = CompleteWorkoutResult.Completed
+    var cancelCompletion = false
+    val completionArguments = mutableListOf<Pair<Long, Long>>()
     override fun observeActiveGoal(): Flow<ActiveGoal?> = active
     override fun observeCurrentWorkout(): Flow<WorkoutSession?> = current
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = flowOf(emptyList())
@@ -90,7 +121,9 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
         checks += Triple(sessionId, orderIndex, checked); if (failCheck) error("disk")
     }
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult {
-        completions++; completionGate?.await(); if (failCompletion) error("disk"); return CompleteWorkoutResult.Completed
+        completions++; completionArguments += sessionId to completedEpochDay; completionGate?.await()
+        if (cancelCompletion) throw kotlinx.coroutines.CancellationException("cancelled")
+        if (failCompletion) error("disk"); return completionResult
     }
     override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) = Unit
     override suspend fun archiveActiveGoal() = Unit

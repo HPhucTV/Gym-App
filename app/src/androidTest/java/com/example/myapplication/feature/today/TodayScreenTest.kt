@@ -43,6 +43,29 @@ class TodayScreenTest {
         rule.onNodeWithText("Thử lại").assertIsEnabled()
     }
 
+    @Test fun loading_non_retry_error_and_completing_are_explicit() {
+        setState(TodayUiState.Loading)
+        rule.onNodeWithContentDescription("Đang tải bài tập").assertExists()
+        setState(TodayUiState.Error("Có lỗi", canRetry = false))
+        rule.onAllNodesWithText("Thử lại").assertCountEquals(0)
+        setState(TodayUiState.Workout(7, "Toàn thân", "Ngực", 25,
+            listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf("Một", "Hai"), true)),
+            1, 1, canComplete = true, isCompleting = true))
+        rule.onNodeWithText("Đang hoàn thành…").assertIsNotEnabled()
+    }
+
+    @Test fun enabled_completion_invokes_callback_once() {
+        var calls = 0
+        rule.setContent {
+            GymAppTheme {
+                TodayScreen(TodayUiState.Workout(7, "Toàn thân", "Ngực", 25,
+                    listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf("Một", "Hai"), true)),
+                    1, 1, true, false), { _, _ -> }, { calls++ }, {})
+            }
+        }
+        rule.onNodeWithText("Hoàn thành buổi tập").performClick()
+        rule.runOnIdle { assertEquals(1, calls) }
+    }
     private fun set(row: WorkoutRowUi, complete: Boolean, onCheck: () -> Unit = {}) = setState(
         TodayUiState.Workout(7, "Toàn thân", "Ngực", 25, listOf(row), if (row.checked) 1 else 0, 1, complete, false),
         onCheckedChange = { _, _ -> onCheck() })

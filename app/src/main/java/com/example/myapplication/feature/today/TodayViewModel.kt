@@ -71,6 +71,10 @@ class TodayViewModel(
                 _uiState.value = TodayUiState.Error("Không thể hoàn thành buổi tập. Vui lòng thử lại.", canRetry = true)
             } finally {
                 completing = false
+                val current = _uiState.value
+                if (current is TodayUiState.Workout && current.sessionId == sessionId && current.isCompleting) {
+                    _uiState.value = current.copy(isCompleting = false)
+                }
             }
         }
     }

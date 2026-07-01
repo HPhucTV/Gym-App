@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.*
 
@@ -19,7 +21,7 @@ fun TodayScreen(
     onRetry: () -> Unit,
 ) {
     when (state) {
-        TodayUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EnergyOrange) }
+        TodayUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EnergyOrange, modifier = Modifier.semantics { contentDescription = "Đang tải bài tập" }) }
         TodayUiState.GoalComplete -> MessageScreen("Hoàn thành mục tiêu", "Bạn đã hoàn thành tất cả buổi tập trong chương trình. Tuyệt vời!")
         is TodayUiState.Recovery -> if (state.kind == RecoveryKind.FULL_REST) {
             MessageScreen("Nghỉ ngơi hoàn toàn", "Hôm nay hãy nghỉ ngơi. Buổi tập tiếp theo vào ngày ${state.nextDueEpochDay}.")
