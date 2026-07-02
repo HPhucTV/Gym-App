@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -180,6 +181,7 @@ private fun ActiveGoalNavigation(todayContent: @Composable () -> Unit, progressC
                                 restoreState = true
                             }
                         },
+                        modifier = Modifier.testTag("nav-${destination.route}"),
                         icon = {},
                         label = { Text(destination.navigationLabel) },
                     )

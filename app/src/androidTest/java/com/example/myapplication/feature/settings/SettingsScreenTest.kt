@@ -2,6 +2,7 @@ package com.example.myapplication.feature.settings
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.myapplication.core.model.*
 import com.example.myapplication.ui.theme.GymAppTheme
@@ -25,12 +26,26 @@ class SettingsScreenTest {
 
     @Test fun replace_and_delete_have_distinct_confirmation_and_cancel_paths() {
         var replace = 0; var delete = 0
-        set(content(), onReplace = { replace++ }, onDelete = { delete++ })
+        val state = mutableStateOf(content())
+        rule.setContent {
+            GymAppTheme {
+                SettingsScreen(
+                    state.value, {}, {}, { _, _ -> },
+                    { state.value = state.value.copy(confirmation = PendingConfirmation.REPLACE) },
+                    { state.value = state.value.copy(confirmation = PendingConfirmation.DELETE) },
+                    { state.value = state.value.copy(confirmation = PendingConfirmation.NONE) },
+                    {
+                        if (state.value.confirmation == PendingConfirmation.DELETE) delete++ else replace++
+                        state.value = state.value.copy(confirmation = PendingConfirmation.NONE)
+                    },
+                )
+            }
+        }
         rule.onNodeWithText("Đổi mục tiêu").performClick()
         rule.onNodeWithText("Lịch sử buổi tập đã hoàn thành vẫn được giữ lại.").assertIsDisplayed()
         rule.onNodeWithText("Hủy").performClick()
         rule.onNodeWithText("Xóa mục tiêu hiện tại").performClick()
-        rule.onNodeWithText("Xóa mục tiêu", substring = true).assertExists()
+        rule.onNodeWithText("Xóa mục tiêu").assertExists()
         rule.onNodeWithText("Xác nhận").performClick()
         rule.runOnIdle { assertEquals(0, replace); assertEquals(1, delete) }
     }

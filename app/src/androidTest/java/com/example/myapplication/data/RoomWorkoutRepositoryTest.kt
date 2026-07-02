@@ -98,7 +98,7 @@ class RoomWorkoutRepositoryTest {
         val newGoal = requireNotNull(repository.observeActiveGoal().first())
         assertTrue(newGoal.id != oldGoal.id)
         assertEquals(listOf(CompletedWorkout(oldGoal.id, 100)), repository.observeCompletedWorkouts().first())
-        assertEquals(200, repository.observeCurrentWorkout().first()?.dueEpochDay)
+        assertEquals(200L, repository.observeCurrentWorkout().first()?.dueEpochDay)
     }
 
     @Test
@@ -107,12 +107,12 @@ class RoomWorkoutRepositoryTest {
         val first = requireNotNull(repository.observeCurrentWorkout().first())
         first.exercises.forEach { repository.setExerciseChecked(first.id, it.orderIndex, true) }
         repository.completeWorkout(first.id, 99)
-        assertEquals(102, repository.observeCurrentWorkout().first()?.dueEpochDay)
+        assertEquals(102L, repository.observeCurrentWorkout().first()?.dueEpochDay)
 
         val second = requireNotNull(repository.observeCurrentWorkout().first())
         second.exercises.forEach { repository.setExerciseChecked(second.id, it.orderIndex, true) }
         repository.completeWorkout(second.id, 104)
-        assertEquals(106, repository.observeCurrentWorkout().first()?.dueEpochDay)
+        assertEquals(106L, repository.observeCurrentWorkout().first()?.dueEpochDay)
 
         repository.archiveActiveGoal()
         assertNull(repository.observeActiveGoal().first())

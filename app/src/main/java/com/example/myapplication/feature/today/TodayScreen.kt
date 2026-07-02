@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -26,9 +27,9 @@ fun TodayScreen(
         TodayUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EnergyOrange, modifier = Modifier.semantics { contentDescription = "Đang tải bài tập" }) }
         TodayUiState.GoalComplete -> MessageScreen("Hoàn thành mục tiêu", "Bạn đã hoàn thành tất cả buổi tập trong chương trình. Tuyệt vời!")
         is TodayUiState.Recovery -> if (state.kind == RecoveryKind.FULL_REST) {
-            MessageScreen("Nghỉ ngơi hoàn toàn", "Hôm nay hãy nghỉ ngơi. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.")
+            MessageScreen("Nghỉ ngơi hoàn toàn", "Hôm nay hãy nghỉ ngơi. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.", modifier = Modifier.testTag("today-recovery"))
         } else {
-            MessageScreen("Phục hồi nhẹ", "Bạn có thể đi bộ hoặc vận động nhẹ. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.")
+            MessageScreen("Phục hồi nhẹ", "Bạn có thể đi bộ hoặc vận động nhẹ. Buổi tập tiếp theo vào ngày ${formatEpochDay(state.nextDueEpochDay)}.", modifier = Modifier.testTag("today-recovery"))
         }
         is TodayUiState.Error -> MessageScreen("Đã có lỗi", state.message, if (state.canRetry) "Thử lại" else null, onRetry)
         is TodayUiState.Workout -> WorkoutContent(state, onCheckedChange, onComplete)
@@ -38,7 +39,7 @@ fun TodayScreen(
 @Composable
 private fun WorkoutContent(state: TodayUiState.Workout, onCheckedChange: (Int, Boolean) -> Unit, onComplete: () -> Unit) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("today-workout"),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -61,15 +62,15 @@ private fun WorkoutContent(state: TodayUiState.Workout, onCheckedChange: (Int, B
                 onClick = onComplete,
                 enabled = state.canComplete && !state.isCompleting,
                 colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange, contentColor = Color.White),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("today-complete"),
             ) { Text(if (state.isCompleting) "Đang hoàn thành…" else "Hoàn thành buổi tập") }
         }
     }
 }
 
 @Composable
-private fun MessageScreen(title: String, message: String, action: String? = null, onAction: () -> Unit = {}) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
+private fun MessageScreen(title: String, message: String, action: String? = null, onAction: () -> Unit = {}, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = MaterialTheme.typography.headlineMedium, color = Navy)
         Spacer(Modifier.height(12.dp)); Text(message, color = MutedText)

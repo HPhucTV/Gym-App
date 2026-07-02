@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -101,11 +102,11 @@ private fun EditingContent(
         item { Text(title, color = Navy, style = MaterialTheme.typography.headlineMedium) }
         item { Text(if (replacementMode) "Lịch sử tập luyện đã hoàn thành vẫn được giữ lại." else "Chọn chương trình có sẵn để nhận bài tập mỗi ngày.", color = Navy.copy(alpha = .72f)) }
         when (state.step) {
-            OnboardingStep.GOAL -> items(state.options.goals.toList()) { value -> Choice(value.labelVi(), state.draft.goal == value) { onGoal(value) } }
-            OnboardingStep.LEVEL -> items(state.options.levels.toList()) { value -> Choice(value.labelVi(), state.draft.level == value) { onLevel(value) } }
-            OnboardingStep.EQUIPMENT -> items(state.options.equipment.toList()) { value -> Choice(value.labelVi(), state.draft.equipment == value) { onEquipment(value) } }
-            OnboardingStep.COMMITMENT -> items(state.options.commitments.toList()) { value -> Choice("${value.sessionsPerWeek} buổi/tuần · ${value.durationWeeks} tuần", state.draft.sessionsPerWeek == value.sessionsPerWeek && state.draft.durationWeeks == value.durationWeeks) { onCommitment(value) } }
-            OnboardingStep.REST_BEHAVIOR -> items(state.options.restDayModes.toList()) { value -> Choice(value.labelVi(), state.draft.restDayMode == value) { onRest(value) } }
+            OnboardingStep.GOAL -> items(state.options.goals.toList()) { value -> Choice(value.labelVi(), state.draft.goal == value, "onboarding-goal-${value.name}") { onGoal(value) } }
+            OnboardingStep.LEVEL -> items(state.options.levels.toList()) { value -> Choice(value.labelVi(), state.draft.level == value, "onboarding-level-${value.name}") { onLevel(value) } }
+            OnboardingStep.EQUIPMENT -> items(state.options.equipment.toList()) { value -> Choice(value.labelVi(), state.draft.equipment == value, "onboarding-equipment-${value.name}") { onEquipment(value) } }
+            OnboardingStep.COMMITMENT -> items(state.options.commitments.toList()) { value -> Choice("${value.sessionsPerWeek} buổi/tuần · ${value.durationWeeks} tuần", state.draft.sessionsPerWeek == value.sessionsPerWeek && state.draft.durationWeeks == value.durationWeeks, "onboarding-commitment-${value.sessionsPerWeek}-${value.durationWeeks}") { onCommitment(value) } }
+            OnboardingStep.REST_BEHAVIOR -> items(state.options.restDayModes.toList()) { value -> Choice(value.labelVi(), state.draft.restDayMode == value, "onboarding-rest-${value.name}") { onRest(value) } }
             OnboardingStep.REVIEW -> item { ReviewCard(state.draft) }
         }
         state.saveError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
@@ -116,14 +117,14 @@ private fun EditingContent(
                     onClick = if (state.step == OnboardingStep.REVIEW) onCreate else onNext,
                     enabled = !state.isSaving && canAdvance(state),
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag(if (state.step == OnboardingStep.REVIEW) "onboarding-create-goal" else "onboarding-next"),
                 ) { Text(if (state.isSaving) "Đang tạo…" else if (state.step == OnboardingStep.REVIEW) "Tạo mục tiêu" else "Tiếp tục") }
             }
         }
     }
 }
 
-@Composable private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
+@Composable private fun Choice(label: String, selected: Boolean, testTag: String, onClick: () -> Unit) {
     Surface(
         border = BorderStroke(1.dp, if (selected) Orange else Color(0xFFE5E7EB)),
         color = if (selected) Color(0xFFFFF7ED) else Color.White,
@@ -132,6 +133,7 @@ private fun EditingContent(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            .testTag(testTag)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
     ) { Text(label, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) }
 }

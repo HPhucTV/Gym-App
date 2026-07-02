@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -41,14 +42,16 @@ fun ExerciseCard(
             if (row.checked) Text("✓", color = SuccessGreen,
                 modifier = Modifier.semantics { contentDescription = "Đã hoàn thành ${row.nameVi}" })
             Checkbox(checked = row.checked, onCheckedChange = onCheckedChange, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = "Đánh dấu ${row.nameVi} hoàn thành" })
+                modifier = Modifier.testTag("exercise-checkbox-${row.orderIndex}").semantics { contentDescription = "Đánh dấu ${row.nameVi} hoàn thành" })
         }
         Text(if (expanded) "Ẩn hướng dẫn" else "Xem hướng dẫn", color = EnergyOrange,
-            modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { expanded = !expanded }
+            modifier = Modifier.fillMaxWidth().testTag("exercise-expand-${row.orderIndex}").clickable(enabled = enabled) { expanded = !expanded }
                 .semantics { contentDescription = if (expanded) "Đóng hướng dẫn ${row.nameVi}" else "Mở hướng dẫn ${row.nameVi}" }
                 .padding(vertical = 10.dp))
-        if (expanded) row.instructionsVi.forEachIndexed { index, instruction ->
-            Text("${index + 1}. $instruction", color = Navy)
+        if (expanded) Column(Modifier.testTag("exercise-instructions-${row.orderIndex}")) {
+            row.instructionsVi.forEachIndexed { index, instruction ->
+                Text("${index + 1}. $instruction", color = Navy)
+            }
         }
     }
 }

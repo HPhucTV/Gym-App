@@ -34,28 +34,30 @@ class TodayScreenTest {
     }
 
     @Test fun recovery_goal_and_error_have_distinct_copy_and_retry() {
-        setState(TodayUiState.Recovery(RecoveryKind.FULL_REST, 101))
+        val state = mutableStateOf<TodayUiState>(TodayUiState.Recovery(RecoveryKind.FULL_REST, 101))
+        rule.setContent { GymAppTheme { TodayScreen(state.value, { _, _ -> }, {}, {}) } }
         rule.onNodeWithText("Nghỉ ngơi hoàn toàn").assertIsDisplayed()
         rule.onNodeWithText("12/04/1970", substring = true).assertIsDisplayed()
-        setState(TodayUiState.Recovery(RecoveryKind.LIGHT_RECOVERY, 101))
+        rule.runOnIdle { state.value = TodayUiState.Recovery(RecoveryKind.LIGHT_RECOVERY, 101) }
         rule.onNodeWithText("Phục hồi nhẹ").assertIsDisplayed()
-        setState(TodayUiState.GoalComplete)
+        rule.runOnIdle { state.value = TodayUiState.GoalComplete }
         rule.onNodeWithText("Hoàn thành mục tiêu").assertIsDisplayed()
-        setState(TodayUiState.Error("Có lỗi", canRetry = true))
+        rule.runOnIdle { state.value = TodayUiState.Error("Có lỗi", canRetry = true) }
         rule.onNodeWithText("Thử lại").assertIsEnabled()
     }
-
     @Test fun loading_non_retry_error_and_completing_are_explicit() {
-        setState(TodayUiState.Loading)
+        val state = mutableStateOf<TodayUiState>(TodayUiState.Loading)
+        rule.setContent { GymAppTheme { TodayScreen(state.value, { _, _ -> }, {}, {}) } }
         rule.onNodeWithContentDescription("Đang tải bài tập").assertExists()
-        setState(TodayUiState.Error("Có lỗi", canRetry = false))
+        rule.runOnIdle { state.value = TodayUiState.Error("Có lỗi", canRetry = false) }
         rule.onAllNodesWithText("Thử lại").assertCountEquals(0)
-        setState(TodayUiState.Workout(7, "Toàn thân", "Ngực", 25,
-            listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf("Một", "Hai"), true)),
-            1, 1, canComplete = true, isCompleting = true))
+        rule.runOnIdle {
+            state.value = TodayUiState.Workout(7, "Toàn thân", "Ngực", 25,
+                listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf("Một", "Hai"), true)),
+                1, 1, canComplete = true, isCompleting = true)
+        }
         rule.onNodeWithText("Đang hoàn thành…").assertIsNotEnabled()
     }
-
     @Test fun enabled_completion_invokes_callback_once() {
         var calls = 0
         rule.setContent {
