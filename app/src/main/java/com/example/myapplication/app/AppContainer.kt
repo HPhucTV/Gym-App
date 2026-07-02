@@ -15,7 +15,9 @@ class AppContainer(context: Context) {
         applicationContext,
         GymDatabase::class.java,
         "gym.db",
-    ).build()
+    )
+        .addMigrations(GymDatabase.MIGRATION_1_2)
+        .build()
 
     val catalogRepository = AssetCatalogRepository(applicationContext)
     val workoutRepository = RoomWorkoutRepository(database)

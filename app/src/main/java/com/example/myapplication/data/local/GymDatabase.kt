@@ -4,10 +4,18 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.myapplication.core.adaptation.AdaptationKind
+import com.example.myapplication.core.adaptation.AdaptationMode
+import com.example.myapplication.core.adaptation.AdaptationStatus
 import com.example.myapplication.core.model.EquipmentProfile
 import com.example.myapplication.core.model.ExperienceLevel
 import com.example.myapplication.core.model.FitnessGoal
 import com.example.myapplication.core.model.RestDayMode
+import com.example.myapplication.core.profile.ActivityLevel
+import com.example.myapplication.core.profile.GoalPace
+import com.example.myapplication.core.profile.MetabolicSex
 
 class WorkoutTypeConverters {
     @TypeConverter fun fitnessGoalToString(value: FitnessGoal): String = value.name
@@ -20,12 +28,131 @@ class WorkoutTypeConverters {
     @TypeConverter fun stringToRestDayMode(value: String): RestDayMode = RestDayMode.valueOf(value)
 }
 
+class PersonalizationTypeConverters {
+    @TypeConverter fun metabolicSexToString(value: MetabolicSex): String = value.name
+    @TypeConverter fun stringToMetabolicSex(value: String): MetabolicSex = MetabolicSex.valueOf(value)
+    @TypeConverter fun activityLevelToString(value: ActivityLevel): String = value.name
+    @TypeConverter fun stringToActivityLevel(value: String): ActivityLevel = ActivityLevel.valueOf(value)
+    @TypeConverter fun goalPaceToString(value: GoalPace): String = value.name
+    @TypeConverter fun stringToGoalPace(value: String): GoalPace = GoalPace.valueOf(value)
+    @TypeConverter fun adaptationKindToString(value: AdaptationKind): String = value.name
+    @TypeConverter fun stringToAdaptationKind(value: String): AdaptationKind = AdaptationKind.valueOf(value)
+    @TypeConverter fun adaptationModeToString(value: AdaptationMode): String = value.name
+    @TypeConverter fun stringToAdaptationMode(value: String): AdaptationMode = AdaptationMode.valueOf(value)
+    @TypeConverter fun adaptationStatusToString(value: AdaptationStatus): String = value.name
+    @TypeConverter fun stringToAdaptationStatus(value: String): AdaptationStatus = AdaptationStatus.valueOf(value)
+}
+
 @Database(
-    entities = [GoalEntity::class, WorkoutSessionEntity::class, SessionExerciseEntity::class],
-    version = 1,
+    entities = [
+        GoalEntity::class,
+        WorkoutSessionEntity::class,
+        SessionExerciseEntity::class,
+        PersonalProfileEntity::class,
+        WeightMeasurementEntity::class,
+        DailyNutritionEntity::class,
+        WeeklyCheckInEntity::class,
+        AdaptationDecisionEntity::class,
+    ],
+    version = 2,
     exportSchema = true,
 )
-@TypeConverters(WorkoutTypeConverters::class)
+@TypeConverters(WorkoutTypeConverters::class, PersonalizationTypeConverters::class)
 abstract class GymDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
+    abstract fun personalizationDao(): PersonalizationDao
+
+    companion object {
+        val MIGRATION_1_2: Migration = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `personal_profiles` (
+                        `id` INTEGER NOT NULL,
+                        `birthDateEpochDay` INTEGER NOT NULL,
+                        `metabolicSex` TEXT NOT NULL,
+                        `heightCm` REAL NOT NULL,
+                        `currentWeightKg` REAL NOT NULL,
+                        `targetWeightKg` REAL NOT NULL,
+                        `activityLevel` TEXT NOT NULL,
+                        `goalPace` TEXT NOT NULL,
+                        `personalizationConsent` INTEGER NOT NULL,
+                        `cloudAiConsent` INTEGER NOT NULL,
+                        `updatedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `weight_measurements` (
+                        `epochDay` INTEGER NOT NULL,
+                        `weightKg` REAL NOT NULL,
+                        `recordedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`epochDay`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `daily_nutrition` (
+                        `epochDay` INTEGER NOT NULL,
+                        `consumedCalories` INTEGER NOT NULL,
+                        `consumedProteinGrams` INTEGER NOT NULL,
+                        `consumedCarbsGrams` INTEGER NOT NULL,
+                        `consumedFatGrams` INTEGER NOT NULL,
+                        `targetBasalCalories` INTEGER,
+                        `targetMaintenanceCalories` INTEGER,
+                        `targetCalories` INTEGER,
+                        `targetProteinGrams` INTEGER,
+                        `targetCarbsGrams` INTEGER,
+                        `targetFatGrams` INTEGER,
+                        `lastEntrySource` TEXT,
+                        `updatedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`epochDay`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `weekly_check_ins` (
+                        `weekStartEpochDay` INTEGER NOT NULL,
+                        `weightKg` REAL NOT NULL,
+                        `energy` INTEGER NOT NULL,
+                        `hunger` INTEGER NOT NULL,
+                        `recovery` INTEGER NOT NULL,
+                        `sleepQuality` INTEGER NOT NULL,
+                        `note` TEXT,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`weekStartEpochDay`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `adaptation_decisions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `mode` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `reasonVi` TEXT NOT NULL,
+                        `payloadVersion` INTEGER NOT NULL,
+                        `inputsJson` TEXT NOT NULL,
+                        `beforeJson` TEXT NOT NULL,
+                        `afterJson` TEXT NOT NULL,
+                        `undoJson` TEXT NOT NULL,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        `resolvedAtEpochMillis` INTEGER
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_adaptation_decisions_status_createdAtEpochMillis` ON `adaptation_decisions` (`status`, `createdAtEpochMillis`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_adaptation_decisions_kind_createdAtEpochMillis` ON `adaptation_decisions` (`kind`, `createdAtEpochMillis`)",
+                )
+            }
+        }
+    }
 }
