@@ -3,6 +3,7 @@ package com.example.myapplication.feature.today
 import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.feedback.WorkoutFeedback
 import com.example.myapplication.core.model.*
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.data.*
 import com.example.myapplication.feature.onboarding.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
@@ -33,10 +34,19 @@ class TodayViewModelTest {
         assertEquals(listOf("Giữ thân thẳng", "Hạ ngực có kiểm soát"), state.rows.single().instructionsVi)
         assertEquals("3 × 8–12", state.rows.single().prescriptionText)
         assertFalse(state.canComplete)
+        assertEquals(ProgramPhase.FOUNDATION, state.phase)
         vm.setChecked(0, true); advanceUntilIdle()
         assertEquals(Triple(7L, 0, true), repository.checks.single())
         repository.current.value = workout(checked = true); runCurrent()
         assertTrue((vm.uiState.value as TodayUiState.Workout).canComplete)
+    }
+
+    @Test fun `today infers deload phase from ordered session`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout().copy(sequenceIndex = 11))
+        val vm = TodayViewModel(repository, catalog) { 100L }
+        runCurrent()
+
+        assertEquals(ProgramPhase.DELOAD, (vm.uiState.value as TodayUiState.Workout).phase)
     }
 
     @Test fun `shows both recovery modes goal complete and missing catalog error`() = runTest(dispatcher) {

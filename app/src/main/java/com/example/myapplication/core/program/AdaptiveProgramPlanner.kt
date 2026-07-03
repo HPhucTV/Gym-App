@@ -5,6 +5,7 @@ import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutTemplate
 import kotlin.math.ceil
+import kotlin.math.floor
 
 object AdaptiveProgramPlanner {
     fun adapt(program: ProgramTemplate, config: GoalConfig): List<WorkoutTemplate> {
@@ -21,16 +22,20 @@ object AdaptiveProgramPlanner {
 
         val workoutCount = Math.multiplyExact(config.sessionsPerWeek, config.durationWeeks)
         return List(workoutCount) { sequence ->
+            val week = sequence / config.sessionsPerWeek + 1
+            val phase = ProgramPhasePlanner.phaseFor(week, config.durationWeeks)
             val blueprintIndex = sequence % blueprints.size
             val blueprint = blueprints[blueprintIndex]
             val candidates = rotatedBlueprints(blueprints, blueprintIndex)
                 .flatMap { it.exercises }
                 .distinctBy(ExercisePrescription::exerciseId)
             val selected = fitOrdered(candidates, config.sessionDurationMinutes)
+                .map { prescription -> prescription.forPhase(phase) }
+                .trimToBudget(config.sessionDurationMinutes)
             val estimated = selected.sumOf(::estimatedMinutes).coerceAtMost(config.sessionDurationMinutes)
             blueprint.copy(
                 sequence = sequence,
-                week = sequence / config.sessionsPerWeek + 1,
+                week = week,
                 estimatedMinutes = estimated,
                 restDaysAfter = 0,
                 exercises = selected,
@@ -67,5 +72,20 @@ object AdaptiveProgramPlanner {
             ?: (((prescription.repsMin ?: 1) + (prescription.repsMax ?: prescription.repsMin ?: 1)) / 2 * 4)
         val totalSeconds = prescription.sets * (activeSecondsPerSet + prescription.restSeconds)
         return ceil(totalSeconds / 60.0).toInt().coerceAtLeast(1)
+    }
+
+    private fun ExercisePrescription.forPhase(phase: ProgramPhase): ExercisePrescription = when (phase) {
+        ProgramPhase.BUILD -> if (sets >= 2) copy(sets = sets + 1) else this
+        ProgramPhase.DELOAD -> copy(sets = maxOf(1, floor(sets * 0.7).toInt()))
+        ProgramPhase.FOUNDATION,
+        ProgramPhase.CONSOLIDATE -> this
+    }
+
+    private fun List<ExercisePrescription>.trimToBudget(budgetMinutes: Int): List<ExercisePrescription> {
+        val selected = toMutableList()
+        while (selected.size > 1 && selected.sumOf(::estimatedMinutes) > budgetMinutes) {
+            selected.removeLast()
+        }
+        return selected
     }
 }

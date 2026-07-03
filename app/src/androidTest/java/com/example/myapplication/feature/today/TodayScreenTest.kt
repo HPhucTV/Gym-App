@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.ui.theme.GymAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -116,6 +117,12 @@ class TodayScreenTest {
         rule.runOnIdle { assertEquals(WorkoutDifficulty.HARD, selected) }
         rule.onNodeWithText("Để sau").performClick()
         rule.runOnIdle { assertEquals(1, dismissals) }
+    }
+
+    @Test fun workout_displays_current_program_phase() {
+        setState(workoutState(7, "Bước một").copy(phase = ProgramPhase.DELOAD))
+
+        rule.onNodeWithText("Giai đoạn giảm tải").assertIsDisplayed()
     }
 
     private fun workoutState(sessionId: Long, instruction: String) = TodayUiState.Workout(

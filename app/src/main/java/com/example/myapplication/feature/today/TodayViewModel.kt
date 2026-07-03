@@ -3,6 +3,8 @@ package com.example.myapplication.feature.today
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
+import com.example.myapplication.core.program.ProgramPhasePlanner
 import com.example.myapplication.core.model.*
 import com.example.myapplication.data.*
 import kotlinx.coroutines.CancellationException
@@ -343,6 +345,12 @@ class TodayViewModel(
         val pending = ops.pending.filter { it.first == session.id }.map { it.second }.toSet()
         val checked = rows.count { it.checked }
         val hour = try { java.time.LocalTime.now().hour } catch (_: Exception) { 8 }
+        val phase = runCatching {
+            val durationWeeks = goal.config.durationWeeks.coerceAtLeast(1)
+            val week = (session.sequenceIndex / goal.config.sessionsPerWeek.coerceAtLeast(1) + 1)
+                .coerceIn(1, durationWeeks)
+            ProgramPhasePlanner.phaseFor(week, durationWeeks)
+        }.getOrDefault(ProgramPhase.FOUNDATION)
         return TodayUiState.Workout(
             sessionId = session.id,
             titleVi = session.titleVi,
@@ -359,6 +367,7 @@ class TodayViewModel(
             coachTip = coachTip,
             isRefreshingCoach = refreshingCoach,
             goalId = goal.id,
+            phase = phase,
         )
     }
 }

@@ -2,6 +2,7 @@ package com.example.myapplication.feature.today
 
 import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.model.MuscleGroup
+import com.example.myapplication.core.program.ProgramPhase
 
 data class PendingWorkoutFeedback(
     val sessionId: Long,
@@ -31,6 +32,7 @@ sealed interface TodayUiState {
         val coachTip: String? = null,
         val isRefreshingCoach: Boolean = false,
         val goalId: Long = 0L,
+        val phase: ProgramPhase = ProgramPhase.FOUNDATION,
     ) : TodayUiState
 
     data class Recovery(

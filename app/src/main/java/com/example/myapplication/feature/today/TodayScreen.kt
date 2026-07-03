@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -362,6 +363,13 @@ private fun TodayHeaderCard(
                 Text(state.titleVi, style = MaterialTheme.typography.titleLarge, color = customColors.primaryText)
                 Spacer(Modifier.height(4.dp))
                 Text(
+                    state.phase.labelVi(),
+                    color = EnergyOrange,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
                     "${state.focusVi} · ${state.estimatedMinutes} phút",
                     color = customColors.mutedText,
                     style = MaterialTheme.typography.bodyMedium,
@@ -400,6 +408,13 @@ private fun TodayHeaderCard(
             }
         }
     }
+}
+
+internal fun ProgramPhase.labelVi(): String = when (this) {
+    ProgramPhase.FOUNDATION -> "Giai đoạn làm quen"
+    ProgramPhase.BUILD -> "Giai đoạn phát triển"
+    ProgramPhase.CONSOLIDATE -> "Giai đoạn củng cố"
+    ProgramPhase.DELOAD -> "Giai đoạn giảm tải"
 }
 
 // ── Workout Content ───────────────────────────────────────────────
