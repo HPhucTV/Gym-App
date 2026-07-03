@@ -2,6 +2,7 @@ package com.example.myapplication.feature.today
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.model.*
 import com.example.myapplication.data.*
 import kotlinx.coroutines.CancellationException
@@ -26,13 +27,50 @@ class TodayViewModel(
     private val achievementChecker: com.example.myapplication.core.achievement.AchievementChecker? = null,
     private val coachCoordinator: TodayCoachCoordinator? = null,
     private val cloudAiConsent: Flow<Boolean> = flowOf(false),
+    private val feedbackRepository: WorkoutFeedbackRepository? = null,
     private val currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : ViewModel() {
     private val _celebration = MutableStateFlow(CelebrationState())
     val celebration: StateFlow<CelebrationState> = _celebration.asStateFlow()
+    private val _pendingFeedback = MutableStateFlow<PendingWorkoutFeedback?>(null)
+    val pendingFeedback: StateFlow<PendingWorkoutFeedback?> = _pendingFeedback.asStateFlow()
 
     fun dismissCelebration() {
         _celebration.value = CelebrationState()
+    }
+
+    fun dismissFeedback() {
+        if (_pendingFeedback.value?.saving != true) _pendingFeedback.value = null
+    }
+
+    fun submitDifficulty(difficulty: WorkoutDifficulty) {
+        val pending = _pendingFeedback.value ?: return
+        if (pending.saving) return
+        val repository = feedbackRepository ?: return
+        _pendingFeedback.value = pending.copy(
+            saving = true,
+            selectedDifficulty = difficulty,
+            error = null,
+        )
+        viewModelScope.launch {
+            try {
+                repository.save(
+                    sessionId = pending.sessionId,
+                    goalId = pending.goalId,
+                    completedEpochDay = pending.completedEpochDay,
+                    difficulty = difficulty,
+                )
+                _pendingFeedback.value = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _pendingFeedback.value = pending.copy(
+                    saving = false,
+                    selectedDifficulty = difficulty,
+                    error = "Không thể lưu đánh giá. Vui lòng thử lại.",
+                )
+            }
+        }
     }
 
     private data class Operations(
@@ -134,9 +172,17 @@ class TodayViewModel(
         operations.update { it.copy(completingSessionId = sessionId, completionError = null) }
         viewModelScope.launch {
             try {
-                val result = commandMutex.withLock { repository.completeWorkout(sessionId, currentEpochDay()) }
+                val completedEpochDay = currentEpochDay()
+                val result = commandMutex.withLock { repository.completeWorkout(sessionId, completedEpochDay) }
                 when (result) {
                     CompleteWorkoutResult.Completed -> {
+                        if (feedbackRepository != null && workoutState != null) {
+                            _pendingFeedback.value = PendingWorkoutFeedback(
+                                sessionId = sessionId,
+                                goalId = workoutState.goalId,
+                                completedEpochDay = completedEpochDay,
+                            )
+                        }
                         nutritionRepository?.clearSweatPayment()
                         val completed = repository.observeCompletedWorkouts().first()
                         val activeGoal = repository.observeActiveGoal().first()
@@ -312,6 +358,7 @@ class TodayViewModel(
             greetingHour = hour,
             coachTip = coachTip,
             isRefreshingCoach = refreshingCoach,
+            goalId = goal.id,
         )
     }
 }

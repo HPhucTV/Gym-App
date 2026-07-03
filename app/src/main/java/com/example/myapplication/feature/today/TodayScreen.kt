@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -40,6 +41,9 @@ fun TodayScreen(
     onRefreshCoachTip: () -> Unit = {},
     celebrationState: CelebrationState = CelebrationState(),
     onDismissCelebration: () -> Unit = {},
+    pendingFeedback: PendingWorkoutFeedback? = null,
+    onDifficultySelected: (WorkoutDifficulty) -> Unit = {},
+    onDismissFeedback: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -138,7 +142,70 @@ fun TodayScreen(
                 )
             }
         }
+
+        pendingFeedback?.let { feedback ->
+            WorkoutFeedbackDialog(
+                feedback = feedback,
+                onDifficultySelected = onDifficultySelected,
+                onDismiss = onDismissFeedback,
+            )
+        }
     }
+}
+
+@Composable
+private fun WorkoutFeedbackDialog(
+    feedback: PendingWorkoutFeedback,
+    onDifficultySelected: (WorkoutDifficulty) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!feedback.saving) onDismiss() },
+        title = {
+            Text(
+                text = "Buổi tập vừa rồi thế nào?",
+                color = MaterialTheme.colorScheme.customColors.primaryText,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Phản hồi này giúp điều chỉnh các buổi sau mà không cần ghi tạ hay số lần tập.",
+                    color = MaterialTheme.colorScheme.customColors.mutedText,
+                )
+                listOf(
+                    WorkoutDifficulty.EASY to "Quá nhẹ",
+                    WorkoutDifficulty.RIGHT to "Vừa sức",
+                    WorkoutDifficulty.HARD to "Quá nặng",
+                ).forEach { (difficulty, label) ->
+                    OutlinedButton(
+                        onClick = { onDifficultySelected(difficulty) },
+                        enabled = !feedback.saving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("feedback-${difficulty.name.lowercase()}"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(label)
+                    }
+                }
+                if (feedback.saving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                feedback.error?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !feedback.saving) {
+                Text("Để sau")
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
 }
 
 @Composable

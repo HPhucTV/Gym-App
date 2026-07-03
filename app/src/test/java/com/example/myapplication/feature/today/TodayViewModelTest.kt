@@ -1,5 +1,7 @@
 package com.example.myapplication.feature.today
 
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.feedback.WorkoutFeedback
 import com.example.myapplication.core.model.*
 import com.example.myapplication.data.*
 import com.example.myapplication.feature.onboarding.MainDispatcherRule
@@ -73,6 +75,64 @@ class TodayViewModelTest {
         val state = vm.uiState.value as TodayUiState.Workout
         assertFalse(state.isCompleting)
         assertTrue(state.canComplete)
+    }
+
+    @Test fun `completion exposes feedback request and submitting saves it once`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val feedback = FakeWorkoutFeedbackRepository()
+        val vm = TodayViewModel(
+            repository = repository,
+            exercises = catalog,
+            feedbackRepository = feedback,
+            currentEpochDay = { 4321L },
+        )
+        runCurrent()
+
+        vm.completeWorkout()
+        advanceUntilIdle()
+
+        val pending = vm.pendingFeedback.value!!
+        assertEquals(7L, pending.sessionId)
+        assertEquals(1L, pending.goalId)
+        assertEquals(4321L, pending.completedEpochDay)
+
+        vm.submitDifficulty(WorkoutDifficulty.HARD)
+        vm.submitDifficulty(WorkoutDifficulty.EASY)
+        advanceUntilIdle()
+
+        assertEquals(1, feedback.saved.size)
+        assertEquals(WorkoutDifficulty.HARD, feedback.saved.single().difficulty)
+        assertNull(vm.pendingFeedback.value)
+    }
+
+    @Test fun `dismissing feedback records nothing`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val feedback = FakeWorkoutFeedbackRepository()
+        val vm = TodayViewModel(repository, catalog, feedbackRepository = feedback) { 100L }
+        runCurrent()
+        vm.completeWorkout()
+        advanceUntilIdle()
+
+        vm.dismissFeedback()
+
+        assertTrue(feedback.saved.isEmpty())
+        assertNull(vm.pendingFeedback.value)
+    }
+
+    @Test fun `feedback save failure keeps request open with retry message`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val feedback = FakeWorkoutFeedbackRepository().apply { failSave = true }
+        val vm = TodayViewModel(repository, catalog, feedbackRepository = feedback) { 100L }
+        runCurrent()
+        vm.completeWorkout()
+        advanceUntilIdle()
+
+        vm.submitDifficulty(WorkoutDifficulty.RIGHT)
+        advanceUntilIdle()
+
+        val pending = vm.pendingFeedback.value!!
+        assertFalse(pending.saving)
+        assertTrue(pending.error!!.contains("thử lại", ignoreCase = true))
     }
 
     @Test fun `blocked and already completed results never leave workout stuck`() = runTest(dispatcher) {
@@ -178,4 +238,21 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
     }
     override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) = Unit
     override suspend fun archiveActiveGoal() = Unit
+}
+
+private class FakeWorkoutFeedbackRepository : WorkoutFeedbackRepository {
+    val saved = mutableListOf<WorkoutFeedback>()
+    var failSave = false
+
+    override fun observeForGoal(goalId: Long): Flow<List<WorkoutFeedback>> = flowOf(emptyList())
+
+    override suspend fun save(
+        sessionId: Long,
+        goalId: Long,
+        completedEpochDay: Long,
+        difficulty: WorkoutDifficulty,
+    ) {
+        if (failSave) error("disk")
+        saved += WorkoutFeedback(sessionId, goalId, completedEpochDay, difficulty, 0L)
+    }
 }

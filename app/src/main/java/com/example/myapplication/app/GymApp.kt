@@ -132,6 +132,7 @@ fun GymApp(container: AppContainer) {
                             ),
                             cloudAiConsent = container.database.personalizationDao().observeProfile()
                                 .map { profile -> profile?.cloudAiConsent == true },
+                            feedbackRepository = container.workoutFeedbackRepository,
                         )
                     }
                 }
@@ -148,6 +149,7 @@ fun GymApp(container: AppContainer) {
             }
             val state by todayViewModel.uiState.collectAsStateWithLifecycle()
             val celebrationState by todayViewModel.celebration.collectAsStateWithLifecycle()
+            val pendingFeedback by todayViewModel.pendingFeedback.collectAsStateWithLifecycle()
             TodayScreen(
                 state = state,
                 onCheckedChange = todayViewModel::setChecked,
@@ -158,6 +160,9 @@ fun GymApp(container: AppContainer) {
                 onRefreshCoachTip = todayViewModel::refreshCoachTip,
                 celebrationState = celebrationState,
                 onDismissCelebration = todayViewModel::dismissCelebration,
+                pendingFeedback = pendingFeedback,
+                onDifficultySelected = todayViewModel::submitDifficulty,
+                onDismissFeedback = todayViewModel::dismissFeedback,
             )
         },
         progressContent = { onNavigateToCatalog ->

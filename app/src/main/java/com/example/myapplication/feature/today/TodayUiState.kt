@@ -1,6 +1,16 @@
 package com.example.myapplication.feature.today
 
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.model.MuscleGroup
+
+data class PendingWorkoutFeedback(
+    val sessionId: Long,
+    val goalId: Long,
+    val completedEpochDay: Long,
+    val saving: Boolean = false,
+    val selectedDifficulty: WorkoutDifficulty? = null,
+    val error: String? = null,
+)
 
 sealed interface TodayUiState {
     data object Loading : TodayUiState
@@ -20,6 +30,7 @@ sealed interface TodayUiState {
         val greetingHour: Int = 8,
         val coachTip: String? = null,
         val isRefreshingCoach: Boolean = false,
+        val goalId: Long = 0L,
     ) : TodayUiState
 
     data class Recovery(
