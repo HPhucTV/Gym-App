@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myapplication.core.adaptation.AdaptationKind
 import com.example.myapplication.core.adaptation.AdaptationMode
 import com.example.myapplication.core.adaptation.AdaptationStatus
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.model.EquipmentProfile
 import com.example.myapplication.core.model.ExperienceLevel
 import com.example.myapplication.core.model.FitnessGoal
@@ -26,6 +27,8 @@ class WorkoutTypeConverters {
     @TypeConverter fun stringToEquipmentProfile(value: String): EquipmentProfile = EquipmentProfile.valueOf(value)
     @TypeConverter fun restDayModeToString(value: RestDayMode): String = value.name
     @TypeConverter fun stringToRestDayMode(value: String): RestDayMode = RestDayMode.valueOf(value)
+    @TypeConverter fun workoutDifficultyToString(value: WorkoutDifficulty): String = value.name
+    @TypeConverter fun stringToWorkoutDifficulty(value: String): WorkoutDifficulty = WorkoutDifficulty.valueOf(value)
 }
 
 class PersonalizationTypeConverters {
@@ -54,8 +57,9 @@ class PersonalizationTypeConverters {
         WeeklyCheckInEntity::class,
         AdaptationDecisionEntity::class,
         AchievementEntity::class,
+        WorkoutFeedbackEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(WorkoutTypeConverters::class, PersonalizationTypeConverters::class)
@@ -63,8 +67,34 @@ abstract class GymDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
     abstract fun personalizationDao(): PersonalizationDao
     abstract fun achievementDao(): AchievementDao
+    abstract fun workoutFeedbackDao(): WorkoutFeedbackDao
 
     companion object {
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `workout_feedback` (
+                        `sessionId` INTEGER NOT NULL,
+                        `goalId` INTEGER NOT NULL,
+                        `completedEpochDay` INTEGER NOT NULL,
+                        `difficulty` TEXT NOT NULL,
+                        `recordedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS `index_workout_feedback_goalId_completedEpochDay`
+                    ON `workout_feedback` (`goalId`, `completedEpochDay`)
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

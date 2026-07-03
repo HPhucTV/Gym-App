@@ -84,6 +84,41 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_4_5_preserves_workouts_and_creates_empty_feedback_table() {
+        helper.createDatabase(TEST_DATABASE, 4).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, 20640)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            5,
+            true,
+            GymDatabase.MIGRATION_4_5,
+        ).use { migrated ->
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM goals"))
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM workout_sessions"))
+            assertEquals(0, migrated.singleInt("SELECT COUNT(*) FROM workout_feedback"))
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)

@@ -16,11 +16,17 @@ class AppContainer(context: Context) {
         GymDatabase::class.java,
         "gym.db",
     )
-        .addMigrations(GymDatabase.MIGRATION_1_2, GymDatabase.MIGRATION_2_3, GymDatabase.MIGRATION_3_4)
+        .addMigrations(
+            GymDatabase.MIGRATION_1_2,
+            GymDatabase.MIGRATION_2_3,
+            GymDatabase.MIGRATION_3_4,
+            GymDatabase.MIGRATION_4_5,
+        )
         .build()
 
     val catalogRepository = AssetCatalogRepository(applicationContext)
     val workoutRepository = RoomWorkoutRepository(database)
+    val workoutFeedbackRepository = com.example.myapplication.data.RoomWorkoutFeedbackRepository(database)
     val settingsRepository = DataStoreSettingsRepository(applicationContext)
     val reminderScheduler = AlarmReminderScheduler(applicationContext)
     val nutritionRepository = com.example.myapplication.data.RoomNutritionRepository(database.personalizationDao(), com.example.myapplication.data.DataStoreNutritionPreferences(applicationContext), { java.time.LocalDate.now().toEpochDay() })
