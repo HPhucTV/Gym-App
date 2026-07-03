@@ -284,6 +284,7 @@ fun GymApp(container: AppContainer) {
                         com.example.myapplication.feature.checkin.WeeklyCheckInViewModel(
                             personalizationDao = container.database.personalizationDao(),
                             nutritionRepository = container.nutritionRepository,
+                            adaptationCoordinator = container.weeklyAdaptationCoordinator,
                         )
                     }
                 }

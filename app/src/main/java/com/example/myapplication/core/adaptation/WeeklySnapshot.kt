@@ -1,7 +1,9 @@
 package com.example.myapplication.core.adaptation
 
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.nutrition.NutritionTarget
 import com.example.myapplication.core.profile.PersonalProfile
+import com.example.myapplication.core.program.ProgramPhase
 
 /**
  * Immutable snapshot of a user's weekly data, used as the sole input to [AdaptationEngine.evaluate].
@@ -40,6 +42,15 @@ data class WeeklySnapshot(
     val profileAgeYears: Int,
     /** Full profile (for recalculation when needed). */
     val profile: PersonalProfile,
+    /** Latest completed-session difficulty samples in chronological order. */
+    val lastDifficulties: List<WorkoutDifficultySample> = emptyList(),
+    /** Current deterministic program phase. */
+    val currentProgramPhase: ProgramPhase = ProgramPhase.BUILD,
+)
+
+data class WorkoutDifficultySample(
+    val completedEpochDay: Long,
+    val difficulty: WorkoutDifficulty,
 )
 
 /**

@@ -1,6 +1,8 @@
 package com.example.myapplication.core.adaptation
 
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.nutrition.NutritionTargetCalculator
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.core.nutrition.CalculationResult
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -22,26 +24,30 @@ class AdaptationEngine(
 ) {
 
     fun evaluate(snapshot: WeeklySnapshot): List<AdaptationDecision> {
-        // Gate 1: minimum data requirements
-        if (!hasMinimumData(snapshot)) return emptyList()
-
         val decisions = mutableListOf<AdaptationDecision>()
 
         // Rule group 1: calorie target adjustment
-        evaluateCalorieAdjustment(snapshot)?.let { decisions.add(it) }
+        if (hasNutritionMinimumData(snapshot)) {
+            evaluateCalorieAdjustment(snapshot)?.let { decisions.add(it) }
+        }
 
         // Rule group 2: recovery suggestion
-        evaluateRecoverySuggestion(snapshot)?.let { decisions.add(it) }
+        if (snapshot.latestCheckIn != null) {
+            evaluateRecoverySuggestion(snapshot)?.let { decisions.add(it) }
+        }
 
         // Rule group 3: workout volume / missed sessions
         evaluateWorkoutVolume(snapshot)?.let { decisions.add(it) }
+
+        // Rule group 4: confirmed deload from session feedback and recovery
+        evaluateDeload(snapshot)?.let { decisions.add(it) }
 
         return decisions
     }
 
     // ── Data quality gates ──────────────────────────────────────────────
 
-    private fun hasMinimumData(snapshot: WeeklySnapshot): Boolean {
+    private fun hasNutritionMinimumData(snapshot: WeeklySnapshot): Boolean {
         // Need at least 7 tracked days of nutrition data
         if (snapshot.trackedDays < MINIMUM_TRACKED_DAYS) return false
         // Need at least one check-in
@@ -189,6 +195,37 @@ class AdaptationEngine(
         )
     }
 
+    private fun evaluateDeload(snapshot: WeeklySnapshot): AdaptationDecision? {
+        if (snapshot.currentProgramPhase == ProgramPhase.DELOAD) return null
+        if (snapshot.daysSinceLastWorkoutDecision < WORKOUT_COOLDOWN_DAYS) return null
+
+        val recent = snapshot.lastDifficulties.takeLast(4)
+        if (recent.size < MINIMUM_DIFFICULTY_SAMPLES) return null
+        val hardCount = recent.count { it.difficulty == WorkoutDifficulty.HARD }
+        val hardEvidence = hardCount >= MINIMUM_HARD_RATINGS
+        val combinedEvidence = hardCount >= MINIMUM_HARD_WITH_LOW_RECOVERY &&
+            snapshot.consecutiveLowRecoveryCheckIns >= MINIMUM_LOW_RECOVERY_CHECKINS
+        if (!hardEvidence && !combinedEvidence) return null
+
+        val pendingSessions = snapshot.scheduledSessionsThisWeek.coerceAtLeast(1)
+        val reason = if (hardEvidence) {
+            "$hardCount trong ${recent.size} buổi gần nhất được đánh giá quá nặng. " +
+                "Đề xuất một tuần giảm tải và chỉ áp dụng sau khi bạn xác nhận."
+        } else {
+            "Phản hồi buổi tập nặng đi kèm khả năng phục hồi thấp trong " +
+                "${snapshot.consecutiveLowRecoveryCheckIns} lần check-in liên tiếp. " +
+                "Đề xuất một tuần giảm tải và chỉ áp dụng sau khi bạn xác nhận."
+        }
+        return AdaptationDecision(
+            kind = AdaptationKind.DELOAD_WEEK,
+            mode = AdaptationMode.REQUIRES_CONFIRMATION,
+            reasonVi = reason,
+            beforeValue = """{"pendingSessions":$pendingSessions,"volumeScalePercent":100}""",
+            afterValue = """{"pendingSessions":$pendingSessions,"volumeScalePercent":70}""",
+            undoPayload = """{"pendingSessions":$pendingSessions,"volumeScalePercent":100}""",
+        )
+    }
+
     companion object {
         /** Minimum tracked nutrition days before the engine evaluates. */
         const val MINIMUM_TRACKED_DAYS = 7
@@ -208,6 +245,9 @@ class AdaptationEngine(
         const val MINIMUM_LOW_RECOVERY_CHECKINS = 2
         /** Number of missed sessions to trigger a volume suggestion. */
         const val MINIMUM_MISSED_SESSIONS_FOR_SUGGESTION = 2
+        const val MINIMUM_DIFFICULTY_SAMPLES = 3
+        const val MINIMUM_HARD_RATINGS = 3
+        const val MINIMUM_HARD_WITH_LOW_RECOVERY = 2
         /** Weekly weight loss above this (kg) is considered too fast. */
         const val MAXIMUM_WEEKLY_WEIGHT_LOSS_KG = 0.9
         /** Weekly weight gain above this (kg) is considered too fast. */

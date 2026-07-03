@@ -308,6 +308,7 @@ private fun translateKind(kind: AdaptationKind): String = when (kind) {
     AdaptationKind.RECOVERY_DAY -> "Đề xuất phục hồi"
     AdaptationKind.WORKOUT_VOLUME -> "Khối lượng tập luyện"
     AdaptationKind.PROGRAM_CHANGE -> "Đổi chương trình tập"
+    AdaptationKind.DELOAD_WEEK -> "Tuần giảm tải"
 }
 
 private fun translateStatus(status: AdaptationStatus): String = when (status) {
@@ -326,6 +327,10 @@ private fun parseStateDetails(json: String, kind: AdaptationKind): String {
         AdaptationKind.WORKOUT_VOLUME -> {
             val sessions = Regex("\"scheduledSessions\":(\\d+)").find(json)?.groupValues?.get(1)
             if (sessions != null) "$sessions buổi/tuần" else ""
+        }
+        AdaptationKind.DELOAD_WEEK -> {
+            val percent = Regex("\"volumeScalePercent\":(\\d+)").find(json)?.groupValues?.get(1)
+            if (percent != null) "$percent% khối lượng" else ""
         }
         else -> ""
     }

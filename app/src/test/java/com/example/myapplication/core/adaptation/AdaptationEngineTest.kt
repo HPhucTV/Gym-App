@@ -1,11 +1,14 @@
 package com.example.myapplication.core.adaptation
 
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.feedback.WorkoutDifficulty.*
 import com.example.myapplication.core.nutrition.NutritionTarget
 import com.example.myapplication.core.nutrition.NutritionTargetAudit
 import com.example.myapplication.core.profile.ActivityLevel
 import com.example.myapplication.core.profile.GoalPace
 import com.example.myapplication.core.profile.MetabolicSex
 import com.example.myapplication.core.profile.PersonalProfile
+import com.example.myapplication.core.program.ProgramPhase
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -68,6 +71,8 @@ class AdaptationEngineTest {
         missedSessions: Int = 0,
         profileAgeYears: Int = 31,
         profile: PersonalProfile = defaultProfile(),
+        lastDifficulties: List<WorkoutDifficultySample> = emptyList(),
+        currentProgramPhase: ProgramPhase = ProgramPhase.BUILD,
     ) = WeeklySnapshot(
         currentCalories = currentCalories,
         currentTarget = defaultTarget().copy(calories = currentCalories),
@@ -85,6 +90,8 @@ class AdaptationEngineTest {
         missedSessions = missedSessions,
         profileAgeYears = profileAgeYears,
         profile = profile,
+        lastDifficulties = lastDifficulties,
+        currentProgramPhase = currentProgramPhase,
     )
 
     // ── Minimum data requirements ───────────────────────────────────────
@@ -325,6 +332,58 @@ class AdaptationEngineTest {
         assertTrue("Scheduled sessions ($afterSessions) should be at least 1", afterSessions != null && afterSessions >= 1)
     }
 
+    // ── Deload recommendation ──────────────────────────────────────────
+
+    @Test
+    fun `three hard ratings in latest four sessions require confirmed deload`() {
+        val snapshot = baseSnapshot(
+            trackedDays = 0,
+            recentWeights = emptyList(),
+            lastDifficulties = difficulties(HARD, HARD, RIGHT, HARD),
+        )
+
+        val deload = engine.evaluate(snapshot).single { it.kind == AdaptationKind.DELOAD_WEEK }
+
+        assertEquals(AdaptationMode.REQUIRES_CONFIRMATION, deload.mode)
+        assertEquals("""{"pendingSessions":3,"volumeScalePercent":70}""", deload.afterValue)
+        assertEquals("""{"pendingSessions":3,"volumeScalePercent":100}""", deload.undoPayload)
+    }
+
+    @Test
+    fun `two hard ratings plus repeated low recovery require deload`() {
+        val snapshot = baseSnapshot(
+            consecutiveLowRecoveryCheckIns = 2,
+            lastDifficulties = difficulties(HARD, RIGHT, HARD),
+        )
+
+        assertTrue(engine.evaluate(snapshot).any { it.kind == AdaptationKind.DELOAD_WEEK })
+    }
+
+    @Test
+    fun `deload is not proposed with weak evidence current deload phase or cooldown`() {
+        assertTrue(
+            engine.evaluate(baseSnapshot(lastDifficulties = difficulties(HARD, RIGHT))).none {
+                it.kind == AdaptationKind.DELOAD_WEEK
+            },
+        )
+        assertTrue(
+            engine.evaluate(
+                baseSnapshot(
+                    lastDifficulties = difficulties(HARD, HARD, HARD),
+                    currentProgramPhase = ProgramPhase.DELOAD,
+                ),
+            ).none { it.kind == AdaptationKind.DELOAD_WEEK },
+        )
+        assertTrue(
+            engine.evaluate(
+                baseSnapshot(
+                    lastDifficulties = difficulties(HARD, HARD, HARD),
+                    daysSinceLastWorkoutDecision = 3,
+                ),
+            ).none { it.kind == AdaptationKind.DELOAD_WEEK },
+        )
+    }
+
     // ── Multiple decisions can coexist ───────────────────────────────────
 
     @Test
@@ -386,4 +445,9 @@ class AdaptationEngineTest {
             assertTrue("Reason should not be blank: ${decision.kind}", decision.reasonVi.isNotBlank())
         }
     }
+
+    private fun difficulties(vararg values: WorkoutDifficulty): List<WorkoutDifficultySample> =
+        values.mapIndexed { index, difficulty ->
+            WorkoutDifficultySample(completedEpochDay = 20600L + index, difficulty = difficulty)
+        }
 }

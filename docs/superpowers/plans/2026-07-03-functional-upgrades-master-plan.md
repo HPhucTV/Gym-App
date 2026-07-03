@@ -293,7 +293,12 @@ git commit -m "feat: phase preset workout programs"
 - Modify: `app/src/main/java/com/example/myapplication/core/adaptation/AdaptationModels.kt`
 - Modify: `app/src/main/java/com/example/myapplication/core/adaptation/WeeklySnapshot.kt`
 - Modify: `app/src/main/java/com/example/myapplication/core/adaptation/AdaptationEngine.kt`
+- Create: `app/src/main/java/com/example/myapplication/data/WeeklyAdaptationCoordinator.kt`
+- Modify: `app/src/main/java/com/example/myapplication/feature/checkin/WeeklyCheckInViewModel.kt`
+- Modify: `app/src/main/java/com/example/myapplication/app/AppContainer.kt`
+- Modify: `app/src/main/java/com/example/myapplication/app/GymApp.kt`
 - Modify: `app/src/test/java/com/example/myapplication/core/adaptation/AdaptationEngineTest.kt`
+- Create: `app/src/test/java/com/example/myapplication/data/WeeklyAdaptationCoordinatorTest.kt`
 - Modify: `app/src/main/java/com/example/myapplication/feature/recommendations/RecommendationScreen.kt`
 
 - [ ] **Step 1: Write failing deload rule tests**
@@ -329,6 +334,10 @@ The before and undo payloads use `volumeScalePercent:100`. The Vietnamese reason
 - [ ] **Step 4: Update recommendation labels and exhaustive `when` branches**
 
 Map `DELOAD_WEEK` to `Tuần giảm tải`; do not auto-accept or hide the reason.
+
+After a weekly check-in is persisted, assemble one snapshot from Room-backed profile, nutrition,
+check-in, workout, and feedback data, then record the engine decisions. Recommendation refresh
+failure must not roll back the already-saved check-in.
 
 - [ ] **Step 5: Run the engine and recommendation tests**
 

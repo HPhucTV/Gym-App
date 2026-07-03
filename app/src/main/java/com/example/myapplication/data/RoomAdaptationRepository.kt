@@ -241,6 +241,7 @@ class RoomAdaptationRepository(
             }
             AdaptationKind.WORKOUT_VOLUME,
             AdaptationKind.PROGRAM_CHANGE,
+            AdaptationKind.DELOAD_WEEK,
             AdaptationKind.MACRO_TARGET -> {
                 // These are handled through existing confirmed workflows
                 // (createGoal, settings changes). The decision record serves as audit trail.
@@ -292,6 +293,7 @@ class RoomAdaptationRepository(
             }
             AdaptationKind.WORKOUT_VOLUME,
             AdaptationKind.PROGRAM_CHANGE,
+            AdaptationKind.DELOAD_WEEK,
             AdaptationKind.MACRO_TARGET -> {
                 // Handled through existing workflows
             }

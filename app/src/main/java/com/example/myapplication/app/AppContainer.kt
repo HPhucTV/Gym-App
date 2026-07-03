@@ -35,6 +35,16 @@ class AppContainer(context: Context) {
         personalizationDao = database.personalizationDao(),
         nutritionRepository = nutritionRepository
     )
+    private val weeklySnapshotProvider = com.example.myapplication.data.RoomWeeklySnapshotProvider(
+        personalizationDao = database.personalizationDao(),
+        workoutRepository = workoutRepository,
+        feedbackRepository = workoutFeedbackRepository,
+        nutritionRepository = nutritionRepository,
+    )
+    val weeklyAdaptationCoordinator = com.example.myapplication.data.WeeklyAdaptationCoordinator(
+        snapshotProvider = weeklySnapshotProvider,
+        adaptationRepository = adaptationRepository,
+    )
     val coachExplanationClient = com.example.myapplication.data.OkHttpCoachExplanationClient()
     val coachReviewClient = com.example.myapplication.data.OkHttpCoachReviewClient()
     val foodAnalysisClient = com.example.myapplication.feature.nutrition.OkHttpFoodAnalysisClient()

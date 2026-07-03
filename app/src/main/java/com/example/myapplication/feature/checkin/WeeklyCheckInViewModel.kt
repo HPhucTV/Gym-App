@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.core.nutrition.NutritionTargetCalculator
 import com.example.myapplication.data.NutritionRepository
+import com.example.myapplication.data.WeeklyAdaptationCoordinator
 import com.example.myapplication.data.local.PersonalizationDao
 import com.example.myapplication.data.local.WeeklyCheckInEntity
 import com.example.myapplication.data.local.WeightMeasurementEntity
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 class WeeklyCheckInViewModel(
     private val personalizationDao: PersonalizationDao,
     private val nutritionRepository: NutritionRepository,
+    private val adaptationCoordinator: WeeklyAdaptationCoordinator? = null,
     private val currentEpochDay: () -> Long = { LocalDate.now().toEpochDay() },
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
 ) : ViewModel() {
@@ -221,6 +223,12 @@ class WeeklyCheckInViewModel(
                     }
                 }
 
+                val adaptationError = runCatching {
+                    adaptationCoordinator?.evaluateAfterCheckIn(epochDayVal)
+                }.exceptionOrNull()
+                if (adaptationError != null) {
+                    errorState.value = "Đã lưu check-in nhưng chưa thể làm mới đề xuất thích nghi."
+                }
                 successState.value = true
             } catch (e: Exception) {
                 errorState.value = "Lỗi khi lưu check-in: ${e.message}"
