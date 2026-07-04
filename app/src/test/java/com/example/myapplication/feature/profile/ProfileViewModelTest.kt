@@ -232,6 +232,12 @@ private class FakePersonalizationDao : PersonalizationDao {
     override fun observeNutritionRange(startEpochDay: Long, endEpochDay: Long): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
     override fun observeAllNutrition(): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
     override suspend fun nutritionRangeNow(startEpochDay: Long, endEpochDay: Long): List<DailyNutritionEntity> = emptyList()
+    override fun observeMealTemplates(): Flow<List<com.example.myapplication.data.local.MealTemplateEntity>> = flowOf(emptyList())
+    override suspend fun mealTemplateNow(id: Long): com.example.myapplication.data.local.MealTemplateEntity? = null
+    override suspend fun mealTemplateByNameNow(nameVi: String): com.example.myapplication.data.local.MealTemplateEntity? = null
+    override suspend fun insertMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Long = 1L
+    override suspend fun updateMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Int = 0
+    override suspend fun deleteMealTemplate(id: Long): Int = 0
 
     override suspend fun upsertWeeklyCheckIn(checkIn: WeeklyCheckInEntity) {
         checkIns.add(checkIn)

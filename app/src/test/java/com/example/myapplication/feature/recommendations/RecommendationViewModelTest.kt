@@ -227,6 +227,12 @@ class RecommendationViewModelTest {
         override fun observeNutritionRange(startEpochDay: Long, endEpochDay: Long): Flow<List<com.example.myapplication.data.local.DailyNutritionEntity>> = flowOf(emptyList())
         override fun observeAllNutrition(): Flow<List<com.example.myapplication.data.local.DailyNutritionEntity>> = flowOf(emptyList())
         override suspend fun nutritionRangeNow(startEpochDay: Long, endEpochDay: Long): List<com.example.myapplication.data.local.DailyNutritionEntity> = emptyList()
+        override fun observeMealTemplates(): Flow<List<com.example.myapplication.data.local.MealTemplateEntity>> = flowOf(emptyList())
+        override suspend fun mealTemplateNow(id: Long): com.example.myapplication.data.local.MealTemplateEntity? = null
+        override suspend fun mealTemplateByNameNow(nameVi: String): com.example.myapplication.data.local.MealTemplateEntity? = null
+        override suspend fun insertMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Long = 1L
+        override suspend fun updateMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Int = 0
+        override suspend fun deleteMealTemplate(id: Long): Int = 0
         override suspend fun upsertWeeklyCheckIn(checkIn: com.example.myapplication.data.local.WeeklyCheckInEntity) = Unit
         override fun observeLatestCheckIn(): Flow<com.example.myapplication.data.local.WeeklyCheckInEntity?> = flowOf(null)
         override fun observeAllCheckIns(): Flow<List<com.example.myapplication.data.local.WeeklyCheckInEntity>> = flowOf(emptyList())

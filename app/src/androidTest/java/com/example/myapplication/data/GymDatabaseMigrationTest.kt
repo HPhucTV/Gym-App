@@ -248,6 +248,31 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_8_9_preservesNutritionAndCreatesEmptyMealTemplates() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            execSQL(
+                """
+                INSERT INTO daily_nutrition (
+                    epochDay, consumedCalories, consumedProteinGrams, consumedCarbsGrams,
+                    consumedFatGrams, updatedAtEpochMillis
+                ) VALUES (20640, 500, 30, 60, 15, 1000)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            9,
+            true,
+            GymDatabase.MIGRATION_8_9,
+        ).use { migrated ->
+            assertEquals(500, migrated.singleInt("SELECT consumedCalories FROM daily_nutrition WHERE epochDay = 20640"))
+            assertEquals(0, migrated.singleInt("SELECT COUNT(*) FROM meal_templates"))
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)

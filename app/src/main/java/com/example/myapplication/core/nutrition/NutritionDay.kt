@@ -10,6 +10,7 @@ data class Nutrients(
 enum class EntrySource {
     MANUAL,
     CAMERA_ANALYSIS,
+    TEMPLATE,
 }
 
 data class NutritionDay(
