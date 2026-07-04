@@ -43,6 +43,9 @@ interface PersonalizationDao {
     @Query("SELECT * FROM daily_nutrition WHERE epochDay BETWEEN :startEpochDay AND :endEpochDay ORDER BY epochDay ASC")
     suspend fun nutritionRangeNow(startEpochDay: Long, endEpochDay: Long): List<DailyNutritionEntity>
 
+    @Query("SELECT * FROM daily_nutrition ORDER BY epochDay DESC")
+    fun observeAllNutrition(): Flow<List<DailyNutritionEntity>>
+
     @Upsert
     suspend fun upsertWeeklyCheckIn(checkIn: WeeklyCheckInEntity)
 
@@ -72,4 +75,10 @@ interface PersonalizationDao {
 
     @Query("SELECT * FROM adaptation_decisions ORDER BY createdAtEpochMillis DESC, id DESC")
     suspend fun decisionHistoryNow(): List<AdaptationDecisionEntity>
+
+    @Upsert
+    suspend fun upsertFoodOverride(override: UserFoodOverrideEntity)
+
+    @Query("SELECT * FROM user_food_overrides WHERE LOWER(dishName) = LOWER(:dishName) LIMIT 1")
+    suspend fun foodOverrideNow(dishName: String): UserFoodOverrideEntity?
 }

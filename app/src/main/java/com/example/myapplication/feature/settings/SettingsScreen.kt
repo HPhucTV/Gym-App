@@ -1,13 +1,13 @@
 package com.example.myapplication.feature.settings
 
-import android.app.TimePickerDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.testTag
 import com.example.myapplication.ui.theme.EnergyOrange
 import androidx.compose.ui.text.font.FontWeight
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -49,6 +50,7 @@ fun SettingsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsContent(
     state: SettingsUiState.Content,
@@ -66,9 +68,10 @@ private fun SettingsContent(
     onNavigateToRecommendations: () -> Unit,
     onBack: (() -> Unit)?,
 ) {
-    val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
+    var showTimePicker by remember { mutableStateOf(false) }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -127,15 +130,7 @@ private fun SettingsContent(
                 TextButton(
                     enabled = !state.saving,
                     contentPadding = PaddingValues(0.dp),
-                    onClick = {
-                        TimePickerDialog(
-                            context,
-                            { _, hour, minute -> onTime(hour, minute) },
-                            state.reminderHour,
-                            state.reminderMinute,
-                            true,
-                        ).show()
-                    },
+                    onClick = { showTimePicker = true },
                 ) { Text("%02d:%02d".format(state.reminderHour, state.reminderMinute)) }
             }
             Switch(state.reminderEnabled, onCheckedChange = null, enabled = !state.saving)
@@ -179,7 +174,7 @@ private fun SettingsContent(
                 }
             }
         }
-
+ 
         Text("Giao diện", style = MaterialTheme.typography.titleMedium)
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
@@ -214,37 +209,9 @@ private fun SettingsContent(
                 }
             }
         }
-
-        Text("Máy chủ kết nối (AI Analysis)", style = MaterialTheme.typography.titleMedium)
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, colors.outline),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Địa chỉ URL/IP của server máy tính. Để trống để sử dụng mặc định.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = customColors.mutedText
-                )
-                OutlinedTextField(
-                    value = state.customServerUrl ?: "",
-                    onValueChange = { newUrl ->
-                        val urlToSave = newUrl.trim().takeIf { it.isNotEmpty() }
-                        onServerUrlChanged(urlToSave)
-                    },
-                    placeholder = { Text("Ví dụ: http://192.168.1.7:3000") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EnergyOrange,
-                        focusedLabelColor = EnergyOrange
-                    ),
-                    modifier = Modifier.fillMaxWidth().testTag("settings-server-url-field")
-                )
-            }
-        }
-
+ 
+ 
+ 
         TextButton(
             onClick = onDelete,
             enabled = !state.saving,
@@ -253,6 +220,53 @@ private fun SettingsContent(
         ) { Text("Xóa mục tiêu hiện tại") }
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
+ 
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = state.reminderHour,
+            initialMinute = state.reminderMinute,
+            is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onTime(timePickerState.hour, timePickerState.minute)
+                        showTimePicker = false
+                    }
+                ) {
+                    Text("Đồng ý", color = EnergyOrange, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showTimePicker = false }
+                ) {
+                    Text("Hủy", color = customColors.mutedText)
+                }
+            },
+            title = {
+                Text(
+                    text = "Chọn giờ nhắc nhở",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.primaryText
+                )
+            },
+            text = {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            containerColor = colors.surface,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
     if (state.confirmation != PendingConfirmation.NONE) {
         val deleting = state.confirmation == PendingConfirmation.DELETE
         AlertDialog(

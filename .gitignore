@@ -19,3 +19,5 @@ local.properties
 .vscode/
 server/.env
 server/node_modules/
+/.worktrees/
+*.jks

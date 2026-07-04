@@ -10,6 +10,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.booleanOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -18,6 +20,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 interface FoodAnalysisClient {
     suspend fun analyze(bitmap: Bitmap?): ScanResult?
+    suspend fun lookupBarcode(barcode: String): ScanResult?
 }
 
 class OkHttpFoodAnalysisClient(
@@ -94,6 +97,35 @@ class OkHttpFoodAnalysisClient(
             advice = element["advice"]?.jsonPrimitive?.content ?: "",
             constituents = constituents,
             sweatPayment = sweatProposal,
+            calculationProcess = element["calculationProcess"]?.jsonPrimitive?.content,
+            confidence = element["confidence"]?.jsonPrimitive?.doubleOrNull ?: 1.0,
+            needsUserConfirmation = element["needsUserConfirmation"]?.jsonPrimitive?.booleanOrNull ?: false,
         )
+    }
+
+    private val barcodeEndpointProvider: () -> String? = {
+        com.example.myapplication.app.BackendConfig.baseUrl?.let { "$it/api/barcode" }
+    }
+
+    override suspend fun lookupBarcode(barcode: String): ScanResult? = withContext(Dispatchers.IO) {
+        val baseUrl = barcodeEndpointProvider() ?: return@withContext null
+        val endpointUrl = "$baseUrl/$barcode"
+
+        val request = Request.Builder()
+            .url(endpointUrl)
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string()
+                val serverErrorMessage = runCatching {
+                    Json.parseToJsonElement(errorBody ?: "").jsonObject["error"]?.jsonPrimitive?.content
+                }.getOrNull()
+                throw java.io.IOException(serverErrorMessage ?: "Lỗi HTTP ${response.code}")
+            }
+            val bodyString = response.body?.string() ?: throw java.io.IOException("Phản hồi trống từ máy chủ")
+            parseScanResult(bodyString)
+        }
     }
 }
