@@ -50,6 +50,9 @@ data class ScanResult(
     val advice: String,
     val constituents: List<Constituent>,
     val sweatPayment: SweatPaymentProposal?,
+    val calculationProcess: String? = null,
+    val confidence: Double = 1.0,
+    val needsUserConfirmation: Boolean = false,
 )
 
 data class Constituent(
@@ -69,6 +72,7 @@ data class SweatPaymentProposal(
 class NutritionViewModel(
     private val workoutRepository: WorkoutRepository,
     private val nutritionRepository: NutritionRepository,
+    private val personalizationDao: com.example.myapplication.data.local.PersonalizationDao? = null,
     private val foodAnalysisClient: FoodAnalysisClient = OkHttpFoodAnalysisClient(),
     private val cloudAiConsent: Flow<Boolean> = flowOf(false),
     private val currentEpochDay: () -> Long = { LocalDate.now().toEpochDay() },
@@ -147,7 +151,18 @@ class NutritionViewModel(
             try {
                 val result = foodAnalysisClient.analyze(bitmap)
                 if (result != null) {
-                    scanResultState.value = result
+                    val override = personalizationDao?.foodOverrideNow(result.dishName)
+                    val finalResult = if (override != null) {
+                        result.copy(
+                            totalCalories = override.totalCalories,
+                            proteinGrams = override.proteinGrams,
+                            carbsGrams = override.carbsGrams,
+                            fatGrams = override.fatGrams
+                        )
+                    } else {
+                        result
+                    }
+                    scanResultState.value = finalResult
                 } else {
                     scanErrorState.value = "Khong the phan tich du lieu mon an tra ve."
                 }
@@ -165,6 +180,16 @@ class NutritionViewModel(
     fun acceptScanResult() {
         val result = scanResultState.value ?: return
         viewModelScope.launch {
+            personalizationDao?.upsertFoodOverride(
+                com.example.myapplication.data.local.UserFoodOverrideEntity(
+                    dishName = result.dishName,
+                    totalCalories = result.totalCalories,
+                    proteinGrams = result.proteinGrams,
+                    carbsGrams = result.carbsGrams,
+                    fatGrams = result.fatGrams
+                )
+            )
+
             nutritionRepository.addNutrients(
                 epochDay = currentEpochDay(),
                 nutrients = Nutrients(
@@ -189,6 +214,57 @@ class NutritionViewModel(
 
     fun discardScanResult() {
         scanResultState.value = null
+    }
+
+    fun updateScanResult(
+        dishName: String,
+        totalCalories: Int,
+        proteinGrams: Int,
+        carbsGrams: Int,
+        fatGrams: Int,
+    ) {
+        val current = scanResultState.value ?: return
+        scanResultState.value = current.copy(
+            dishName = dishName,
+            totalCalories = totalCalories,
+            proteinGrams = proteinGrams,
+            carbsGrams = carbsGrams,
+            fatGrams = fatGrams,
+        )
+    }
+
+    fun scanBarcode(barcode: String) {
+        viewModelScope.launch {
+            scanningState.value = true
+            scanErrorState.value = null
+            scanResultState.value = null
+            
+            try {
+                val result = foodAnalysisClient.lookupBarcode(barcode)
+                scanningState.value = false
+                if (result != null) {
+                    val override = personalizationDao?.foodOverrideNow(result.dishName)
+                    val finalResult = if (override != null) {
+                        result.copy(
+                            totalCalories = override.totalCalories,
+                            proteinGrams = override.proteinGrams,
+                            carbsGrams = override.carbsGrams,
+                            fatGrams = override.fatGrams,
+                            needsUserConfirmation = false,
+                            calculationProcess = "${result.calculationProcess}\n(Đã áp dụng khẩu phần quen thuộc của bạn)"
+                        )
+                    } else {
+                        result
+                    }
+                    scanResultState.value = finalResult
+                } else {
+                    scanErrorState.value = "Mã vạch $barcode chưa có trong dữ liệu. Thử lại với ảnh chụp bảng dinh dưỡng!"
+                }
+            } catch (e: Exception) {
+                scanningState.value = false
+                scanErrorState.value = "Lỗi kết nối tra cứu mã vạch: ${e.message}"
+            }
+        }
     }
 
     fun clearSweat() {

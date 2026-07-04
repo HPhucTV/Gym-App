@@ -237,6 +237,9 @@ class RecommendationViewModelTest {
         override suspend fun latestDecisionByKindAndStatus(kind: AdaptationKind, status: AdaptationStatus): AdaptationDecisionEntity? = null
         override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = flowOf(emptyList())
         override suspend fun decisionHistoryNow(): List<AdaptationDecisionEntity> = emptyList()
+
+        override suspend fun upsertFoodOverride(override: com.example.myapplication.data.local.UserFoodOverrideEntity) = Unit
+        override suspend fun foodOverrideNow(dishName: String): com.example.myapplication.data.local.UserFoodOverrideEntity? = null
     }
 
     private class FakeCoachExplanationClient(private val reply: String? = null) : CoachExplanationClient {

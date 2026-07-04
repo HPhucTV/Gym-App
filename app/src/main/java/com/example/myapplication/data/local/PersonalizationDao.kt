@@ -75,4 +75,10 @@ interface PersonalizationDao {
 
     @Query("SELECT * FROM adaptation_decisions ORDER BY createdAtEpochMillis DESC, id DESC")
     suspend fun decisionHistoryNow(): List<AdaptationDecisionEntity>
+
+    @Upsert
+    suspend fun upsertFoodOverride(override: UserFoodOverrideEntity)
+
+    @Query("SELECT * FROM user_food_overrides WHERE LOWER(dishName) = LOWER(:dishName) LIMIT 1")
+    suspend fun foodOverrideNow(dishName: String): UserFoodOverrideEntity?
 }

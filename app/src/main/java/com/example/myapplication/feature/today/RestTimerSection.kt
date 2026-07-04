@@ -27,26 +27,18 @@ fun RestTimerSection(
 ) {
     var secondsLeft by remember(initialSeconds) { mutableIntStateOf(initialSeconds) }
 
+    // Breathing loop: Inhale 4s -> Hold 2s -> Exhale 4s (Total 10s cycle)
+    var breathCycleTime by remember(initialSeconds) { mutableIntStateOf(0) }
+
     LaunchedEffect(initialSeconds) {
         secondsLeft = initialSeconds
-    }
-
-    LaunchedEffect(secondsLeft) {
-        if (secondsLeft > 0) {
-            delay(1000)
-            secondsLeft -= 1
-        } else {
-            onFinished()
-        }
-    }
-
-    // Breathing loop: Inhale 4s -> Hold 2s -> Exhale 4s (Total 10s cycle)
-    var breathCycleTime by remember { mutableIntStateOf(0) }
-    LaunchedEffect(secondsLeft) {
+        breathCycleTime = 0
         while (secondsLeft > 0) {
             delay(1000)
+            secondsLeft -= 1
             breathCycleTime = (breathCycleTime + 1) % 10
         }
+        onFinished()
     }
 
     val (breathText, breathScale) = remember(breathCycleTime) {
@@ -111,7 +103,9 @@ fun RestTimerSection(
                         ) { seconds ->
                             Text(
                                 "$seconds giây",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.customColors.recoveryBlue
                             )

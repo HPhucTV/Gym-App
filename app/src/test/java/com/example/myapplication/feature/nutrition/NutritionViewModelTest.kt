@@ -114,6 +114,27 @@ class NutritionViewModelTest {
         assertFalse(state.scanning)
         assertNull(state.scanError)
     }
+ 
+    @Test
+    fun `scanBarcode with valid code returns result`() = runTest(dispatcher) {
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = FakeNutritionRepository(),
+            foodAnalysisClient = FakeFoodAnalysisClient(),
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+ 
+        viewModel.scanBarcode("8934563138073")
+        advanceUntilIdle()
+ 
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertNotNull(state.scanResult)
+        assertEquals("Snack Toonies Chef (Mã vạch)", state.scanResult?.dishName)
+        assertNull(state.scanError)
+    }
 
     @Test
     fun `food image is never uploaded without cloud AI consent`() = runTest(dispatcher) {
@@ -197,6 +218,28 @@ private class FakeFoodAnalysisClient(
     override suspend fun analyze(bitmap: android.graphics.Bitmap?): ScanResult? {
         calls++
         failure?.let { throw it }
+        return result
+    }
+
+    override suspend fun lookupBarcode(barcode: String): ScanResult? {
+        calls++
+        failure?.let { throw it }
+        if (barcode == "8934563138073") {
+            return ScanResult(
+                dishName = "Snack Toonies Chef (Mã vạch)",
+                totalCalories = 284,
+                proteinGrams = 3,
+                carbsGrams = 28,
+                fatGrams = 18,
+                fitnessScore = 4,
+                advice = "Đồ ăn vặt đóng gói.",
+                constituents = emptyList(),
+                sweatPayment = null,
+                calculationProcess = "Mã vạch: 8934563138073",
+                confidence = 1.0,
+                needsUserConfirmation = false
+            )
+        }
         return result
     }
 }

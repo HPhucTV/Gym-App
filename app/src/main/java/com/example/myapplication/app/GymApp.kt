@@ -220,6 +220,7 @@ fun GymApp(container: AppContainer) {
                         com.example.myapplication.feature.nutrition.NutritionViewModel(
                             workoutRepository = container.workoutRepository,
                             nutritionRepository = container.nutritionRepository,
+                            personalizationDao = container.database.personalizationDao(),
                             foodAnalysisClient = container.foodAnalysisClient,
                             cloudAiConsent = container.database.personalizationDao().observeProfile()
                                 .map { profile -> profile?.cloudAiConsent == true },
@@ -233,8 +234,10 @@ fun GymApp(container: AppContainer) {
                 state = state,
                 onBack = onBack,
                 onScan = nutritionViewModel::scanFood,
+                onScanBarcode = nutritionViewModel::scanBarcode,
                 onAccept = nutritionViewModel::acceptScanResult,
                 onDiscard = nutritionViewModel::discardScanResult,
+                onUpdateResult = nutritionViewModel::updateScanResult,
                 onClearSweat = nutritionViewModel::clearSweat,
                 onReset = nutritionViewModel::resetDaily
             )
