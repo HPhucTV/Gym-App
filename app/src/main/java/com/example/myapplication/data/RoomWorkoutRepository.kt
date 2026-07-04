@@ -20,6 +20,7 @@ import com.example.myapplication.data.local.SessionWithExercises
 import com.example.myapplication.data.local.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.math.floor
 
 class RoomWorkoutRepository(
     private val database: GymDatabase,
@@ -184,7 +185,11 @@ class RoomWorkoutRepository(
                 exerciseId = exercise.exerciseId,
                 prescription = ExercisePrescription(
                     exerciseId = exercise.exerciseId,
-                    sets = exercise.sets,
+                    sets = if (session.completedEpochDay == null) {
+                        scaledSets(exercise.sets, session.volumeScalePercent)
+                    } else {
+                        exercise.sets
+                    },
                     repsMin = exercise.repsMin,
                     repsMax = exercise.repsMax,
                     durationSeconds = exercise.durationSeconds,
@@ -195,3 +200,6 @@ class RoomWorkoutRepository(
         },
     )
 }
+
+internal fun scaledSets(sets: Int, percent: Int): Int =
+    maxOf(1, floor(sets * percent.coerceIn(1, 100) / 100.0).toInt())

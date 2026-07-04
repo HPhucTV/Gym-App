@@ -121,6 +121,25 @@ interface WorkoutDao {
 
     @Query(
         """
+        SELECT workout_sessions.id FROM workout_sessions
+        INNER JOIN goals ON goals.id = workout_sessions.goalId
+        WHERE goals.archived = 0 AND workout_sessions.completedEpochDay IS NULL
+        ORDER BY workout_sessions.sequenceIndex ASC, workout_sessions.id ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getUpcomingIncompleteSessionIds(limit: Int): List<Long>
+
+    @Query(
+        """
+        UPDATE workout_sessions SET volumeScalePercent = :percent
+        WHERE id IN (:sessionIds) AND completedEpochDay IS NULL
+        """,
+    )
+    suspend fun updateIncompleteSessionVolumeScale(sessionIds: List<Long>, percent: Int): Int
+
+    @Query(
+        """
         UPDATE workout_sessions SET completedEpochDay = :completedEpochDay
         WHERE id = :sessionId AND completedEpochDay IS NULL
           AND goalId IN (SELECT id FROM goals WHERE archived = 0)

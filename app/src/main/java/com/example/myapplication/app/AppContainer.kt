@@ -21,6 +21,7 @@ class AppContainer(context: Context) {
             GymDatabase.MIGRATION_2_3,
             GymDatabase.MIGRATION_3_4,
             GymDatabase.MIGRATION_4_5,
+            GymDatabase.MIGRATION_5_6,
         )
         .build()
 

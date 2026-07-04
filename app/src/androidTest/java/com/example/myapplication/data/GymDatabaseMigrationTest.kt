@@ -119,6 +119,40 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_5_6_preserves_session_and_defaults_full_volume() {
+        helper.createDatabase(TEST_DATABASE, 5).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, NULL)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            6,
+            true,
+            GymDatabase.MIGRATION_5_6,
+        ).use { migrated ->
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM workout_sessions"))
+            assertEquals(100, migrated.singleInt("SELECT volumeScalePercent FROM workout_sessions WHERE id = 10"))
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)

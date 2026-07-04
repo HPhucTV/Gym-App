@@ -64,6 +64,9 @@ interface PersonalizationDao {
     @Query("UPDATE adaptation_decisions SET status = :status, resolvedAtEpochMillis = :resolvedAt WHERE id = :id")
     suspend fun updateDecisionStatus(id: Long, status: AdaptationStatus, resolvedAt: Long)
 
+    @Query("UPDATE adaptation_decisions SET afterJson = :afterJson, undoJson = :undoJson WHERE id = :id")
+    suspend fun updateDecisionPayloads(id: Long, afterJson: String, undoJson: String)
+
     @Query("SELECT * FROM adaptation_decisions WHERE id = :id LIMIT 1")
     suspend fun decisionByIdNow(id: Long): AdaptationDecisionEntity?
 

@@ -233,6 +233,7 @@ class RecommendationViewModelTest {
         override suspend fun latestCheckInNow(): com.example.myapplication.data.local.WeeklyCheckInEntity? = null
         override suspend fun insertDecision(decision: AdaptationDecisionEntity): Long = 0
         override suspend fun updateDecisionStatus(id: Long, status: AdaptationStatus, resolvedAt: Long) = Unit
+        override suspend fun updateDecisionPayloads(id: Long, afterJson: String, undoJson: String) = Unit
         override suspend fun decisionByIdNow(id: Long): AdaptationDecisionEntity? = null
         override suspend fun latestDecisionByKindAndStatus(kind: AdaptationKind, status: AdaptationStatus): AdaptationDecisionEntity? = null
         override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = flowOf(emptyList())

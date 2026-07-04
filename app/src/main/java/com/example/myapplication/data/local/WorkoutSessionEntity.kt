@@ -1,5 +1,6 @@
 package com.example.myapplication.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -26,4 +27,5 @@ data class WorkoutSessionEntity(
     val estimatedMinutes: Int,
     val dueEpochDay: Long,
     val completedEpochDay: Long? = null,
+    @ColumnInfo(defaultValue = "100") val volumeScalePercent: Int = 100,
 )

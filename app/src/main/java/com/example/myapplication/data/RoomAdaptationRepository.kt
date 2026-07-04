@@ -25,6 +25,7 @@ class RoomAdaptationRepository(
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
     private val todayEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : AdaptationRepository {
+    private val workoutDao = database.workoutDao()
 
     override fun observeDecisions(): Flow<List<AdaptationDecisionEntity>> =
         personalizationDao.observeDecisionHistory()
@@ -79,8 +80,12 @@ class RoomAdaptationRepository(
             if (staleCheck != null) return@withTransaction staleCheck
 
             // Apply the effect
-            val decision = entityToDecision(entity)
-            applyDecisionEffect(decision)
+            if (entity.kind == AdaptationKind.DELOAD_WEEK) {
+                val error = applyConfirmedDeload(entity)
+                if (error != null) return@withTransaction error
+            } else {
+                applyDecisionEffect(entityToDecision(entity))
+            }
 
             // Mark as applied
             personalizationDao.updateDecisionStatus(
@@ -137,7 +142,12 @@ class RoomAdaptationRepository(
             }
 
             // Apply the undo payload to restore previous state
-            applyUndoEffect(entity)
+            if (entity.kind == AdaptationKind.DELOAD_WEEK) {
+                val error = undoDeload(entity)
+                if (error != null) return@withTransaction error
+            } else {
+                applyUndoEffect(entity)
+            }
 
             // Mark as undone
             personalizationDao.updateDecisionStatus(
@@ -249,6 +259,44 @@ class RoomAdaptationRepository(
         }
     }
 
+    private suspend fun applyConfirmedDeload(entity: AdaptationDecisionEntity): DecisionActionResult? {
+        val pendingSessions = extractInt(entity.afterJson, "pendingSessions")
+            ?: return DecisionActionResult.Stale("Đề xuất giảm tải không có số buổi hợp lệ.")
+        val scalePercent = extractInt(entity.afterJson, "volumeScalePercent")
+            ?: return DecisionActionResult.Stale("Đề xuất giảm tải không có mức khối lượng hợp lệ.")
+        if (pendingSessions <= 0 || scalePercent !in 1..100) {
+            return DecisionActionResult.Stale("Đề xuất giảm tải chứa dữ liệu không hợp lệ.")
+        }
+
+        val sessionIds = workoutDao.getUpcomingIncompleteSessionIds(pendingSessions)
+        if (sessionIds.isEmpty()) {
+            return DecisionActionResult.Stale("Không còn buổi tập sắp tới để áp dụng giảm tải.")
+        }
+        val sessions = sessionIds.mapNotNull { workoutDao.getSession(it) }
+        if (sessions.size != sessionIds.size || sessions.any { it.volumeScalePercent != 100 }) {
+            return DecisionActionResult.Stale("Lịch tập đã thay đổi kể từ khi tạo đề xuất giảm tải.")
+        }
+        val updated = workoutDao.updateIncompleteSessionVolumeScale(sessionIds, scalePercent)
+        if (updated != sessionIds.size) {
+            return DecisionActionResult.Stale("Không thể áp dụng giảm tải vì lịch tập vừa thay đổi.")
+        }
+        personalizationDao.updateDecisionPayloads(
+            id = entity.id,
+            afterJson = entity.afterJson.withSessionIds(sessionIds),
+            undoJson = entity.undoJson.withSessionIds(sessionIds),
+        )
+        return null
+    }
+
+    private suspend fun undoDeload(entity: AdaptationDecisionEntity): DecisionActionResult? {
+        val sessionIds = extractSessionIds(entity.undoJson)
+        if (sessionIds.isEmpty()) {
+            return DecisionActionResult.Stale("Không tìm thấy các buổi tập đã áp dụng giảm tải.")
+        }
+        workoutDao.updateIncompleteSessionVolumeScale(sessionIds, 100)
+        return null
+    }
+
     private suspend fun applyUndoEffect(entity: AdaptationDecisionEntity) {
         when (entity.kind) {
             AdaptationKind.CALORIE_TARGET -> {
@@ -325,6 +373,20 @@ class RoomAdaptationRepository(
 
     private fun extractCalories(json: String): Int? {
         return Regex("\"calories\":(\\d+)").find(json)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun extractInt(json: String, key: String): Int? =
+        Regex("\"${Regex.escape(key)}\":(\\d+)").find(json)?.groupValues?.get(1)?.toIntOrNull()
+
+    private fun extractSessionIds(json: String): List<Long> {
+        val raw = Regex("\"sessionIds\":\\[([^]]*)]").find(json)?.groupValues?.get(1) ?: return emptyList()
+        if (raw.isBlank()) return emptyList()
+        return raw.split(',').mapNotNull { it.trim().toLongOrNull() }
+    }
+
+    private fun String.withSessionIds(sessionIds: List<Long>): String {
+        val withoutClosingBrace = trim().removeSuffix("}")
+        return "$withoutClosingBrace,\"sessionIds\":[${sessionIds.joinToString(",")}]}"
     }
 
     private fun entityToDecision(entity: AdaptationDecisionEntity) = AdaptationDecision(

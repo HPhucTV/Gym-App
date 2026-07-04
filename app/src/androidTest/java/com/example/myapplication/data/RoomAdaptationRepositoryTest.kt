@@ -12,13 +12,16 @@ import com.example.myapplication.core.nutrition.EntrySource
 import com.example.myapplication.core.nutrition.Nutrients
 import com.example.myapplication.core.nutrition.NutritionTarget
 import com.example.myapplication.core.nutrition.NutritionTargetAudit
+import com.example.myapplication.core.model.*
 import com.example.myapplication.core.profile.ActivityLevel
 import com.example.myapplication.core.profile.GoalPace
 import com.example.myapplication.core.profile.MetabolicSex
 import com.example.myapplication.data.local.DailyNutritionEntity
 import com.example.myapplication.data.local.GymDatabase
+import com.example.myapplication.data.local.GoalEntity
 import com.example.myapplication.data.local.PersonalProfileEntity
 import com.example.myapplication.data.local.PersonalizationDao
+import com.example.myapplication.data.local.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -342,6 +345,57 @@ class RoomAdaptationRepositoryTest {
         // But we can check that `latestDecisionByKindAndStatus` correctly returns secondId.
         val latestApplied = dao.latestDecisionByKindAndStatus(AdaptationKind.CALORIE_TARGET, AdaptationStatus.APPLIED)
         assertEquals(secondId, latestApplied?.id)
+    }
+
+    @Test
+    fun confirmedDeloadScalesOnlyUpcomingSessionsAndUndoRestoresThem() = runTest {
+        val workoutDao = database.workoutDao()
+        val goalId = workoutDao.insertGoal(
+            GoalEntity(
+                programId = "general",
+                goal = FitnessGoal.GENERAL_FITNESS,
+                level = ExperienceLevel.BEGINNER,
+                equipmentProfile = EquipmentProfile.BODYWEIGHT_ONLY,
+                sessionsPerWeek = 3,
+                durationWeeks = 4,
+                restDayMode = RestDayMode.FULL_REST,
+                createdEpochDay = todayEpoch,
+            ),
+        )
+        val sessionIds = workoutDao.insertSessions(
+            (0 until 4).map { sequence ->
+                WorkoutSessionEntity(
+                    goalId = goalId,
+                    sequenceIndex = sequence,
+                    titleVi = "Buổi ${sequence + 1}",
+                    focusVi = "Toàn thân",
+                    estimatedMinutes = 45,
+                    dueEpochDay = todayEpoch + sequence,
+                )
+            },
+        )
+        val decisionId = adaptationRepository.recordDecision(
+            AdaptationDecision(
+                kind = AdaptationKind.DELOAD_WEEK,
+                mode = AdaptationMode.REQUIRES_CONFIRMATION,
+                reasonVi = "Cần giảm tải.",
+                beforeValue = """{"pendingSessions":3,"volumeScalePercent":100}""",
+                afterValue = """{"pendingSessions":3,"volumeScalePercent":70}""",
+                undoPayload = """{"pendingSessions":3,"volumeScalePercent":100}""",
+            ),
+        )
+
+        assertEquals(DecisionActionResult.Success, adaptationRepository.acceptDecision(decisionId))
+        val scaled = workoutDao.getSessionsForGoal(goalId)
+        assertEquals(listOf(70, 70, 70, 100), scaled.map { it.volumeScalePercent })
+
+        assertEquals(
+            DecisionActionResult.Success,
+            adaptationRepository.undoLatestDecision(AdaptationKind.DELOAD_WEEK),
+        )
+        val restored = workoutDao.getSessionsForGoal(goalId)
+        assertEquals(sessionIds, restored.map { it.id })
+        assertEquals(listOf(100, 100, 100, 100), restored.map { it.volumeScalePercent })
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
