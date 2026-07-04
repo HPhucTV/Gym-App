@@ -35,3 +35,13 @@
 | muscle-intermediate-gym-4x-8w | Đạt: tăng cơ trung cấp | Đạt: thiết bị full gym | Đạt: hai upper và hai lower, đủ bài ghép/phụ | Đạt: các cặp nghỉ 0 ngày không trùng cơ chính | Đạt: 2 pha; tăng hiệp bài ghép và đổi 1 phụ kiện/buổi | Đạt: 0/1/0/2 | Không áp dụng: chương trình trung cấp; kê đơn trong giới hạn | Đạt | **PENDING_USER_REVIEW** |
 
 Các chương trình này là kế hoạch thể lực chung, không phải tư vấn y khoa hoặc phác đồ phục hồi chấn thương.
+# Bổ sung rà soát chức năng 2026-07-04
+
+- Phase được suy ra xác định từ tuần/chương trình; deload chỉ thay số hiệp, không đổi exercise ID, reps, duration hay rest.
+- Deload xác nhận dùng 70% volume và luôn giữ ít nhất 1 hiệp.
+- Bài thay thế chỉ đến từ `substituteIds` đã duyệt, cùng nhóm cơ/mẫu chuyển động và tương thích thiết bị; prescription và thứ tự không đổi.
+- Biến thể 15/30/45 phút giữ prefix có thứ tự và luôn giữ bài ghép đầu tiên; `Đầy đủ` phục hồi mọi dòng bị lược.
+- Warm-up/cool-down có ID ổn định, 2–6 bước, 2–10 phút và chỉ là hướng dẫn thể lực chung. Nội dung không tham gia điều kiện hoàn thành và không kê phục hồi chấn thương.
+- Schedule preview giữ sequence, không sửa session đã hoàn thành và chỉ ghi sau xác nhận/stale check.
+
+Các kiểm tra schema/cross-reference/determinism đã chạy trong JVM suite. Rà soát trực quan trên thiết bị cho các biến thể thời lượng và block chuẩn bị vẫn đang chờ vì thiết bị ADB chuyển offline trong lần connected test ngày 2026-07-04.

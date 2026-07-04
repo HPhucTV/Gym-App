@@ -75,3 +75,23 @@ Trạng thái kiểm định ngày 03/07/2026:
 - Chạy unit test của `BackendConfigTest` và `NutritionViewModelTest` đều **PASS**.
 - Toàn bộ unit test hệ thống (`.\gradlew.bat test`) đều **BUILD SUCCESSFUL**.
 
+# Functional upgrade release — 2026-07-04
+
+The app now adds the following offline-first behavior without introducing a new primary navigation destination:
+
+1. Per-session difficulty feedback after completion.
+2. Deterministic Foundation/Build/Consolidate/Deload program phases.
+3. Confirmed 70% deload weeks with targeted undo.
+4. Reviewed exercise substitutions that preserve sets, reps, rest and order.
+5. Reversible 15/30/45-minute workout variants that omit only an ordered suffix.
+6. Reviewed warm-up and cool-down guidance selected from active movement patterns; these blocks never affect completion.
+7. Preview-before-confirm schedule changes with stale-write protection.
+8. Deterministic weekly insights with explicit evidence thresholds.
+9. Conservative schedule-completion forecast with evidence counts and a non-medical disclaimer.
+10. Local reusable meal templates plus editable scan/manual nutrition drafts and confirmed deletion.
+
+Persistence is Room schema version 9. Core workout selection, scheduling, substitutions, time budgets, progress conclusions, forecasts, manual nutrition and meal-template reuse work without a network. Camera analysis and AI explanations remain optional, backend-dependent, and gated by explicit cloud-AI consent.
+
+Confirmation points: deload apply/undo, goal replacement/deletion, schedule application, and meal-template deletion. Known limits: no account/cloud sync, no random workouts, no load/rep logging, and no medical or physique prediction.
+
+Verification on 2026-07-04: focused JVM, full JVM, lint (0 errors), Android-test compilation and debug APK assembly passed. Connected tests were attempted but executed 0 tests because the detected emulator went offline; device validation remains pending.
