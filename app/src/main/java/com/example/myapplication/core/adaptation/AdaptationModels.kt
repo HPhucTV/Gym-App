@@ -18,4 +18,5 @@ enum class AdaptationKind {
     RECOVERY_DAY,
     WORKOUT_VOLUME,
     PROGRAM_CHANGE,
+    DELOAD_WEEK,
 }

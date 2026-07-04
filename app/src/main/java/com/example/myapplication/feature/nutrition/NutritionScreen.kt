@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.theme.EnergyOrange
@@ -47,6 +48,7 @@ import com.google.mlkit.vision.common.InputImage
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import java.util.concurrent.Executors
 import android.annotation.SuppressLint
+import com.example.myapplication.core.nutrition.MealTemplate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +62,21 @@ fun NutritionScreen(
     onUpdateResult: (String, Int, Int, Int, Int) -> Unit,
     onClearSweat: () -> Unit,
     onReset: () -> Unit,
+    onStartManual: () -> Unit = {},
+    onDraftName: (String) -> Unit = {},
+    onDraftCalories: (String) -> Unit = {},
+    onDraftProtein: (String) -> Unit = {},
+    onDraftCarbs: (String) -> Unit = {},
+    onDraftFat: (String) -> Unit = {},
+    onDraftSaveAsTemplate: (Boolean) -> Unit = {},
+    onApplyTemplate: (Long) -> Unit = {},
+    onRequestDeleteTemplate: (Long) -> Unit = {},
+    onCancelDeleteTemplate: () -> Unit = {},
+    onConfirmDeleteTemplate: () -> Unit = {},
+    onStartRenameTemplate: (Long) -> Unit = {},
+    onUpdateTemplateName: (String) -> Unit = {},
+    onCancelRenameTemplate: () -> Unit = {},
+    onConfirmRenameTemplate: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -150,16 +167,15 @@ fun NutritionScreen(
                         // 3. Scan result popup card (if scanning or result available)
                         if (state.scanning) {
                             ScanningCard()
-                        } else if (state.scanResult != null) {
-                            ScanResultCard(state.scanResult, onUpdateResult, onAccept, onDiscard)
                         } else {
-                            // Dual scan actions: Food photo or Barcode scan
+                            // Dual scan actions: Food photo, Barcode scan, or Manual entry
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Button(
                                     onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                                    enabled = !state.savingDraft,
                                     colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
                                     shape = RoundedCornerShape(16.dp),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
@@ -171,6 +187,7 @@ fun NutritionScreen(
                                 }
                                 OutlinedButton(
                                     onClick = { barcodePermissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                                    enabled = !state.savingDraft,
                                     shape = RoundedCornerShape(16.dp),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, EnergyOrange),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = EnergyOrange),
@@ -179,13 +196,51 @@ fun NutritionScreen(
                                         .weight(1f)
                                         .height(56.dp)
                                 ) {
-                                    Text("🔍 Quét mã vạch", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text("🔍 Mã vạch", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                                OutlinedButton(
+                                    onClick = onStartManual,
+                                    enabled = !state.savingDraft,
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(56.dp)
+                                ) {
+                                    Text("Nhập tay", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
                             }
                         }
 
                         state.scanError?.let { error ->
                             Text(error, color = colors.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Text(
+                            "Bữa ăn đã lưu",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.primaryText,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (state.mealTemplates.isEmpty()) {
+                            Text(
+                                "Chưa có mẫu. Nhập một món và chọn lưu làm mẫu để dùng lại.",
+                                color = customColors.mutedText,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            state.mealTemplates.forEach { template ->
+                                MealTemplateCard(
+                                    template = template,
+                                    enabled = !state.savingDraft,
+                                    onApply = { onApplyTemplate(template.id) },
+                                    onRename = { onStartRenameTemplate(template.id) },
+                                    onDelete = { onRequestDeleteTemplate(template.id) },
+                                )
+                            }
                         }
 
                         Spacer(Modifier.height(16.dp))
@@ -232,7 +287,148 @@ fun NutritionScreen(
                             }
                         }
                     }
+                    state.draft?.let { draft ->
+                        NutritionDraftDialog(
+                            draft = draft,
+                            saving = state.savingDraft,
+                            onName = onDraftName,
+                            onCalories = onDraftCalories,
+                            onProtein = onDraftProtein,
+                            onCarbs = onDraftCarbs,
+                            onFat = onDraftFat,
+                            onSaveAsTemplate = onDraftSaveAsTemplate,
+                            onAccept = onAccept,
+                            onDiscard = onDiscard,
+                        )
+                    }
+                    if (state.pendingDeleteTemplateId != null) {
+                        AlertDialog(
+                            onDismissRequest = onCancelDeleteTemplate,
+                            title = { Text("Xóa bữa ăn đã lưu?") },
+                            text = { Text("Lịch sử dinh dưỡng đã ghi sẽ không bị thay đổi.") },
+                            dismissButton = { TextButton(onClick = onCancelDeleteTemplate) { Text("Hủy") } },
+                            confirmButton = { TextButton(onClick = onConfirmDeleteTemplate) { Text("Xóa") } },
+                        )
+                    }
+                    state.templateNameEdit?.let { edit ->
+                        AlertDialog(
+                            onDismissRequest = onCancelRenameTemplate,
+                            title = { Text("Sửa tên bữa ăn") },
+                            text = {
+                                Column {
+                                    OutlinedTextField(
+                                        value = edit.nameVi,
+                                        onValueChange = onUpdateTemplateName,
+                                        label = { Text("Tên món") },
+                                        enabled = !state.savingDraft,
+                                    )
+                                    edit.error?.let { Text(it, color = colors.error) }
+                                }
+                            },
+                            dismissButton = { TextButton(onClick = onCancelRenameTemplate) { Text("Hủy") } },
+                            confirmButton = { TextButton(onClick = onConfirmRenameTemplate) { Text("Lưu") } },
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NutritionDraftDialog(
+    draft: EditableNutritionDraft,
+    saving: Boolean,
+    onName: (String) -> Unit,
+    onCalories: (String) -> Unit,
+    onProtein: (String) -> Unit,
+    onCarbs: (String) -> Unit,
+    onFat: (String) -> Unit,
+    onSaveAsTemplate: (Boolean) -> Unit,
+    onAccept: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDiscard() },
+        title = { Text("Kiểm tra món ăn", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DraftField("Tên món", draft.nameVi, onName, draft.errors["nameVi"], false, saving)
+                DraftField("Calo", draft.caloriesText, onCalories, draft.errors["calories"], true, saving)
+                DraftField("Đạm (g)", draft.proteinText, onProtein, draft.errors["protein"], true, saving)
+                DraftField("Tinh bột (g)", draft.carbsText, onCarbs, draft.errors["carbs"], true, saving)
+                DraftField("Chất béo (g)", draft.fatText, onFat, draft.errors["fat"], true, saving)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = draft.saveAsTemplate,
+                        onCheckedChange = onSaveAsTemplate,
+                        enabled = !saving,
+                    )
+                    Text("Lưu làm bữa ăn mẫu")
+                }
+                draft.errors["submit"]?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        dismissButton = { TextButton(onClick = onDiscard, enabled = !saving) { Text("Hủy") } },
+        confirmButton = { TextButton(onClick = onAccept, enabled = !saving) { Text("Thêm") } },
+    )
+}
+
+@Composable
+private fun DraftField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    error: String?,
+    numeric: Boolean,
+    saving: Boolean,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        isError = error != null,
+        supportingText = error?.let { message -> { Text(message) } },
+        keyboardOptions = if (numeric) {
+            androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+            )
+        } else androidx.compose.foundation.text.KeyboardOptions.Default,
+        enabled = !saving,
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun MealTemplateCard(
+    template: MealTemplate,
+    enabled: Boolean,
+    onApply: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(template.nameVi, fontWeight = FontWeight.Bold)
+            Text(
+                "${template.nutrients.calories} kcal · ${template.nutrients.proteinGrams}g đạm · " +
+                    "${template.nutrients.carbsGrams}g carb · ${template.nutrients.fatGrams}g béo",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = onApply,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("meal-template-apply-${template.id}"),
+                ) { Text("Thêm") }
+                TextButton(onClick = onRename, enabled = enabled) { Text("Sửa tên") }
+                TextButton(onClick = onDelete, enabled = enabled) { Text("Xóa") }
             }
         }
     }

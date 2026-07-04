@@ -8,11 +8,18 @@ import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutExercise
 import com.example.myapplication.core.model.WorkoutSession
+import com.example.myapplication.core.model.WorkoutHistoryEntry
+import com.example.myapplication.core.model.ExerciseDefinition
+import com.example.myapplication.core.catalog.ExerciseSubstitutionEngine
 import com.example.myapplication.core.model.trainingDaysFromMask
 import com.example.myapplication.core.model.trainingDaysMask
 import com.example.myapplication.core.program.AdaptiveProgramPlanner
 import com.example.myapplication.core.program.SchedulePlanner
 import com.example.myapplication.core.program.TrainingSchedule
+import com.example.myapplication.core.program.SessionTimeBudgetPlanner
+import com.example.myapplication.core.program.ReschedulableSession
+import com.example.myapplication.core.program.ScheduleChangePreview
+import com.example.myapplication.core.program.ScheduleRescheduler
 import com.example.myapplication.data.local.GoalEntity
 import com.example.myapplication.data.local.GymDatabase
 import com.example.myapplication.data.local.SessionExerciseEntity
@@ -20,11 +27,15 @@ import com.example.myapplication.data.local.SessionWithExercises
 import com.example.myapplication.data.local.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.math.floor
 
 class RoomWorkoutRepository(
     private val database: GymDatabase,
+    exercises: List<ExerciseDefinition> = emptyList(),
+    private val currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : WorkoutRepository {
     private val dao = database.workoutDao()
+    private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
 
     override fun observeActiveGoal(): Flow<ActiveGoal?> = dao.observeActiveGoal().map { row ->
         row?.let {
@@ -52,6 +63,21 @@ class RoomWorkoutRepository(
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> =
         dao.observeCompletedSessions().map { rows ->
             rows.map { CompletedWorkout(it.goalId, it.completedEpochDay) }
+        }
+
+    override fun observeWorkoutHistory(): Flow<List<WorkoutHistoryEntry>> =
+        dao.observeWorkoutHistory().map { rows ->
+            rows.map { row ->
+                WorkoutHistoryEntry(
+                    sessionId = row.id,
+                    goalId = row.goalId,
+                    sequenceIndex = row.sequenceIndex,
+                    dueEpochDay = row.dueEpochDay,
+                    completedEpochDay = row.completedEpochDay,
+                    estimatedMinutes = row.estimatedMinutes,
+                    selectedTimeBudgetMinutes = row.selectedTimeBudgetMinutes,
+                )
+            }
         }
 
     override suspend fun createGoal(
@@ -117,6 +143,128 @@ class RoomWorkoutRepository(
         dao.setCurrentExerciseChecked(sessionId, orderIndex, checked)
     }
 
+    override suspend fun substituteExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): ExerciseSubstitutionResult = database.withTransaction {
+        if (dao.getCurrentSessionId() != sessionId) {
+            return@withTransaction ExerciseSubstitutionResult.StaleSession
+        }
+
+        val row = dao.getExercisesForSession(sessionId).firstOrNull { it.orderIndex == orderIndex }
+            ?: return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
+        if (row.checked) return@withTransaction ExerciseSubstitutionResult.AlreadyChecked
+
+        val session = dao.getSession(sessionId)
+            ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
+        val profile = dao.getGoal(session.goalId)?.equipmentProfile
+            ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
+        val originalId = row.originalExerciseId ?: row.exerciseId
+        val validIds = substitutionEngine.candidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
+        if (row.originalExerciseId != null) validIds += originalId
+        if (replacementExerciseId !in validIds) {
+            return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
+        }
+
+        if (dao.substituteCurrentExercise(sessionId, orderIndex, replacementExerciseId) == 1) {
+            ExerciseSubstitutionResult.Applied
+        } else {
+            ExerciseSubstitutionResult.StaleSession
+        }
+    }
+
+    override suspend fun applyTimeBudget(
+        sessionId: Long,
+        minutes: Int?,
+    ): TimeBudgetResult = database.withTransaction {
+        if (dao.getCurrentSessionId() != sessionId) {
+            return@withTransaction TimeBudgetResult.StaleSession
+        }
+        val session = dao.getSession(sessionId)
+            ?: return@withTransaction TimeBudgetResult.StaleSession
+        if (dao.countChecked(sessionId) > 0) {
+            return@withTransaction TimeBudgetResult.HasCheckedExercises
+        }
+        if (minutes != null && minutes !in setOf(15, 30, 45) && minutes != session.estimatedMinutes) {
+            return@withTransaction TimeBudgetResult.InvalidBudget
+        }
+
+        dao.updateSelectedTimeBudget(sessionId, minutes)
+        if (minutes == null || minutes >= session.estimatedMinutes) {
+            dao.setAllExercisesOmittedByTimeBudget(sessionId, false)
+        } else {
+            val rows = dao.getExercisesForSession(sessionId).sortedBy { it.orderIndex }
+            val selection = SessionTimeBudgetPlanner.select(
+                rows.map { row ->
+                    ExercisePrescription(
+                        exerciseId = row.exerciseId,
+                        sets = scaledSets(row.sets, session.volumeScalePercent),
+                        repsMin = row.repsMin,
+                        repsMax = row.repsMax,
+                        durationSeconds = row.durationSeconds,
+                        restSeconds = row.restSeconds,
+                    )
+                },
+                minutes,
+            )
+            dao.setAllExercisesOmittedByTimeBudget(sessionId, true)
+            dao.activateExercisesForTimeBudget(
+                sessionId,
+                selection.activeOrderIndices.map { rows[it].orderIndex },
+            )
+        }
+        TimeBudgetResult.Applied
+    }
+
+    override suspend fun previewScheduleChange(
+        sessionId: Long,
+        newEpochDay: Long,
+    ): ScheduleChangePreview = database.withTransaction {
+        if (dao.getCurrentSessionId() != sessionId) {
+            throw IllegalArgumentException("Only the current pending session can be rescheduled")
+        }
+        val session = dao.getSession(sessionId)
+            ?: throw IllegalArgumentException("Unknown session $sessionId")
+        val goal = dao.getGoal(session.goalId)
+            ?: throw IllegalArgumentException("Unknown goal ${session.goalId}")
+        ScheduleRescheduler.preview(
+            sessions = dao.getSessionsForGoal(session.goalId).map { row ->
+                ReschedulableSession(
+                    sessionId = row.id,
+                    sequenceIndex = row.sequenceIndex,
+                    dueEpochDay = row.dueEpochDay,
+                    completedEpochDay = row.completedEpochDay,
+                    demanding = row.estimatedMinutes >= 30,
+                )
+            },
+            selectedSessionId = sessionId,
+            newEpochDay = newEpochDay,
+            todayEpochDay = currentEpochDay(),
+            trainingDays = trainingDaysFromMask(goal.trainingDaysMask),
+        )
+    }
+
+    override suspend fun applyScheduleChange(
+        preview: ScheduleChangePreview,
+    ): ScheduleChangeResult = database.withTransaction {
+        val first = preview.changes.firstOrNull() ?: return@withTransaction ScheduleChangeResult.Stale
+        if (dao.getCurrentSessionId() != first.sessionId) {
+            return@withTransaction ScheduleChangeResult.Stale
+        }
+        val unchanged = preview.changes.all { change ->
+            dao.getSession(change.sessionId)?.let { row ->
+                row.completedEpochDay == null && row.dueEpochDay == change.oldEpochDay
+            } == true
+        }
+        if (!unchanged) return@withTransaction ScheduleChangeResult.Stale
+
+        preview.changes.forEach { change ->
+            dao.updateSessionDueEpochDay(change.sessionId, change.newEpochDay)
+        }
+        ScheduleChangeResult.Applied
+    }
+
     override suspend fun completeWorkout(
         sessionId: Long,
         completedEpochDay: Long,
@@ -178,13 +326,18 @@ class RoomWorkoutRepository(
         focusVi = session.focusVi,
         estimatedMinutes = session.estimatedMinutes,
         dueEpochDay = session.dueEpochDay,
-        exercises = exercises.sortedBy { it.orderIndex }.map { exercise ->
+        exercises = exercises.filterNot { it.omittedByTimeBudget }.sortedBy { it.orderIndex }.map { exercise ->
             WorkoutExercise(
                 orderIndex = exercise.orderIndex,
                 exerciseId = exercise.exerciseId,
+                originalExerciseId = exercise.originalExerciseId,
                 prescription = ExercisePrescription(
                     exerciseId = exercise.exerciseId,
-                    sets = exercise.sets,
+                    sets = if (session.completedEpochDay == null) {
+                        scaledSets(exercise.sets, session.volumeScalePercent)
+                    } else {
+                        exercise.sets
+                    },
                     repsMin = exercise.repsMin,
                     repsMax = exercise.repsMax,
                     durationSeconds = exercise.durationSeconds,
@@ -193,5 +346,10 @@ class RoomWorkoutRepository(
                 checked = exercise.checked,
             )
         },
+        selectedTimeBudgetMinutes = session.selectedTimeBudgetMinutes,
+        omittedExerciseCount = exercises.count { it.omittedByTimeBudget },
     )
 }
+
+internal fun scaledSets(sets: Int, percent: Int): Int =
+    maxOf(1, floor(sets * percent.coerceIn(1, 100) / 100.0).toInt())

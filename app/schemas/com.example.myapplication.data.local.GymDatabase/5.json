@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "4c43d3cb51d2eba1f6165e1463ac1eef",
+    "identityHash": "ec085cbf6a5451a1f72146caa3e93690",
     "entities": [
       {
         "tableName": "goals",
@@ -642,36 +642,36 @@
         }
       },
       {
-        "tableName": "user_food_overrides",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`dishName` TEXT NOT NULL, `totalCalories` INTEGER NOT NULL, `proteinGrams` INTEGER NOT NULL, `carbsGrams` INTEGER NOT NULL, `fatGrams` INTEGER NOT NULL, PRIMARY KEY(`dishName`))",
+        "tableName": "workout_feedback",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` INTEGER NOT NULL, `goalId` INTEGER NOT NULL, `completedEpochDay` INTEGER NOT NULL, `difficulty` TEXT NOT NULL, `recordedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`sessionId`), FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
-            "fieldPath": "dishName",
-            "columnName": "dishName",
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "goalId",
+            "columnName": "goalId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedEpochDay",
+            "columnName": "completedEpochDay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "difficulty",
+            "columnName": "difficulty",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "totalCalories",
-            "columnName": "totalCalories",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "proteinGrams",
-            "columnName": "proteinGrams",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "carbsGrams",
-            "columnName": "carbsGrams",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "fatGrams",
-            "columnName": "fatGrams",
+            "fieldPath": "recordedAtEpochMillis",
+            "columnName": "recordedAtEpochMillis",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -679,14 +679,39 @@
         "primaryKey": {
           "autoGenerate": false,
           "columnNames": [
-            "dishName"
+            "sessionId"
           ]
-        }
+        },
+        "indices": [
+          {
+            "name": "index_workout_feedback_goalId_completedEpochDay",
+            "unique": false,
+            "columnNames": [
+              "goalId",
+              "completedEpochDay"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_workout_feedback_goalId_completedEpochDay` ON `${TABLE_NAME}` (`goalId`, `completedEpochDay`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "workout_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4c43d3cb51d2eba1f6165e1463ac1eef')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ec085cbf6a5451a1f72146caa3e93690')"
     ]
   }
 }

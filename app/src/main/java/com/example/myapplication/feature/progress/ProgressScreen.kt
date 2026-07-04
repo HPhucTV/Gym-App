@@ -15,6 +15,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.*
+import com.example.myapplication.core.progress.GoalForecast
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ProgressScreen(
@@ -65,6 +68,12 @@ private fun ProgressContent(
 
         SummaryCard(state)
 
+        if (state.weeklyInsights.isNotEmpty()) {
+            WeeklyInsightsCard(state.weeklyInsights.map { it.messageVi })
+        }
+
+        GoalForecastCard(state)
+
         // Progress Charts (Weekly frequency & MuscleFocus)
         ProgressChartsSection(
             weeklyStats = state.weeklyStats,
@@ -78,6 +87,72 @@ private fun ProgressContent(
             state.selectedMonth, state.markedEpochDays, state.completedInMonth,
             state.canNavigatePrevious, state.canNavigateNext, previous, next
         )
+    }
+}
+
+@Composable
+private fun GoalForecastCard(state: ProgressUiState.Content) {
+    val colors = MaterialTheme.colorScheme
+    val customColors = colors.customColors
+    val (title, detail) = when (val forecast = state.goalForecast) {
+        GoalForecast.InsufficientData -> "Chưa đủ dữ liệu dự báo" to
+            "Cần ít nhất 2 buổi hoàn thành trong 2 tuần trọn vẹn."
+        GoalForecast.Complete -> "Đã hoàn thành mục tiêu" to "Toàn bộ buổi trong chương trình đã hoàn tất."
+        is GoalForecast.OnTrack -> "Đang đúng tiến độ" to
+            "Dự kiến hoàn thành ${formatForecastDate(forecast.projectedEpochDay)}."
+        is GoalForecast.AtRisk -> "Có nguy cơ chậm tiến độ" to
+            "Dự kiến ${formatForecastDate(forecast.projectedEpochDay)}, đang chậm ${forecast.sessionsBehind} buổi."
+    }
+    Surface(
+        color = colors.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Dự báo hoàn thành", color = EnergyOrange, fontWeight = FontWeight.Bold)
+            Text(title, color = customColors.primaryText, fontWeight = FontWeight.Bold)
+            Text(detail, color = customColors.primaryText)
+            Text(
+                "Dựa trên ${state.forecastCompletedSessions} buổi trong ${state.forecastElapsedWeeks} tuần.",
+                color = customColors.mutedText,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Đây là ước tính lịch tập, không phải dự đoán cân nặng, y khoa hay vóc dáng.",
+                color = customColors.mutedText,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+private val forecastDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+private fun formatForecastDate(epochDay: Long): String =
+    LocalDate.ofEpochDay(epochDay).format(forecastDateFormatter)
+
+@Composable
+private fun WeeklyInsightsCard(messages: List<String>) {
+    val colors = MaterialTheme.colorScheme
+    val customColors = colors.customColors
+    Surface(
+        color = colors.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Nhận xét tuần", fontWeight = FontWeight.Bold, color = customColors.primaryText)
+            messages.forEach { message ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("•", color = EnergyOrange, fontWeight = FontWeight.Bold)
+                    Text(message, color = customColors.primaryText)
+                }
+            }
+            Text(
+                "Phân tích từ lịch tập và phản hồi đã lưu trên thiết bị.",
+                color = customColors.mutedText,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

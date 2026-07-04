@@ -2,6 +2,7 @@ package com.example.myapplication.feature.settings
 
 import com.example.myapplication.core.model.*
 import kotlinx.coroutines.CompletableDeferred
+import com.example.myapplication.core.program.ScheduleChangePreview
 
 data class GoalSummary(val goal: FitnessGoal, val level: ExperienceLevel, val equipment: EquipmentProfile,
     val sessionsPerWeek: Int, val durationWeeks: Int)
@@ -19,6 +20,9 @@ sealed interface SettingsUiState {
         val saving: Boolean = false,
         val confirmation: PendingConfirmation = PendingConfirmation.NONE,
         val message: String? = null,
+        val currentSessionId: Long? = null,
+        val currentDueEpochDay: Long? = null,
+        val schedulePreview: ScheduleChangePreview? = null,
     ) : SettingsUiState
     data class Error(val message: String) : SettingsUiState
 }

@@ -84,6 +84,195 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_4_5_preserves_workouts_and_creates_empty_feedback_table() {
+        helper.createDatabase(TEST_DATABASE, 4).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, 20640)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            5,
+            true,
+            GymDatabase.MIGRATION_4_5,
+        ).use { migrated ->
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM goals"))
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM workout_sessions"))
+            assertEquals(0, migrated.singleInt("SELECT COUNT(*) FROM workout_feedback"))
+        }
+    }
+
+    @Test
+    fun migration_5_6_preserves_session_and_defaults_full_volume() {
+        helper.createDatabase(TEST_DATABASE, 5).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, NULL)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            6,
+            true,
+            GymDatabase.MIGRATION_5_6,
+        ).use { migrated ->
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM workout_sessions"))
+            assertEquals(100, migrated.singleInt("SELECT volumeScalePercent FROM workout_sessions WHERE id = 10"))
+        }
+    }
+
+    @Test
+    fun migration_6_7_preserves_exercise_and_defaults_original_id_to_null() {
+        helper.createDatabase(TEST_DATABASE, 6).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay, volumeScalePercent
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, NULL, 100)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO session_exercises (
+                    sessionId, orderIndex, exerciseId, sets, repsMin, repsMax,
+                    durationSeconds, restSeconds, checked
+                ) VALUES (10, 0, 'squat', 3, 8, 12, NULL, 60, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            7,
+            true,
+            GymDatabase.MIGRATION_6_7,
+        ).use { migrated ->
+            migrated.query(
+                "SELECT exerciseId, originalExerciseId FROM session_exercises WHERE sessionId = 10",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("squat", cursor.getString(0))
+                assertTrue(cursor.isNull(1))
+            }
+        }
+    }
+
+    @Test
+    fun migration_7_8_preservesWorkoutAndDefaultsToFullVariant() {
+        helper.createDatabase(TEST_DATABASE, 7).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay, volumeScalePercent
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, NULL, 100)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO session_exercises (
+                    sessionId, orderIndex, exerciseId, originalExerciseId, sets,
+                    repsMin, repsMax, durationSeconds, restSeconds, checked
+                ) VALUES (10, 0, 'squat', NULL, 3, 8, 12, NULL, 60, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            8,
+            true,
+            GymDatabase.MIGRATION_7_8,
+        ).use { migrated ->
+            assertEquals(
+                0,
+                migrated.singleInt("SELECT omittedByTimeBudget FROM session_exercises WHERE sessionId = 10"),
+            )
+            migrated.query("SELECT selectedTimeBudgetMinutes FROM workout_sessions WHERE id = 10").use {
+                assertTrue(it.moveToFirst())
+                assertTrue(it.isNull(0))
+            }
+        }
+    }
+
+    @Test
+    fun migration_8_9_preservesNutritionAndCreatesEmptyMealTemplates() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            execSQL(
+                """
+                INSERT INTO daily_nutrition (
+                    epochDay, consumedCalories, consumedProteinGrams, consumedCarbsGrams,
+                    consumedFatGrams, updatedAtEpochMillis
+                ) VALUES (20640, 500, 30, 60, 15, 1000)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            9,
+            true,
+            GymDatabase.MIGRATION_8_9,
+        ).use { migrated ->
+            assertEquals(500, migrated.singleInt("SELECT consumedCalories FROM daily_nutrition WHERE epochDay = 20640"))
+            assertEquals(0, migrated.singleInt("SELECT COUNT(*) FROM meal_templates"))
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)

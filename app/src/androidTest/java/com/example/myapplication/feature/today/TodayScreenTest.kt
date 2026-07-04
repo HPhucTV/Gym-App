@@ -5,6 +5,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.ui.theme.GymAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -91,6 +93,36 @@ class TodayScreenTest {
         rule.runOnIdle { state.value = workoutState(8, "Bước mới") }
         rule.onAllNodesWithText("Bước cũ").assertCountEquals(0)
         rule.onAllNodesWithText("Bước mới").assertCountEquals(0)
+    }
+
+    @Test fun feedback_dialog_exposes_three_choices_and_dismiss_action() {
+        var selected: WorkoutDifficulty? = null
+        var dismissals = 0
+        rule.setContent {
+            GymAppTheme {
+                TodayScreen(
+                    state = TodayUiState.GoalComplete,
+                    onCheckedChange = { _, _ -> },
+                    onComplete = {},
+                    onRetry = {},
+                    pendingFeedback = PendingWorkoutFeedback(7L, 1L, 20640L),
+                    onDifficultySelected = { selected = it },
+                    onDismissFeedback = { dismissals++ },
+                )
+            }
+        }
+
+        rule.onNodeWithText("Buổi tập vừa rồi thế nào?").assertIsDisplayed()
+        rule.onNodeWithTag("feedback-hard").performClick()
+        rule.runOnIdle { assertEquals(WorkoutDifficulty.HARD, selected) }
+        rule.onNodeWithText("Để sau").performClick()
+        rule.runOnIdle { assertEquals(1, dismissals) }
+    }
+
+    @Test fun workout_displays_current_program_phase() {
+        setState(workoutState(7, "Bước một").copy(phase = ProgramPhase.DELOAD))
+
+        rule.onNodeWithText("Giai đoạn giảm tải").assertIsDisplayed()
     }
 
     private fun workoutState(sessionId: Long, instruction: String) = TodayUiState.Workout(

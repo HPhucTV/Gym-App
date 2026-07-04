@@ -132,6 +132,8 @@ fun GymApp(container: AppContainer) {
                             ),
                             cloudAiConsent = container.database.personalizationDao().observeProfile()
                                 .map { profile -> profile?.cloudAiConsent == true },
+                            feedbackRepository = container.workoutFeedbackRepository,
+                            movementBlocks = container.catalogRepository.movementBlocks,
                         )
                     }
                 }
@@ -148,6 +150,7 @@ fun GymApp(container: AppContainer) {
             }
             val state by todayViewModel.uiState.collectAsStateWithLifecycle()
             val celebrationState by todayViewModel.celebration.collectAsStateWithLifecycle()
+            val pendingFeedback by todayViewModel.pendingFeedback.collectAsStateWithLifecycle()
             TodayScreen(
                 state = state,
                 onCheckedChange = todayViewModel::setChecked,
@@ -158,6 +161,13 @@ fun GymApp(container: AppContainer) {
                 onRefreshCoachTip = todayViewModel::refreshCoachTip,
                 celebrationState = celebrationState,
                 onDismissCelebration = todayViewModel::dismissCelebration,
+                pendingFeedback = pendingFeedback,
+                onDifficultySelected = todayViewModel::submitDifficulty,
+                onDismissFeedback = todayViewModel::dismissFeedback,
+                onRequestSubstitution = todayViewModel::requestSubstitution,
+                onApplySubstitution = todayViewModel::applySubstitution,
+                onDismissSubstitution = todayViewModel::dismissSubstitution,
+                onApplyTimeBudget = todayViewModel::applyTimeBudget,
             )
         },
         progressContent = { onNavigateToCatalog ->
@@ -167,7 +177,8 @@ fun GymApp(container: AppContainer) {
                         ProgressViewModel(
                             container.workoutRepository,
                             container.catalogRepository.programs,
-                            container.catalogRepository.exercises
+                            container.catalogRepository.exercises,
+                            container.workoutFeedbackRepository,
                         ) { LocalDate.now().toEpochDay() }
                     }
                 }
@@ -235,11 +246,26 @@ fun GymApp(container: AppContainer) {
                 onBack = onBack,
                 onScan = nutritionViewModel::scanFood,
                 onScanBarcode = nutritionViewModel::scanBarcode,
-                onAccept = nutritionViewModel::acceptScanResult,
+                onAccept = nutritionViewModel::acceptDraft,
                 onDiscard = nutritionViewModel::discardScanResult,
                 onUpdateResult = nutritionViewModel::updateScanResult,
                 onClearSweat = nutritionViewModel::clearSweat,
-                onReset = nutritionViewModel::resetDaily
+                onReset = nutritionViewModel::resetDaily,
+                onStartManual = nutritionViewModel::startManualEntry,
+                onDraftName = nutritionViewModel::updateDraftName,
+                onDraftCalories = nutritionViewModel::updateDraftCalories,
+                onDraftProtein = nutritionViewModel::updateDraftProtein,
+                onDraftCarbs = nutritionViewModel::updateDraftCarbs,
+                onDraftFat = nutritionViewModel::updateDraftFat,
+                onDraftSaveAsTemplate = nutritionViewModel::setDraftSaveAsTemplate,
+                onApplyTemplate = nutritionViewModel::applyTemplate,
+                onRequestDeleteTemplate = nutritionViewModel::requestDeleteTemplate,
+                onCancelDeleteTemplate = nutritionViewModel::cancelDeleteTemplate,
+                onConfirmDeleteTemplate = nutritionViewModel::confirmDeleteTemplate,
+                onStartRenameTemplate = nutritionViewModel::startRenameTemplate,
+                onUpdateTemplateName = nutritionViewModel::updateTemplateName,
+                onCancelRenameTemplate = nutritionViewModel::cancelRenameTemplate,
+                onConfirmRenameTemplate = nutritionViewModel::confirmRenameTemplate,
             )
         },
         profileContent = { onBack, onNavigateToSettings ->
@@ -282,6 +308,7 @@ fun GymApp(container: AppContainer) {
                         com.example.myapplication.feature.checkin.WeeklyCheckInViewModel(
                             personalizationDao = container.database.personalizationDao(),
                             nutritionRepository = container.nutritionRepository,
+                            adaptationCoordinator = container.weeklyAdaptationCoordinator,
                         )
                     }
                 }

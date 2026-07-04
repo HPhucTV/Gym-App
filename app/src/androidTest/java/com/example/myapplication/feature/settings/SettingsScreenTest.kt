@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.example.myapplication.core.program.ScheduleChangePreview
+import com.example.myapplication.core.program.SessionDateChange
 
 @RunWith(AndroidJUnit4::class)
 class SettingsScreenTest {
@@ -63,6 +65,37 @@ class SettingsScreenTest {
         rule.onNodeWithText("Đổi mục tiêu").assertIsNotEnabled()
         rule.onAllNodesWithText("Dinh dưỡng").assertCountEquals(0)
         rule.onAllNodesWithText("Tài khoản").assertCountEquals(0)
+    }
+
+    @Test fun schedule_preview_shows_changes_warnings_and_confirmation_actions() {
+        var cancelled = 0
+        var confirmed = 0
+        val state = content().copy(
+            currentSessionId = 7,
+            currentDueEpochDay = 100,
+            schedulePreview = ScheduleChangePreview(
+                changes = listOf(SessionDateChange(7, 100, 105)),
+                warningsVi = listOf("Ngày đã chọn không phải ngày tập thường lệ."),
+            ),
+        )
+        rule.setContent {
+            GymAppTheme {
+                SettingsScreen(
+                    state = state,
+                    onRest = {}, onReminder = {}, onTime = { _, _ -> },
+                    onServerUrlChanged = {}, onDarkModeChanged = {},
+                    onRequestReplace = {}, onRequestDelete = {}, onCancel = {}, onConfirm = {},
+                    onNavigateToProfile = {}, onNavigateToCheckIn = {}, onNavigateToRecommendations = {},
+                    onRequestScheduleDate = {},
+                    onCancelSchedulePreview = { cancelled++ },
+                    onConfirmScheduleChange = { confirmed++ },
+                )
+            }
+        }
+
+        rule.onNodeWithText("Ngày đã chọn không phải ngày tập thường lệ.").assertIsDisplayed()
+        rule.onNodeWithText("Hủy").performClick()
+        rule.runOnIdle { assertEquals(1, cancelled); assertEquals(0, confirmed) }
     }
 
     private fun content() = SettingsUiState.Content(

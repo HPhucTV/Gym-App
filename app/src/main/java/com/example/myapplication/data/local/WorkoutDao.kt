@@ -59,6 +59,9 @@ interface WorkoutDao {
     )
     fun observeCompletedSessions(): Flow<List<CompletedSessionRow>>
 
+    @Query("SELECT * FROM workout_sessions ORDER BY goalId ASC, sequenceIndex ASC, id ASC")
+    fun observeWorkoutHistory(): Flow<List<WorkoutSessionEntity>>
+
     @Insert
     suspend fun insertGoal(goal: GoalEntity): Long
 
@@ -82,8 +85,38 @@ interface WorkoutDao {
 
     @Query(
         """
+        UPDATE session_exercises
+        SET originalExerciseId = COALESCE(originalExerciseId, exerciseId),
+            exerciseId = :replacementExerciseId
+        WHERE sessionId = :sessionId AND orderIndex = :orderIndex AND checked = 0
+          AND omittedByTimeBudget = 0
+          AND EXISTS (
+            SELECT 1 FROM workout_sessions target
+            INNER JOIN goals target_goal ON target_goal.id = target.goalId
+            WHERE target.id = session_exercises.sessionId
+              AND target.completedEpochDay IS NULL
+              AND target_goal.archived = 0
+              AND target.id = (
+                SELECT candidate.id FROM workout_sessions candidate
+                INNER JOIN goals active_goal ON active_goal.id = candidate.goalId
+                WHERE active_goal.archived = 0 AND candidate.completedEpochDay IS NULL
+                ORDER BY candidate.sequenceIndex ASC, candidate.id ASC
+                LIMIT 1
+              )
+          )
+        """,
+    )
+    suspend fun substituteCurrentExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): Int
+
+    @Query(
+        """
         UPDATE session_exercises SET checked = :checked
         WHERE sessionId = :sessionId AND orderIndex = :orderIndex
+          AND omittedByTimeBudget = 0
           AND EXISTS (
             SELECT 1 FROM workout_sessions target
             INNER JOIN goals target_goal ON target_goal.id = target.goalId
@@ -102,8 +135,22 @@ interface WorkoutDao {
     )
     suspend fun setCurrentExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean): Int
 
-    @Query("SELECT COUNT(*) FROM session_exercises WHERE sessionId = :sessionId AND checked = 0")
+    @Query("SELECT COUNT(*) FROM session_exercises WHERE sessionId = :sessionId AND checked = 0 AND omittedByTimeBudget = 0")
     suspend fun countUnchecked(sessionId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM session_exercises WHERE sessionId = :sessionId AND checked = 1")
+    suspend fun countChecked(sessionId: Long): Int
+
+    @Query("UPDATE workout_sessions SET selectedTimeBudgetMinutes = :minutes WHERE id = :sessionId")
+    suspend fun updateSelectedTimeBudget(sessionId: Long, minutes: Int?): Int
+
+    @Query("UPDATE session_exercises SET omittedByTimeBudget = :omitted WHERE sessionId = :sessionId")
+    suspend fun setAllExercisesOmittedByTimeBudget(sessionId: Long, omitted: Boolean): Int
+
+    @Query(
+        "UPDATE session_exercises SET omittedByTimeBudget = 0 WHERE sessionId = :sessionId AND orderIndex IN (:orderIndices)",
+    )
+    suspend fun activateExercisesForTimeBudget(sessionId: Long, orderIndices: List<Int>): Int
 
     @Query("SELECT * FROM workout_sessions WHERE id = :sessionId LIMIT 1")
     suspend fun getSession(sessionId: Long): WorkoutSessionEntity?
@@ -118,6 +165,25 @@ interface WorkoutDao {
         """,
     )
     suspend fun getCurrentSessionId(): Long?
+
+    @Query(
+        """
+        SELECT workout_sessions.id FROM workout_sessions
+        INNER JOIN goals ON goals.id = workout_sessions.goalId
+        WHERE goals.archived = 0 AND workout_sessions.completedEpochDay IS NULL
+        ORDER BY workout_sessions.sequenceIndex ASC, workout_sessions.id ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getUpcomingIncompleteSessionIds(limit: Int): List<Long>
+
+    @Query(
+        """
+        UPDATE workout_sessions SET volumeScalePercent = :percent
+        WHERE id IN (:sessionIds) AND completedEpochDay IS NULL
+        """,
+    )
+    suspend fun updateIncompleteSessionVolumeScale(sessionIds: List<Long>, percent: Int): Int
 
     @Query(
         """

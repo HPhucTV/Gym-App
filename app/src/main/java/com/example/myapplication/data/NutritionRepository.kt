@@ -12,6 +12,8 @@ import com.example.myapplication.core.nutrition.Nutrients
 import com.example.myapplication.core.nutrition.NutritionDay
 import com.example.myapplication.core.nutrition.NutritionTarget
 import com.example.myapplication.core.nutrition.NutritionTargetAudit
+import com.example.myapplication.core.nutrition.MealTemplate
+import com.example.myapplication.data.local.MealTemplateEntity
 import com.example.myapplication.data.local.DailyNutritionEntity
 import com.example.myapplication.data.local.PersonalizationDao
 import java.io.IOException
@@ -73,6 +75,11 @@ interface NutritionRepository {
     fun observeDay(epochDay: Long): Flow<NutritionDay>
     fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<NutritionDay>>
     fun observeAllNutrition(): Flow<List<NutritionDay>>
+    fun observeMealTemplates(): Flow<List<MealTemplate>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    suspend fun saveMealTemplate(id: Long?, nameVi: String, nutrients: Nutrients): Long =
+        throw UnsupportedOperationException("Meal templates are unavailable")
+    suspend fun deleteMealTemplate(id: Long) = Unit
+    suspend fun applyMealTemplate(id: Long, epochDay: Long) = Unit
     suspend fun addNutrients(epochDay: Long, nutrients: Nutrients, source: EntrySource)
     suspend fun setTarget(epochDay: Long, target: NutritionTarget)
     suspend fun setSweatPayment(exerciseId: String, exerciseName: String, extraSets: Int, active: Boolean)
@@ -132,6 +139,50 @@ class RoomNutritionRepository(
         emitAll(
             personalizationDao.observeAllNutrition()
                 .map { rows -> rows.map { it.toNutritionDay(it.epochDay) } }
+        )
+    }
+
+    override fun observeMealTemplates(): Flow<List<MealTemplate>> =
+        personalizationDao.observeMealTemplates().map { rows -> rows.map(MealTemplateEntity::toDomain) }
+
+    override suspend fun saveMealTemplate(
+        id: Long?,
+        nameVi: String,
+        nutrients: Nutrients,
+    ): Long {
+        val normalizedName = nameVi.trim()
+        require(normalizedName.length in 1..60) { "Meal template name must contain 1..60 characters" }
+        require(nutrients.calories > 0) { "Calories must be greater than zero" }
+        require(
+            nutrients.proteinGrams >= 0 && nutrients.carbsGrams >= 0 && nutrients.fatGrams >= 0,
+        ) { "Nutrients must be non-negative" }
+        val duplicate = personalizationDao.mealTemplateByNameNow(normalizedName)
+        require(duplicate == null || duplicate.id == id) { "Meal template name already exists" }
+        val entity = MealTemplateEntity(
+            id = id ?: 0,
+            nameVi = normalizedName,
+            calories = nutrients.calories,
+            proteinGrams = nutrients.proteinGrams,
+            carbsGrams = nutrients.carbsGrams,
+            fatGrams = nutrients.fatGrams,
+            updatedAtEpochMillis = nowEpochMillis(),
+        )
+        if (id == null) return personalizationDao.insertMealTemplate(entity)
+        require(personalizationDao.updateMealTemplate(entity) == 1) { "Unknown meal template $id" }
+        return id
+    }
+
+    override suspend fun deleteMealTemplate(id: Long) {
+        personalizationDao.deleteMealTemplate(id)
+    }
+
+    override suspend fun applyMealTemplate(id: Long, epochDay: Long) {
+        ensureLegacyMigration()
+        personalizationDao.applyMealTemplateToDay(
+            id = id,
+            epochDay = epochDay,
+            source = EntrySource.TEMPLATE.name,
+            updatedAtEpochMillis = nowEpochMillis(),
         )
     }
 
@@ -347,3 +398,10 @@ private fun DailyNutritionEntity.toNutritionTarget(): NutritionTarget? {
         ),
     )
 }
+
+private fun MealTemplateEntity.toDomain() = MealTemplate(
+    id = id,
+    nameVi = nameVi,
+    nutrients = Nutrients(calories, proteinGrams, carbsGrams, fatGrams),
+    updatedAtEpochMillis = updatedAtEpochMillis,
+)

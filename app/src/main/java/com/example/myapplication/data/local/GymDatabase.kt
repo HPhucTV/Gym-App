@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myapplication.core.adaptation.AdaptationKind
 import com.example.myapplication.core.adaptation.AdaptationMode
 import com.example.myapplication.core.adaptation.AdaptationStatus
+import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.model.EquipmentProfile
 import com.example.myapplication.core.model.ExperienceLevel
 import com.example.myapplication.core.model.FitnessGoal
@@ -26,6 +27,8 @@ class WorkoutTypeConverters {
     @TypeConverter fun stringToEquipmentProfile(value: String): EquipmentProfile = EquipmentProfile.valueOf(value)
     @TypeConverter fun restDayModeToString(value: RestDayMode): String = value.name
     @TypeConverter fun stringToRestDayMode(value: String): RestDayMode = RestDayMode.valueOf(value)
+    @TypeConverter fun workoutDifficultyToString(value: WorkoutDifficulty): String = value.name
+    @TypeConverter fun stringToWorkoutDifficulty(value: String): WorkoutDifficulty = WorkoutDifficulty.valueOf(value)
 }
 
 class PersonalizationTypeConverters {
@@ -54,9 +57,10 @@ class PersonalizationTypeConverters {
         WeeklyCheckInEntity::class,
         AdaptationDecisionEntity::class,
         AchievementEntity::class,
-        UserFoodOverrideEntity::class,
+        WorkoutFeedbackEntity::class,
+        MealTemplateEntity::class,
     ],
-    version = 5,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(WorkoutTypeConverters::class, PersonalizationTypeConverters::class)
@@ -64,21 +68,78 @@ abstract class GymDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
     abstract fun personalizationDao(): PersonalizationDao
     abstract fun achievementDao(): AchievementDao
+    abstract fun workoutFeedbackDao(): WorkoutFeedbackDao
 
     companion object {
+        val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `meal_templates` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `nameVi` TEXT COLLATE NOCASE NOT NULL,
+                        `calories` INTEGER NOT NULL,
+                        `proteinGrams` INTEGER NOT NULL,
+                        `carbsGrams` INTEGER NOT NULL,
+                        `fatGrams` INTEGER NOT NULL,
+                        `updatedAtEpochMillis` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_meal_templates_nameVi` ON `meal_templates` (`nameVi`)",
+                )
+            }
+        }
+
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `session_exercises` ADD COLUMN `omittedByTimeBudget` INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL(
+                    "ALTER TABLE `workout_sessions` ADD COLUMN `selectedTimeBudgetMinutes` INTEGER",
+                )
+            }
+        }
+
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `session_exercises` ADD COLUMN `originalExerciseId` TEXT",
+                )
+            }
+        }
+
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `workout_sessions` ADD COLUMN `volumeScalePercent` INTEGER NOT NULL DEFAULT 100",
+                )
+            }
+        }
+
         val MIGRATION_4_5: Migration = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS `user_food_overrides` (
-                        `dishName` TEXT NOT NULL,
-                        `totalCalories` INTEGER NOT NULL,
-                        `proteinGrams` INTEGER NOT NULL,
-                        `carbsGrams` INTEGER NOT NULL,
-                        `fatGrams` INTEGER NOT NULL,
-                        PRIMARY KEY(`dishName`)
+                    CREATE TABLE IF NOT EXISTS `workout_feedback` (
+                        `sessionId` INTEGER NOT NULL,
+                        `goalId` INTEGER NOT NULL,
+                        `completedEpochDay` INTEGER NOT NULL,
+                        `difficulty` TEXT NOT NULL,
+                        `recordedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS `index_workout_feedback_goalId_completedEpochDay`
+                    ON `workout_feedback` (`goalId`, `completedEpochDay`)
+                    """.trimIndent(),
                 )
             }
         }

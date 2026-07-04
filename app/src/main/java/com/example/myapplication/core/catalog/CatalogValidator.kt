@@ -2,12 +2,30 @@ package com.example.myapplication.core.catalog
 
 import com.example.myapplication.core.model.ExerciseDefinition
 import com.example.myapplication.core.model.ProgramTemplate
+import com.example.myapplication.core.model.MovementBlock
 
 object CatalogValidator {
     private val validId = Regex("[a-z0-9_]+")
 
+    fun validateMovementBlocks(blocks: List<MovementBlock>): List<String> {
+        val issues = mutableListOf<String>()
+        blocks.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys.sorted().forEach {
+            issues += "Duplicate movement block id: $it"
+        }
+        blocks.forEach { block ->
+            if (!validId.matches(block.id)) issues += "Movement block id '${block.id}' must match [a-z0-9_]+"
+            if (block.titleVi.isBlank()) issues += "Movement block '${block.id}' has blank titleVi"
+            if (block.movementPatterns.isEmpty()) issues += "Movement block '${block.id}' movementPatterns must not be empty"
+            if (block.stepsVi.size !in 2..6) issues += "Movement block '${block.id}' stepsVi must contain 2..6 items"
+            if (block.stepsVi.any { it.isBlank() }) issues += "Movement block '${block.id}' has a blank step"
+            if (block.estimatedMinutes !in 2..10) issues += "Movement block '${block.id}' estimatedMinutes must be in 2..10"
+        }
+        return issues
+    }
+
     fun validateExercises(exercises: List<ExerciseDefinition>): List<String> {
         val issues = mutableListOf<String>()
+        val exercisesById = exercises.associateBy(ExerciseDefinition::id)
 
         exercises.groupingBy { it.id }
             .eachCount()
@@ -34,6 +52,29 @@ object CatalogValidator {
             }
             if (exercise.equipment.isEmpty()) {
                 issues += "Exercise '${exercise.id}' must declare equipment"
+            }
+            exercise.substituteIds.groupingBy { it }.eachCount()
+                .filterValues { it > 1 }
+                .keys
+                .sorted()
+                .forEach { duplicate ->
+                    issues += "Exercise '${exercise.id}' has duplicate substitute '$duplicate'"
+                }
+            exercise.substituteIds.distinct().forEach { substituteId ->
+                when {
+                    substituteId == exercise.id -> {
+                        issues += "Exercise '${exercise.id}' cannot substitute itself"
+                    }
+                    substituteId !in exercisesById -> {
+                        issues += "Exercise '${exercise.id}': Unknown substitute '$substituteId'"
+                    }
+                    exercisesById.getValue(substituteId).primaryMuscle != exercise.primaryMuscle -> {
+                        issues += "Exercise '${exercise.id}' substitute '$substituteId' must use the same primary muscle"
+                    }
+                    exercisesById.getValue(substituteId).movementPattern != exercise.movementPattern -> {
+                        issues += "Exercise '${exercise.id}' substitute '$substituteId' must use the same movement pattern"
+                    }
+                }
             }
         }
 

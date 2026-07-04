@@ -2,6 +2,11 @@ package com.example.myapplication.feature.today
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
+import com.example.myapplication.core.program.ProgramPhasePlanner
+import com.example.myapplication.core.catalog.ExerciseSubstitutionEngine
+import com.example.myapplication.core.catalog.MovementBlockPlanner
 import com.example.myapplication.core.model.*
 import com.example.myapplication.data.*
 import kotlinx.coroutines.CancellationException
@@ -26,13 +31,51 @@ class TodayViewModel(
     private val achievementChecker: com.example.myapplication.core.achievement.AchievementChecker? = null,
     private val coachCoordinator: TodayCoachCoordinator? = null,
     private val cloudAiConsent: Flow<Boolean> = flowOf(false),
+    private val feedbackRepository: WorkoutFeedbackRepository? = null,
+    private val movementBlocks: List<MovementBlock> = emptyList(),
     private val currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : ViewModel() {
     private val _celebration = MutableStateFlow(CelebrationState())
     val celebration: StateFlow<CelebrationState> = _celebration.asStateFlow()
+    private val _pendingFeedback = MutableStateFlow<PendingWorkoutFeedback?>(null)
+    val pendingFeedback: StateFlow<PendingWorkoutFeedback?> = _pendingFeedback.asStateFlow()
 
     fun dismissCelebration() {
         _celebration.value = CelebrationState()
+    }
+
+    fun dismissFeedback() {
+        if (_pendingFeedback.value?.saving != true) _pendingFeedback.value = null
+    }
+
+    fun submitDifficulty(difficulty: WorkoutDifficulty) {
+        val pending = _pendingFeedback.value ?: return
+        if (pending.saving) return
+        val repository = feedbackRepository ?: return
+        _pendingFeedback.value = pending.copy(
+            saving = true,
+            selectedDifficulty = difficulty,
+            error = null,
+        )
+        viewModelScope.launch {
+            try {
+                repository.save(
+                    sessionId = pending.sessionId,
+                    goalId = pending.goalId,
+                    completedEpochDay = pending.completedEpochDay,
+                    difficulty = difficulty,
+                )
+                _pendingFeedback.value = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _pendingFeedback.value = pending.copy(
+                    saving = false,
+                    selectedDifficulty = difficulty,
+                    error = "Không thể lưu đánh giá. Vui lòng thử lại.",
+                )
+            }
+        }
     }
 
     private data class Operations(
@@ -51,6 +94,7 @@ class TodayViewModel(
     )
 
     private val catalog = exercises.associateBy { it.id }
+    private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
     private val today = MutableStateFlow(currentEpochDay())
     private val operations = MutableStateFlow(Operations())
     private val commandMutex = Mutex()
@@ -111,6 +155,118 @@ class TodayViewModel(
         }
     }
 
+    fun requestSubstitution(orderIndex: Int) {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        val row = state.rows.firstOrNull { it.orderIndex == orderIndex } ?: return
+        if (row.checked || orderIndex in state.pendingOrderIndices) return
+        val profile = lastGoalConfig?.equipmentProfile ?: return
+        val originalId = row.originalExerciseId ?: row.exerciseId
+        val candidates = buildList {
+            if (row.originalExerciseId != null && row.exerciseId != originalId) {
+                catalog[originalId]?.let(::add)
+            }
+            addAll(substitutionEngine.candidates(originalId, profile).filter { it.id != row.exerciseId })
+        }.distinctBy { it.id }.take(3)
+
+        if (candidates.isEmpty()) {
+            val message = "Không có bài thay thế phù hợp với thiết bị hiện tại."
+            operations.update {
+                it.copy(
+                    interactionError = state.sessionId to message,
+                )
+            }
+            _uiState.value = state.copy(interactionError = message, substitution = null)
+            return
+        }
+        _uiState.value = state.copy(
+            interactionError = null,
+            substitution = ExerciseSubstitutionUi(
+                orderIndex = orderIndex,
+                currentNameVi = row.nameVi,
+                candidates = candidates.map { candidate ->
+                    ExerciseSubstitutionCandidateUi(
+                        exerciseId = candidate.id,
+                        nameVi = candidate.nameVi,
+                        equipment = candidate.equipment,
+                        instructionsVi = candidate.instructionsVi,
+                        restoresOriginal = candidate.id == row.originalExerciseId,
+                    )
+                },
+            ),
+        )
+    }
+
+    fun dismissSubstitution() {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        _uiState.value = state.copy(substitution = null)
+    }
+
+    fun applySubstitution(replacementExerciseId: String) {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        val dialog = state.substitution ?: return
+        if (dialog.candidates.none { it.exerciseId == replacementExerciseId }) return
+        _uiState.value = state.copy(substitution = null)
+        operations.update {
+            it.copy(
+                pending = it.pending + (state.sessionId to dialog.orderIndex),
+                interactionError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                when (repository.substituteExercise(state.sessionId, dialog.orderIndex, replacementExerciseId)) {
+                    ExerciseSubstitutionResult.Applied -> Unit
+                    ExerciseSubstitutionResult.InvalidCandidate -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Bài thay thế không còn phù hợp.")
+                    }
+                    ExerciseSubstitutionResult.StaleSession -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Buổi tập đã thay đổi. Vui lòng thử lại.")
+                    }
+                    ExerciseSubstitutionResult.AlreadyChecked -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Bỏ đánh dấu hoàn thành trước khi thay bài.")
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                operations.update {
+                    it.copy(interactionError = state.sessionId to "Không thể thay bài. Vui lòng thử lại.")
+                }
+            } finally {
+                operations.update {
+                    it.copy(pending = it.pending - (state.sessionId to dialog.orderIndex))
+                }
+            }
+        }
+    }
+
+    fun applyTimeBudget(minutes: Int?) {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        if (!state.canChangeTimeBudget || state.selectedTimeBudgetMinutes == minutes) return
+        viewModelScope.launch {
+            try {
+                when (repository.applyTimeBudget(state.sessionId, minutes)) {
+                    TimeBudgetResult.Applied -> Unit
+                    TimeBudgetResult.InvalidBudget -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Thời lượng đã chọn không hợp lệ.")
+                    }
+                    TimeBudgetResult.HasCheckedExercises -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Không thể đổi thời lượng sau khi đã bắt đầu tập.")
+                    }
+                    TimeBudgetResult.StaleSession -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Buổi tập đã thay đổi. Vui lòng thử lại.")
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                operations.update {
+                    it.copy(interactionError = state.sessionId to "Không thể đổi thời lượng. Vui lòng thử lại.")
+                }
+            }
+        }
+    }
+
     fun completeWorkout() {
         val state = _uiState.value as? TodayUiState.Workout ?: return
         if (!state.canComplete || operations.value.completingSessionId != null ||
@@ -134,9 +290,17 @@ class TodayViewModel(
         operations.update { it.copy(completingSessionId = sessionId, completionError = null) }
         viewModelScope.launch {
             try {
-                val result = commandMutex.withLock { repository.completeWorkout(sessionId, currentEpochDay()) }
+                val completedEpochDay = currentEpochDay()
+                val result = commandMutex.withLock { repository.completeWorkout(sessionId, completedEpochDay) }
                 when (result) {
                     CompleteWorkoutResult.Completed -> {
+                        if (feedbackRepository != null && workoutState != null) {
+                            _pendingFeedback.value = PendingWorkoutFeedback(
+                                sessionId = sessionId,
+                                goalId = workoutState.goalId,
+                                completedEpochDay = completedEpochDay,
+                            )
+                        }
                         nutritionRepository?.clearSweatPayment()
                         val completed = repository.observeCompletedWorkouts().first()
                         val activeGoal = repository.observeActiveGoal().first()
@@ -292,11 +456,24 @@ class TodayViewModel(
 
             WorkoutRowUi(exercise.orderIndex, definition.nameVi, finalPrescriptionText,
                 exercise.prescription.restSeconds, definition.instructionsVi, exercise.checked, exercise.exerciseId,
-                definition.primaryMuscle)
+                definition.primaryMuscle, exercise.originalExerciseId)
         }
         val pending = ops.pending.filter { it.first == session.id }.map { it.second }.toSet()
         val checked = rows.count { it.checked }
+        val activePatterns = rows.mapNotNull { row -> catalog[row.exerciseId]?.movementPattern }.toSet()
+        val warmUp = movementBlocks.takeIf { it.isNotEmpty() }?.let {
+            MovementBlockPlanner.select(it, MovementBlockKind.WARM_UP, activePatterns).toUi()
+        }
+        val coolDown = movementBlocks.takeIf { it.isNotEmpty() }?.let {
+            MovementBlockPlanner.select(it, MovementBlockKind.COOL_DOWN, activePatterns).toUi()
+        }
         val hour = try { java.time.LocalTime.now().hour } catch (_: Exception) { 8 }
+        val phase = runCatching {
+            val durationWeeks = goal.config.durationWeeks.coerceAtLeast(1)
+            val week = (session.sequenceIndex / goal.config.sessionsPerWeek.coerceAtLeast(1) + 1)
+                .coerceIn(1, durationWeeks)
+            ProgramPhasePlanner.phaseFor(week, durationWeeks)
+        }.getOrDefault(ProgramPhase.FOUNDATION)
         return TodayUiState.Workout(
             sessionId = session.id,
             titleVi = session.titleVi,
@@ -312,9 +489,23 @@ class TodayViewModel(
             greetingHour = hour,
             coachTip = coachTip,
             isRefreshingCoach = refreshingCoach,
+            goalId = goal.id,
+            phase = phase,
+            selectedTimeBudgetMinutes = session.selectedTimeBudgetMinutes,
+            omittedExerciseCount = session.omittedExerciseCount,
+            canChangeTimeBudget = checked == 0 && pending.isEmpty() && ops.completingSessionId == null,
+            warmUp = warmUp,
+            coolDown = coolDown,
         )
     }
 }
+
+private fun MovementBlock.toUi() = AdvisoryMovementBlockUi(
+    id = id,
+    titleVi = titleVi,
+    stepsVi = stepsVi,
+    estimatedMinutes = estimatedMinutes,
+)
 
 private fun ExercisePrescription.displayText(): String = when {
     durationSeconds != null -> "$durationSeconds giây"

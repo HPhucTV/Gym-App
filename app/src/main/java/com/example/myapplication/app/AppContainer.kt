@@ -20,12 +20,17 @@ class AppContainer(context: Context) {
             GymDatabase.MIGRATION_1_2,
             GymDatabase.MIGRATION_2_3,
             GymDatabase.MIGRATION_3_4,
-            GymDatabase.MIGRATION_4_5
+            GymDatabase.MIGRATION_4_5,
+            GymDatabase.MIGRATION_5_6,
+            GymDatabase.MIGRATION_6_7,
+            GymDatabase.MIGRATION_7_8,
+            GymDatabase.MIGRATION_8_9,
         )
         .build()
 
     val catalogRepository = AssetCatalogRepository(applicationContext)
-    val workoutRepository = RoomWorkoutRepository(database)
+    val workoutRepository = RoomWorkoutRepository(database, catalogRepository.exercises)
+    val workoutFeedbackRepository = com.example.myapplication.data.RoomWorkoutFeedbackRepository(database)
     val settingsRepository = DataStoreSettingsRepository(applicationContext)
     val reminderScheduler = AlarmReminderScheduler(applicationContext)
     val nutritionRepository = com.example.myapplication.data.RoomNutritionRepository(database.personalizationDao(), com.example.myapplication.data.DataStoreNutritionPreferences(applicationContext), { java.time.LocalDate.now().toEpochDay() })
@@ -33,6 +38,16 @@ class AppContainer(context: Context) {
         database = database,
         personalizationDao = database.personalizationDao(),
         nutritionRepository = nutritionRepository
+    )
+    private val weeklySnapshotProvider = com.example.myapplication.data.RoomWeeklySnapshotProvider(
+        personalizationDao = database.personalizationDao(),
+        workoutRepository = workoutRepository,
+        feedbackRepository = workoutFeedbackRepository,
+        nutritionRepository = nutritionRepository,
+    )
+    val weeklyAdaptationCoordinator = com.example.myapplication.data.WeeklyAdaptationCoordinator(
+        snapshotProvider = weeklySnapshotProvider,
+        adaptationRepository = adaptationRepository,
     )
     val coachExplanationClient = com.example.myapplication.data.OkHttpCoachExplanationClient()
     val coachReviewClient = com.example.myapplication.data.OkHttpCoachReviewClient()

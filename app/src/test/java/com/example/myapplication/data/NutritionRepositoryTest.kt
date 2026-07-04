@@ -10,6 +10,7 @@ import com.example.myapplication.data.local.PersonalProfileEntity
 import com.example.myapplication.data.local.PersonalizationDao
 import com.example.myapplication.data.local.WeeklyCheckInEntity
 import com.example.myapplication.data.local.WeightMeasurementEntity
+import com.example.myapplication.data.local.MealTemplateEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -128,6 +129,57 @@ class NutritionRepositoryTest {
         assertEquals(2400, day.target!!.calories)
     }
 
+    @Test
+    fun `meal templates normalize validate and enforce case insensitive names`() = runTest {
+        val repository = repository(FakePersonalizationDao())
+        val nutrients = Nutrients(450, 30, 50, 12)
+        suspend fun expectInvalid(block: suspend () -> Unit) {
+            var thrown = false
+            try {
+                block()
+            } catch (_: IllegalArgumentException) {
+                thrown = true
+            }
+            assertTrue(thrown)
+        }
+
+        val id = repository.saveMealTemplate(null, "  Cơm gà  ", nutrients)
+        assertEquals("Cơm gà", repository.observeMealTemplates().first().single().nameVi)
+        expectInvalid { repository.saveMealTemplate(null, "cƠM GÀ", nutrients) }
+        listOf(
+            "" to nutrients,
+            "a".repeat(61) to nutrients,
+            "Sai" to nutrients.copy(calories = 0),
+            "Âm" to nutrients.copy(proteinGrams = -1),
+        ).forEach { (name, invalid) ->
+            expectInvalid { repository.saveMealTemplate(null, name, invalid) }
+        }
+        assertTrue(id > 0)
+    }
+
+    @Test
+    fun `saving same id updates and applying once adds one total`() = runTest {
+        val dao = FakePersonalizationDao()
+        val repository = repository(dao)
+        val id = repository.saveMealTemplate(null, "Bữa sáng", Nutrients(300, 20, 35, 8))
+        assertEquals(id, repository.saveMealTemplate(id, "Bữa sáng nhanh", Nutrients(350, 25, 40, 9)))
+
+        repository.applyMealTemplate(id, 20636L)
+
+        val day = repository.observeDay(20636L).first()
+        assertEquals(Nutrients(350, 25, 40, 9), day.consumed)
+        repository.deleteMealTemplate(id)
+        assertTrue(repository.observeMealTemplates().first().isEmpty())
+        assertEquals(Nutrients(350, 25, 40, 9), repository.observeDay(20636L).first().consumed)
+    }
+
+    private fun repository(dao: FakePersonalizationDao) = RoomNutritionRepository(
+        personalizationDao = dao,
+        legacyPreferences = FakeLegacyNutritionPreferences(),
+        todayEpochDay = { 20636L },
+        nowEpochMillis = { 1000L },
+    )
+
     private fun target() = NutritionTarget(
         basalCalories = 1700,
         maintenanceCalories = 2600,
@@ -148,6 +200,8 @@ class NutritionRepositoryTest {
 
 private class FakePersonalizationDao : PersonalizationDao {
     private val nutritionRows = MutableStateFlow<Map<Long, DailyNutritionEntity>>(emptyMap())
+    private val mealRows = MutableStateFlow<Map<Long, MealTemplateEntity>>(emptyMap())
+    private var nextMealId = 1L
 
     override suspend fun upsertProfile(profile: PersonalProfileEntity) = Unit
     override fun observeProfile(): Flow<PersonalProfileEntity?> = MutableStateFlow(null)
@@ -179,12 +233,34 @@ private class FakePersonalizationDao : PersonalizationDao {
             .filter { it.epochDay in startEpochDay..endEpochDay }
             .sortedBy { it.epochDay }
 
+    override fun observeMealTemplates(): Flow<List<MealTemplateEntity>> =
+        mealRows.map { rows -> rows.values.sortedBy { it.nameVi.lowercase() } }
+    override suspend fun mealTemplateNow(id: Long): MealTemplateEntity? = mealRows.value[id]
+    override suspend fun mealTemplateByNameNow(nameVi: String): MealTemplateEntity? =
+        mealRows.value.values.firstOrNull { it.nameVi.equals(nameVi, ignoreCase = true) }
+    override suspend fun insertMealTemplate(template: MealTemplateEntity): Long {
+        val id = nextMealId++
+        mealRows.value = mealRows.value + (id to template.copy(id = id))
+        return id
+    }
+    override suspend fun updateMealTemplate(template: MealTemplateEntity): Int {
+        if (template.id !in mealRows.value) return 0
+        mealRows.value = mealRows.value + (template.id to template)
+        return 1
+    }
+    override suspend fun deleteMealTemplate(id: Long): Int {
+        val existed = id in mealRows.value
+        mealRows.value = mealRows.value - id
+        return if (existed) 1 else 0
+    }
+
     override suspend fun upsertWeeklyCheckIn(checkIn: WeeklyCheckInEntity) = Unit
     override fun observeLatestCheckIn(): Flow<WeeklyCheckInEntity?> = MutableStateFlow(null)
     override fun observeAllCheckIns(): Flow<List<WeeklyCheckInEntity>> = MutableStateFlow(emptyList())
     override suspend fun latestCheckInNow(): WeeklyCheckInEntity? = null
     override suspend fun insertDecision(decision: AdaptationDecisionEntity): Long = 1L
     override suspend fun updateDecisionStatus(id: Long, status: com.example.myapplication.core.adaptation.AdaptationStatus, resolvedAt: Long) = Unit
+    override suspend fun updateDecisionPayloads(id: Long, afterJson: String, undoJson: String) = Unit
     override suspend fun decisionByIdNow(id: Long): AdaptationDecisionEntity? = null
     override suspend fun latestDecisionByKindAndStatus(kind: com.example.myapplication.core.adaptation.AdaptationKind, status: com.example.myapplication.core.adaptation.AdaptationStatus): AdaptationDecisionEntity? = null
     override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = MutableStateFlow(emptyList())

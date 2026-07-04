@@ -37,6 +37,9 @@ fun SettingsRoute(
         onNavigateToProfile = onNavigateToProfile,
         onNavigateToCheckIn = onNavigateToCheckIn,
         onNavigateToRecommendations = onNavigateToRecommendations,
+        onRequestScheduleDate = viewModel::previewScheduleChange,
+        onCancelSchedulePreview = viewModel::cancelSchedulePreview,
+        onConfirmScheduleChange = viewModel::confirmScheduleChange,
         onBack = onNavigateToProfile
     )
 }

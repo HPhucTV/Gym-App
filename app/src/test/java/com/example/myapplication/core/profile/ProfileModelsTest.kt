@@ -105,6 +105,7 @@ class ProfileModelsTest {
                 AdaptationKind.RECOVERY_DAY,
                 AdaptationKind.WORKOUT_VOLUME,
                 AdaptationKind.PROGRAM_CHANGE,
+                AdaptationKind.DELOAD_WEEK,
             ),
             AdaptationKind.entries.toSet(),
         )

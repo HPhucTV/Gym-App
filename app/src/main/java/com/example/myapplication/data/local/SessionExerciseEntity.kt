@@ -21,10 +21,12 @@ data class SessionExerciseEntity(
     val sessionId: Long,
     val orderIndex: Int,
     val exerciseId: String,
+    val originalExerciseId: String? = null,
     val sets: Int,
     val repsMin: Int?,
     val repsMax: Int?,
     val durationSeconds: Int?,
     val restSeconds: Int,
     val checked: Boolean = false,
+    val omittedByTimeBudget: Boolean = false,
 )

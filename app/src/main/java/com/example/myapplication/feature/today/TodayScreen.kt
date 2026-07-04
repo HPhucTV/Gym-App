@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -40,6 +43,13 @@ fun TodayScreen(
     onRefreshCoachTip: () -> Unit = {},
     celebrationState: CelebrationState = CelebrationState(),
     onDismissCelebration: () -> Unit = {},
+    pendingFeedback: PendingWorkoutFeedback? = null,
+    onDifficultySelected: (WorkoutDifficulty) -> Unit = {},
+    onDismissFeedback: () -> Unit = {},
+    onRequestSubstitution: (Int) -> Unit = {},
+    onApplySubstitution: (String) -> Unit = {},
+    onDismissSubstitution: () -> Unit = {},
+    onApplyTimeBudget: (Int?) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -60,7 +70,9 @@ fun TodayScreen(
                 onComplete = onComplete,
                 onNavigateToCatalog = onNavigateToCatalog,
                 onNavigateToNutrition = onNavigateToNutrition,
-                onRefreshCoachTip = onRefreshCoachTip
+                onRefreshCoachTip = onRefreshCoachTip,
+                onRequestSubstitution = onRequestSubstitution,
+                onApplyTimeBudget = onApplyTimeBudget,
             )
         }
 
@@ -138,7 +150,120 @@ fun TodayScreen(
                 )
             }
         }
+
+        pendingFeedback?.let { feedback ->
+            WorkoutFeedbackDialog(
+                feedback = feedback,
+                onDifficultySelected = onDifficultySelected,
+                onDismiss = onDismissFeedback,
+            )
+        }
+
+        (state as? TodayUiState.Workout)?.substitution?.let { substitution ->
+            ExerciseSubstitutionDialog(
+                state = substitution,
+                onApply = onApplySubstitution,
+                onDismiss = onDismissSubstitution,
+            )
+        }
     }
+}
+
+@Composable
+private fun ExerciseSubstitutionDialog(
+    state: ExerciseSubstitutionUi,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thay ${state.currentNameVi}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                state.candidates.forEach { candidate ->
+                    OutlinedButton(
+                        onClick = { onApply(candidate.exerciseId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("substitute-${candidate.exerciseId}"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(
+                                if (candidate.restoresOriginal) "${candidate.nameVi} · Bài gốc" else candidate.nameVi,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                candidate.equipment.joinToString { it.name.lowercase().replace('_', ' ') },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            candidate.instructionsVi.firstOrNull()?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
+}
+
+@Composable
+private fun WorkoutFeedbackDialog(
+    feedback: PendingWorkoutFeedback,
+    onDifficultySelected: (WorkoutDifficulty) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!feedback.saving) onDismiss() },
+        title = {
+            Text(
+                text = "Buổi tập vừa rồi thế nào?",
+                color = MaterialTheme.colorScheme.customColors.primaryText,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Phản hồi này giúp điều chỉnh các buổi sau mà không cần ghi tạ hay số lần tập.",
+                    color = MaterialTheme.colorScheme.customColors.mutedText,
+                )
+                listOf(
+                    WorkoutDifficulty.EASY to "Quá nhẹ",
+                    WorkoutDifficulty.RIGHT to "Vừa sức",
+                    WorkoutDifficulty.HARD to "Quá nặng",
+                ).forEach { (difficulty, label) ->
+                    OutlinedButton(
+                        onClick = { onDifficultySelected(difficulty) },
+                        enabled = !feedback.saving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("feedback-${difficulty.name.lowercase()}"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(label)
+                    }
+                }
+                if (feedback.saving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                feedback.error?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !feedback.saving) {
+                Text("Để sau")
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
 }
 
 @Composable
@@ -295,6 +420,13 @@ private fun TodayHeaderCard(
                 Text(state.titleVi, style = MaterialTheme.typography.titleLarge, color = customColors.primaryText)
                 Spacer(Modifier.height(4.dp))
                 Text(
+                    state.phase.labelVi(),
+                    color = EnergyOrange,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
                     "${state.focusVi} · ${state.estimatedMinutes} phút",
                     color = customColors.mutedText,
                     style = MaterialTheme.typography.bodyMedium,
@@ -335,6 +467,13 @@ private fun TodayHeaderCard(
     }
 }
 
+internal fun ProgramPhase.labelVi(): String = when (this) {
+    ProgramPhase.FOUNDATION -> "Giai đoạn làm quen"
+    ProgramPhase.BUILD -> "Giai đoạn phát triển"
+    ProgramPhase.CONSOLIDATE -> "Giai đoạn củng cố"
+    ProgramPhase.DELOAD -> "Giai đoạn giảm tải"
+}
+
 // ── Workout Content ───────────────────────────────────────────────
 
 @Composable
@@ -345,6 +484,8 @@ private fun WorkoutContent(
     onNavigateToCatalog: () -> Unit,
     onNavigateToNutrition: () -> Unit,
     onRefreshCoachTip: () -> Unit,
+    onRequestSubstitution: (Int) -> Unit,
+    onApplyTimeBudget: (Int?) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -363,6 +504,44 @@ private fun WorkoutContent(
                 TodayHeaderCard(state, onNavigateToCatalog, onNavigateToNutrition)
             }
 
+            item(key = "time-budget") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Thời lượng buổi tập",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.primaryText,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        state.timeBudgetChoices.forEach { minutes ->
+                            FilterChip(
+                                selected = state.selectedTimeBudgetMinutes == minutes,
+                                onClick = { onApplyTimeBudget(minutes) },
+                                enabled = state.canChangeTimeBudget,
+                                label = { Text(minutes?.let { "$it phút" } ?: "Đầy đủ") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    if (state.omittedExerciseCount > 0) {
+                        Text(
+                            "${state.omittedExerciseCount} bài phụ được lược bớt",
+                            color = customColors.mutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+
+            state.warmUp?.let { block ->
+                item(key = "warmup:${block.id}") {
+                    AdvisoryMovementBlockCard("Khởi động", block)
+                }
+            }
+
             // AI Coach Tip card
             item(key = "coach-tip") {
                 AICoachTipCard(
@@ -378,12 +557,20 @@ private fun WorkoutContent(
                     state.sessionId,
                     row,
                     enabled = !state.isCompleting && row.orderIndex !in state.pendingOrderIndices,
-                ) { checked ->
-                    onCheckedChange(row.orderIndex, checked)
-                    if (checked && row.restSeconds > 0) {
-                        timerInitialSeconds = row.restSeconds
-                        timerVisible = true
-                    }
+                    onCheckedChange = { checked ->
+                        onCheckedChange(row.orderIndex, checked)
+                        if (checked && row.restSeconds > 0) {
+                            timerInitialSeconds = row.restSeconds
+                            timerVisible = true
+                        }
+                    },
+                    onSubstitute = { onRequestSubstitution(row.orderIndex) },
+                )
+            }
+
+            state.coolDown?.let { block ->
+                item(key = "cooldown:${block.id}") {
+                    AdvisoryMovementBlockCard("Thả lỏng", block)
                 }
             }
 
@@ -451,6 +638,43 @@ private fun WorkoutContent(
                     onFinished = { timerVisible = false },
                     onClose = { timerVisible = false }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdvisoryMovementBlockCard(
+    sectionLabel: String,
+    block: AdvisoryMovementBlockUi,
+) {
+    var expanded by rememberSaveable(block.id) { mutableStateOf(false) }
+    val customColors = MaterialTheme.colorScheme.customColors
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(sectionLabel, color = EnergyOrange, style = MaterialTheme.typography.labelMedium)
+                    Text(block.titleVi, color = customColors.primaryText, fontWeight = FontWeight.Bold)
+                    Text("${block.estimatedMinutes} phút · Không tính vào tiến độ", color = customColors.mutedText)
+                }
+                Text(if (expanded) "▲" else "▼", color = EnergyOrange)
+            }
+            if (expanded) {
+                block.stepsVi.forEachIndexed { index, step ->
+                    Text("${index + 1}. $step", color = customColors.primaryText)
+                }
             }
         }
     }

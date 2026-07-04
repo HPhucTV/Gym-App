@@ -232,6 +232,12 @@ private class FakePersonalizationDao : PersonalizationDao {
     override fun observeNutritionRange(startEpochDay: Long, endEpochDay: Long): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
     override fun observeAllNutrition(): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
     override suspend fun nutritionRangeNow(startEpochDay: Long, endEpochDay: Long): List<DailyNutritionEntity> = emptyList()
+    override fun observeMealTemplates(): Flow<List<com.example.myapplication.data.local.MealTemplateEntity>> = flowOf(emptyList())
+    override suspend fun mealTemplateNow(id: Long): com.example.myapplication.data.local.MealTemplateEntity? = null
+    override suspend fun mealTemplateByNameNow(nameVi: String): com.example.myapplication.data.local.MealTemplateEntity? = null
+    override suspend fun insertMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Long = 1L
+    override suspend fun updateMealTemplate(template: com.example.myapplication.data.local.MealTemplateEntity): Int = 0
+    override suspend fun deleteMealTemplate(id: Long): Int = 0
 
     override suspend fun upsertWeeklyCheckIn(checkIn: WeeklyCheckInEntity) {
         checkIns.add(checkIn)
@@ -242,6 +248,7 @@ private class FakePersonalizationDao : PersonalizationDao {
 
     override suspend fun insertDecision(decision: AdaptationDecisionEntity): Long = 0
     override suspend fun updateDecisionStatus(id: Long, status: com.example.myapplication.core.adaptation.AdaptationStatus, resolvedAt: Long) = Unit
+    override suspend fun updateDecisionPayloads(id: Long, afterJson: String, undoJson: String) = Unit
     override suspend fun decisionByIdNow(id: Long): AdaptationDecisionEntity? = null
     override suspend fun latestDecisionByKindAndStatus(kind: com.example.myapplication.core.adaptation.AdaptationKind, status: com.example.myapplication.core.adaptation.AdaptationStatus): AdaptationDecisionEntity? = null
     override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = flowOf(emptyList())

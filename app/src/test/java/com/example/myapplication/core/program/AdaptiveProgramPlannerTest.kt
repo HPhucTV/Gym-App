@@ -35,12 +35,30 @@ class AdaptiveProgramPlannerTest {
         assertEquals(first, second)
     }
 
-    private fun config(sessions: Int, minutes: Int) = GoalConfig(
+    @Test
+    fun `phase policy changes only prescribed sets within safe bounds`() {
+        val plan = AdaptiveProgramPlanner.adapt(program(), config(1, 90, durationWeeks = 8))
+
+        assertEquals(3, plan.first { it.week == 1 }.exercises.first().sets)
+        assertEquals(4, plan.first { it.week == 3 }.exercises.first().sets)
+        assertEquals(3, plan.first { it.week == 6 }.exercises.first().sets)
+        assertEquals(2, plan.first { it.week == 8 }.exercises.first().sets)
+
+        val original = program().workouts.first().exercises.first()
+        val build = plan.first { it.week == 3 }.exercises.first()
+        assertEquals(original.exerciseId, build.exerciseId)
+        assertEquals(original.repsMin, build.repsMin)
+        assertEquals(original.repsMax, build.repsMax)
+        assertEquals(original.durationSeconds, build.durationSeconds)
+        assertEquals(original.restSeconds, build.restSeconds)
+    }
+
+    private fun config(sessions: Int, minutes: Int, durationWeeks: Int = 2) = GoalConfig(
         FitnessGoal.GENERAL_FITNESS,
         ExperienceLevel.BEGINNER,
         EquipmentProfile.BODYWEIGHT_ONLY,
         sessions,
-        2,
+        durationWeeks,
         RestDayMode.FULL_REST,
         DayOfWeek.entries.take(sessions).toSet(),
         minutes,

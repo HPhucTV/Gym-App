@@ -83,3 +83,19 @@ PASS — BUILD SUCCESSFUL in 4m 1s
 ## Release status
 
 Automated release gates pass and the APK is produced. The full instrumentation suite passed 62/62 tests on an RMX3521 running Android 14. Manual visual/permission/time-change rows above remain `NOT RUN`; therefore this document does not claim a fully manual device-matrix sign-off.
+# Functional upgrades manual matrix — 2026-07-04
+
+Automated JVM/lint/build gates passed in the isolated worktree. Connected Android execution was attempted on `emulator-5564`, but ADB changed from `device` to `offline` before UTP started; Gradle reported `0 tests`. The rows below therefore remain honest manual follow-ups.
+
+| Scenario | Status | Expected observation |
+|---|---|---|
+| Airplane mode across workout planning, substitutions, time budget, progress, manual nutrition and templates | NOT RUN | Core features continue locally; only consent-gated AI requests are unavailable. |
+| Process death after substitution and time-budget selection | NOT RUN | Room restores the chosen exercise and omitted suffix; no duplicate completion. |
+| Rotation during feedback, substitution, schedule preview, nutrition draft, rename and delete dialogs | NOT RUN | No duplicate repository mutation; entered local draft remains understandable. |
+| Completed-history preservation after goal replacement, schedule edits and template deletion | NOT RUN | Completed workout/nutrition history remains unchanged. |
+| Stale schedule preview | NOT RUN | Confirm aborts and asks the user to preview again. |
+| Deload accept and undo | NOT RUN | Pending sessions scale to 70%; undo restores only still-incomplete targeted sessions. |
+| Duplicate feedback and duplicate draft submission | NOT RUN | One feedback row per session; one nutrient addition per submit/retry sequence. |
+| Dark/light readability and one-handed 48dp targets | NOT RUN | All new controls remain readable and reachable. |
+
+Device rerun command: `./gradlew.bat connectedDebugAndroidTest`. Do not mark these rows PASS from compile-only evidence.

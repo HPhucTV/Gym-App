@@ -7,9 +7,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.myapplication.core.model.CompletedWorkout
 import com.example.myapplication.core.model.EquipmentProfile
 import com.example.myapplication.core.model.ExercisePrescription
+import com.example.myapplication.core.model.ExerciseDefinition
+import com.example.myapplication.core.model.Equipment
 import com.example.myapplication.core.model.ExperienceLevel
 import com.example.myapplication.core.model.FitnessGoal
 import com.example.myapplication.core.model.GoalConfig
+import com.example.myapplication.core.model.MovementPattern
+import com.example.myapplication.core.model.MuscleGroup
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.RestDayMode
 import com.example.myapplication.core.model.WorkoutTemplate
@@ -37,7 +41,7 @@ class RoomWorkoutRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, GymDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = RoomWorkoutRepository(database)
+        repository = RoomWorkoutRepository(database, exercises(), currentEpochDay = { 100L })
     }
 
     @After
@@ -58,6 +62,10 @@ class RoomWorkoutRepositoryTest {
         assertEquals(100, current.dueEpochDay)
         assertEquals(listOf("squat", "plank"), current.exercises.map { it.exerciseId })
         assertEquals(listOf(false, false), current.exercises.map { it.checked })
+        val historyBeforeCompletion = repository.observeWorkoutHistory().first()
+        assertEquals(2, historyBeforeCompletion.size)
+        assertEquals(listOf(100L, 102L), historyBeforeCompletion.map { it.dueEpochDay })
+        assertTrue(historyBeforeCompletion.all { it.completedEpochDay == null })
 
         current.exercises.forEach {
             repository.setExerciseChecked(current.id, it.orderIndex, true)
@@ -121,6 +129,121 @@ class RoomWorkoutRepositoryTest {
         assertEquals(2, repository.observeCompletedWorkouts().first().size)
     }
 
+    @Test
+    fun substitution_preservesPrescription_storesFirstOriginal_andCanRestore() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+        val before = current.exercises.first()
+
+        assertEquals(
+            ExerciseSubstitutionResult.Applied,
+            repository.substituteExercise(current.id, 0, "reverse_lunge"),
+        )
+        val substituted = requireNotNull(repository.observeCurrentWorkout().first()).exercises.first()
+        assertEquals("reverse_lunge", substituted.exerciseId)
+        assertEquals("squat", substituted.originalExerciseId)
+        assertEquals(before.prescription.copy(exerciseId = "reverse_lunge"), substituted.prescription)
+
+        assertEquals(
+            ExerciseSubstitutionResult.Applied,
+            repository.substituteExercise(current.id, 0, "squat"),
+        )
+        val restored = requireNotNull(repository.observeCurrentWorkout().first()).exercises.first()
+        assertEquals("squat", restored.exerciseId)
+        assertEquals("squat", restored.originalExerciseId)
+    }
+
+    @Test
+    fun substitution_rejectsInvalidCheckedAndStaleRows() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val first = requireNotNull(repository.observeCurrentWorkout().first())
+
+        assertEquals(
+            ExerciseSubstitutionResult.InvalidCandidate,
+            repository.substituteExercise(first.id, 0, "plank"),
+        )
+        repository.setExerciseChecked(first.id, 0, true)
+        assertEquals(
+            ExerciseSubstitutionResult.AlreadyChecked,
+            repository.substituteExercise(first.id, 0, "reverse_lunge"),
+        )
+        repository.setExerciseChecked(first.id, 0, false)
+        first.exercises.forEach { repository.setExerciseChecked(first.id, it.orderIndex, true) }
+        repository.completeWorkout(first.id, 100)
+        assertEquals(
+            ExerciseSubstitutionResult.StaleSession,
+            repository.substituteExercise(first.id, 0, "reverse_lunge"),
+        )
+    }
+
+    @Test
+    fun timeBudget_omitsOrderedSuffix_andNullRestoresFullWorkout() = runTest {
+        val longExercises = List(4) { index ->
+            ExercisePrescription(if (index % 2 == 0) "squat" else "plank", 6, 12, 12, null, 90)
+        }
+        val longProgram = program().copy(
+            workouts = program().workouts.map { it.copy(exercises = longExercises) },
+        )
+        repository.createGoal(config(), longProgram, 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+
+        assertEquals(TimeBudgetResult.Applied, repository.applyTimeBudget(current.id, 15))
+        val shortened = requireNotNull(repository.observeCurrentWorkout().first())
+        assertEquals(15, shortened.selectedTimeBudgetMinutes)
+        assertEquals(listOf(0), shortened.exercises.map { it.orderIndex })
+        assertEquals(3, shortened.omittedExerciseCount)
+        repository.setExerciseChecked(current.id, 3, true)
+        assertFalse(database.workoutDao().getExercisesForSession(current.id)[3].checked)
+
+        assertEquals(TimeBudgetResult.Applied, repository.applyTimeBudget(current.id, null))
+        val restored = requireNotNull(repository.observeCurrentWorkout().first())
+        assertNull(restored.selectedTimeBudgetMinutes)
+        assertEquals(listOf(0, 1, 2, 3), restored.exercises.map { it.orderIndex })
+        assertEquals(0, restored.omittedExerciseCount)
+    }
+
+    @Test
+    fun timeBudget_rejectsCheckedAndStaleSessions() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val first = requireNotNull(repository.observeCurrentWorkout().first())
+        repository.setExerciseChecked(first.id, 0, true)
+
+        assertEquals(TimeBudgetResult.HasCheckedExercises, repository.applyTimeBudget(first.id, 15))
+        repository.setExerciseChecked(first.id, 0, false)
+        first.exercises.forEach { repository.setExerciseChecked(first.id, it.orderIndex, true) }
+        repository.completeWorkout(first.id, 100)
+
+        assertEquals(TimeBudgetResult.StaleSession, repository.applyTimeBudget(first.id, 15))
+    }
+
+    @Test
+    fun schedulePreview_isWriteFree_andApplyRejectsStaleDates() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+
+        val preview = repository.previewScheduleChange(current.id, 104)
+        assertEquals(104L, preview.changes.first().newEpochDay)
+        assertEquals(100L, repository.observeCurrentWorkout().first()?.dueEpochDay)
+
+        database.workoutDao().updateSessionDueEpochDay(current.id, 101)
+        assertEquals(ScheduleChangeResult.Stale, repository.applyScheduleChange(preview))
+        assertEquals(101L, repository.observeCurrentWorkout().first()?.dueEpochDay)
+    }
+
+    @Test
+    fun scheduleApply_updatesAllPreviewRowsAtomically() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+        val preview = repository.previewScheduleChange(current.id, 104)
+
+        assertEquals(ScheduleChangeResult.Applied, repository.applyScheduleChange(preview))
+
+        assertEquals(
+            preview.changes.map { it.newEpochDay },
+            database.workoutDao().getSessionsForGoal(current.goalId).map { it.dueEpochDay },
+        )
+    }
+
     private fun program(id: String = "program_a", threeSessions: Boolean = false): ProgramTemplate {
         val workouts = buildList {
             add(workout(0, 1, "A"))
@@ -152,6 +275,41 @@ class RoomWorkoutRepositoryTest {
     )
 
     private companion object {
+        fun exercises() = listOf(
+            ExerciseDefinition(
+                id = "squat",
+                sourceId = "squat",
+                nameVi = "Squat",
+                level = ExperienceLevel.BEGINNER,
+                equipment = listOf(Equipment.BODYWEIGHT),
+                movementPattern = MovementPattern.SQUAT,
+                primaryMuscle = MuscleGroup.QUADS,
+                instructionsVi = listOf("Hạ hông có kiểm soát"),
+                substituteIds = listOf("reverse_lunge"),
+            ),
+            ExerciseDefinition(
+                id = "reverse_lunge",
+                sourceId = "reverse_lunge",
+                nameVi = "Chùng chân lùi",
+                level = ExperienceLevel.BEGINNER,
+                equipment = listOf(Equipment.BODYWEIGHT),
+                movementPattern = MovementPattern.SQUAT,
+                primaryMuscle = MuscleGroup.QUADS,
+                instructionsVi = listOf("Bước một chân ra sau"),
+                substituteIds = listOf("squat"),
+            ),
+            ExerciseDefinition(
+                id = "plank",
+                sourceId = "plank",
+                nameVi = "Plank",
+                level = ExperienceLevel.BEGINNER,
+                equipment = listOf(Equipment.BODYWEIGHT),
+                movementPattern = MovementPattern.CORE,
+                primaryMuscle = MuscleGroup.CORE,
+                instructionsVi = listOf("Giữ thân người thẳng"),
+            ),
+        )
+
         fun config(sessionsPerWeek: Int = 2) = GoalConfig(
             goal = FitnessGoal.GENERAL_FITNESS,
             level = ExperienceLevel.BEGINNER,
