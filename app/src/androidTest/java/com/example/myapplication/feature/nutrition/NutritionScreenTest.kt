@@ -27,6 +27,7 @@ class NutritionScreenTest {
                         mealTemplates = listOf(MealTemplate(7, "Bữa quen", Nutrients(400, 25, 45, 10), 1)),
                     ),
                     onBack = {}, onScan = {}, onAccept = {}, onDiscard = {},
+                    onUpdateResult = { _, _, _, _, _ -> },
                     onClearSweat = {}, onReset = {},
                     onStartManual = { manualCalls++ },
                     onApplyTemplate = { appliedId = it },
