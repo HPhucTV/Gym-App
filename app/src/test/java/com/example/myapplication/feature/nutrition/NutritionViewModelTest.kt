@@ -114,6 +114,27 @@ class NutritionViewModelTest {
         assertFalse(state.scanning)
         assertNull(state.scanError)
     }
+ 
+    @Test
+    fun `scanBarcode with valid code returns result`() = runTest(dispatcher) {
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = FakeNutritionRepository(),
+            foodAnalysisClient = FakeFoodAnalysisClient(),
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+ 
+        viewModel.scanBarcode("8934563138073")
+        advanceUntilIdle()
+ 
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertNotNull(state.scanResult)
+        assertEquals("Snack Toonies Chef (Mã vạch)", state.scanResult?.dishName)
+        assertNull(state.scanError)
+    }
 
     @Test
     fun `food image is never uploaded without cloud AI consent`() = runTest(dispatcher) {
@@ -135,6 +156,36 @@ class NutritionViewModelTest {
         val state = viewModel.uiState.value as NutritionUiState.Content
         assertNotNull(state.scanError)
         assertFalse(state.scanning)
+    }
+
+    @Test
+    fun `history lists past entries with logged calories`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val today = 20636L
+        
+        repo.historyData.value = listOf(
+            NutritionDay(today, Nutrients(calories = 500), null),
+            NutritionDay(today - 1, Nutrients(calories = 1200), null),
+            NutritionDay(today - 2, Nutrients(calories = 0), null),
+            NutritionDay(today - 3, Nutrients(calories = 1500), null),
+        )
+        
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = repo,
+            foodAnalysisClient = FakeFoodAnalysisClient(),
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { today },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+        
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(2, state.history.size)
+        assertEquals(today - 1, state.history[0].epochDay)
+        assertEquals(1200, state.history[0].consumed.calories)
+        assertEquals(today - 3, state.history[1].epochDay)
+        assertEquals(1500, state.history[1].consumed.calories)
     }
 
     private fun TestScope.collectUiState(viewModel: NutritionViewModel) {
@@ -169,6 +220,28 @@ private class FakeFoodAnalysisClient(
         failure?.let { throw it }
         return result
     }
+
+    override suspend fun lookupBarcode(barcode: String): ScanResult? {
+        calls++
+        failure?.let { throw it }
+        if (barcode == "8934563138073") {
+            return ScanResult(
+                dishName = "Snack Toonies Chef (Mã vạch)",
+                totalCalories = 284,
+                proteinGrams = 3,
+                carbsGrams = 28,
+                fatGrams = 18,
+                fitnessScore = 4,
+                advice = "Đồ ăn vặt đóng gói.",
+                constituents = emptyList(),
+                sweatPayment = null,
+                calculationProcess = "Mã vạch: 8934563138073",
+                confidence = 1.0,
+                needsUserConfirmation = false
+            )
+        }
+        return result
+    }
 }
 
 private data class AddedNutrition(
@@ -187,6 +260,9 @@ private class FakeNutritionRepository : NutritionRepository {
         flowOf(NutritionDay(epochDay = epochDay, consumed = Nutrients(), target = null))
 
     override fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<NutritionDay>> = flowOf(emptyList())
+
+    val historyData = MutableStateFlow<List<NutritionDay>>(emptyList())
+    override fun observeAllNutrition(): Flow<List<NutritionDay>> = historyData
 
     override suspend fun addNutrients(epochDay: Long, nutrients: Nutrients, source: EntrySource) {
         additions += AddedNutrition(epochDay, nutrients, source)

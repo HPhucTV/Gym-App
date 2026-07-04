@@ -164,6 +164,9 @@ private class FakePersonalizationDao : PersonalizationDao {
     override fun observeNutritionDay(epochDay: Long): Flow<DailyNutritionEntity?> =
         nutritionRows.map { rows -> rows[epochDay] }
 
+    override fun observeAllNutrition(): Flow<List<DailyNutritionEntity>> =
+        nutritionRows.map { rows -> rows.values.sortedByDescending { it.epochDay } }
+
     override fun observeNutritionRange(startEpochDay: Long, endEpochDay: Long): Flow<List<DailyNutritionEntity>> =
         nutritionRows.map { rows ->
             rows.values
@@ -186,6 +189,9 @@ private class FakePersonalizationDao : PersonalizationDao {
     override suspend fun latestDecisionByKindAndStatus(kind: com.example.myapplication.core.adaptation.AdaptationKind, status: com.example.myapplication.core.adaptation.AdaptationStatus): AdaptationDecisionEntity? = null
     override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = MutableStateFlow(emptyList())
     override suspend fun decisionHistoryNow(): List<AdaptationDecisionEntity> = emptyList()
+
+    override suspend fun upsertFoodOverride(override: com.example.myapplication.data.local.UserFoodOverrideEntity) = Unit
+    override suspend fun foodOverrideNow(dishName: String): com.example.myapplication.data.local.UserFoodOverrideEntity? = null
 }
 
 private class FakeLegacyNutritionPreferences(

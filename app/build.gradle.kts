@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -13,8 +22,20 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = localProperties.getProperty("RELEASE_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrEmpty()) {
+                storeFile = file(keystorePath)
+            }
+            storePassword = localProperties.getProperty("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS")
+            keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+        }
+    }
+
     defaultConfig {
-        applicationId = "com.example.myapplication"
+        applicationId = "com.duy.gymcompanion"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -27,6 +48,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -68,6 +90,14 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    
+    // CameraX and ML Kit Barcode Scanning
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.play.services.mlkit.barcode.scanning)
+
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
