@@ -79,6 +79,7 @@ private fun SettingsContent(
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
+    val context = LocalContext.current
     var showTimePicker by remember { mutableStateOf(false) }
 
     Column(

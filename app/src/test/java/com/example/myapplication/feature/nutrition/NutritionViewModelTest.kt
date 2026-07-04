@@ -194,7 +194,11 @@ class NutritionViewModelTest {
     fun `scan becomes editable draft and accepted values are parsed once`() = runTest(dispatcher) {
         val repo = FakeNutritionRepository()
         val viewModel = NutritionViewModel(
-            FakeWorkoutRepository(), repo, FakeFoodAnalysisClient(scanResult()), flowOf(true), { 20636L },
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = repo,
+            foodAnalysisClient = FakeFoodAnalysisClient(scanResult()),
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
         )
         collectUiState(viewModel)
         runCurrent()

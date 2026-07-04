@@ -59,8 +59,9 @@ class PersonalizationTypeConverters {
         AchievementEntity::class,
         WorkoutFeedbackEntity::class,
         MealTemplateEntity::class,
+        UserFoodOverrideEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(WorkoutTypeConverters::class, PersonalizationTypeConverters::class)
@@ -71,6 +72,23 @@ abstract class GymDatabase : RoomDatabase() {
     abstract fun workoutFeedbackDao(): WorkoutFeedbackDao
 
     companion object {
+        val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `user_food_overrides` (
+                        `dishName` TEXT NOT NULL,
+                        `totalCalories` INTEGER NOT NULL,
+                        `proteinGrams` INTEGER NOT NULL,
+                        `carbsGrams` INTEGER NOT NULL,
+                        `fatGrams` INTEGER NOT NULL,
+                        PRIMARY KEY(`dishName`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATION_8_9: Migration = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
