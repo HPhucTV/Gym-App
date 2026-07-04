@@ -5,13 +5,16 @@ import com.example.myapplication.core.model.CompletedWorkout
 import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutSession
+import com.example.myapplication.core.model.WorkoutHistoryEntry
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import com.example.myapplication.core.program.ScheduleChangePreview
 
 interface WorkoutRepository {
     fun observeActiveGoal(): Flow<ActiveGoal?>
     fun observeCurrentWorkout(): Flow<WorkoutSession?>
     fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>>
+    fun observeWorkoutHistory(): Flow<List<WorkoutHistoryEntry>> = flowOf(emptyList())
     suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long)
     suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean)
     suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult

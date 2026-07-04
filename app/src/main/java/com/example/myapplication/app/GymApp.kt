@@ -177,7 +177,8 @@ fun GymApp(container: AppContainer) {
                         ProgressViewModel(
                             container.workoutRepository,
                             container.catalogRepository.programs,
-                            container.catalogRepository.exercises
+                            container.catalogRepository.exercises,
+                            container.workoutFeedbackRepository,
                         ) { LocalDate.now().toEpochDay() }
                     }
                 }

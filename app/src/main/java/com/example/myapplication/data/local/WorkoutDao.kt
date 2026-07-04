@@ -59,6 +59,9 @@ interface WorkoutDao {
     )
     fun observeCompletedSessions(): Flow<List<CompletedSessionRow>>
 
+    @Query("SELECT * FROM workout_sessions ORDER BY goalId ASC, sequenceIndex ASC, id ASC")
+    fun observeWorkoutHistory(): Flow<List<WorkoutSessionEntity>>
+
     @Insert
     suspend fun insertGoal(goal: GoalEntity): Long
 

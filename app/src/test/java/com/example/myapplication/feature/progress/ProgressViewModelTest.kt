@@ -11,6 +11,8 @@ import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import com.example.myapplication.core.feedback.WorkoutDifficulty
+import com.example.myapplication.core.feedback.WorkoutFeedback
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProgressViewModelTest {
@@ -77,16 +79,59 @@ class ProgressViewModelTest {
         assertEquals(setOf(day("2026-06-08")), state.markedEpochDays)
     }
 
+    @Test fun `active progress exposes deterministic weekly insights`() = runTest(dispatcher) {
+        val entries = buildList {
+            var id = 1L
+            listOf("2026-06-08", "2026-06-10", "2026-06-12").forEach {
+                add(historyEntry(id++, it, null))
+            }
+            listOf("2026-06-15", "2026-06-17", "2026-06-19", "2026-06-21").forEach {
+                add(historyEntry(id++, it, it))
+            }
+        }
+        val repo = FakeProgressRepository(goal(), emptyList(), entries)
+        val feedback = object : WorkoutFeedbackRepository {
+            override fun observeForGoal(goalId: Long): Flow<List<WorkoutFeedback>> = flowOf(
+                entries.takeLast(4).map {
+                    WorkoutFeedback(it.sessionId, 1, it.completedEpochDay!!, WorkoutDifficulty.HARD, 0)
+                },
+            )
+            override suspend fun save(
+                sessionId: Long,
+                goalId: Long,
+                completedEpochDay: Long,
+                difficulty: WorkoutDifficulty,
+            ) = Unit
+        }
+        val vm = ProgressViewModel(repo, feedbackRepository = feedback) { day("2026-06-22") }
+        runCurrent()
+
+        val state = vm.uiState.value as ProgressUiState.Content
+        assertTrue(state.weeklyInsights.isNotEmpty())
+        assertTrue(state.weeklyInsights.size <= 3)
+    }
+
     private fun goal(sessions: Int = 3) = ActiveGoal(1, GoalConfig(FitnessGoal.GENERAL_FITNESS, ExperienceLevel.BEGINNER,
         EquipmentProfile.BODYWEIGHT_ONLY, sessions, 4, RestDayMode.FULL_REST), 12)
     private fun day(value: String) = LocalDate.parse(value).toEpochDay()
+    private fun historyEntry(id: Long, due: String, completed: String?) = WorkoutHistoryEntry(
+        id, 1, id.toInt(), day(due), completed?.let(::day), 30,
+    )
 }
 
-private class FakeProgressRepository(goal: ActiveGoal?, completed: List<CompletedWorkout>) : WorkoutRepository {
+private class FakeProgressRepository(
+    goal: ActiveGoal?,
+    completed: List<CompletedWorkout>,
+    entries: List<WorkoutHistoryEntry> = completed.mapIndexed { index, row ->
+        WorkoutHistoryEntry(index.toLong(), row.goalId, index, row.completedEpochDay, row.completedEpochDay, 30)
+    },
+) : WorkoutRepository {
     val active = MutableStateFlow(goal); val history = MutableStateFlow(completed)
+    val workoutHistory = MutableStateFlow(entries)
     override fun observeActiveGoal(): Flow<ActiveGoal?> = active
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = history
     override fun observeCurrentWorkout(): Flow<WorkoutSession?> = flowOf(null)
+    override fun observeWorkoutHistory(): Flow<List<WorkoutHistoryEntry>> = workoutHistory
     override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) = Unit
     override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) = Unit
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long) = CompleteWorkoutResult.Completed

@@ -8,6 +8,7 @@ import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutExercise
 import com.example.myapplication.core.model.WorkoutSession
+import com.example.myapplication.core.model.WorkoutHistoryEntry
 import com.example.myapplication.core.model.ExerciseDefinition
 import com.example.myapplication.core.catalog.ExerciseSubstitutionEngine
 import com.example.myapplication.core.model.trainingDaysFromMask
@@ -62,6 +63,21 @@ class RoomWorkoutRepository(
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> =
         dao.observeCompletedSessions().map { rows ->
             rows.map { CompletedWorkout(it.goalId, it.completedEpochDay) }
+        }
+
+    override fun observeWorkoutHistory(): Flow<List<WorkoutHistoryEntry>> =
+        dao.observeWorkoutHistory().map { rows ->
+            rows.map { row ->
+                WorkoutHistoryEntry(
+                    sessionId = row.id,
+                    goalId = row.goalId,
+                    sequenceIndex = row.sequenceIndex,
+                    dueEpochDay = row.dueEpochDay,
+                    completedEpochDay = row.completedEpochDay,
+                    estimatedMinutes = row.estimatedMinutes,
+                    selectedTimeBudgetMinutes = row.selectedTimeBudgetMinutes,
+                )
+            }
         }
 
     override suspend fun createGoal(
@@ -135,6 +151,7 @@ class RoomWorkoutRepository(
         if (dao.getCurrentSessionId() != sessionId) {
             return@withTransaction ExerciseSubstitutionResult.StaleSession
         }
+
         val row = dao.getExercisesForSession(sessionId).firstOrNull { it.orderIndex == orderIndex }
             ?: return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
         if (row.checked) return@withTransaction ExerciseSubstitutionResult.AlreadyChecked

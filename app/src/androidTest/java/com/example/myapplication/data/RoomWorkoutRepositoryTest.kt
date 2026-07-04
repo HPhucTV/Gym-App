@@ -62,6 +62,10 @@ class RoomWorkoutRepositoryTest {
         assertEquals(100, current.dueEpochDay)
         assertEquals(listOf("squat", "plank"), current.exercises.map { it.exerciseId })
         assertEquals(listOf(false, false), current.exercises.map { it.checked })
+        val historyBeforeCompletion = repository.observeWorkoutHistory().first()
+        assertEquals(2, historyBeforeCompletion.size)
+        assertEquals(listOf(100L, 102L), historyBeforeCompletion.map { it.dueEpochDay })
+        assertTrue(historyBeforeCompletion.all { it.completedEpochDay == null })
 
         current.exercises.forEach {
             repository.setExerciseChecked(current.id, it.orderIndex, true)

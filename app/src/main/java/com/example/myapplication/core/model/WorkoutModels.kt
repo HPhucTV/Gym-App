@@ -31,3 +31,13 @@ data class CompletedWorkout(
     val goalId: Long,
     val completedEpochDay: Long,
 )
+
+data class WorkoutHistoryEntry(
+    val sessionId: Long,
+    val goalId: Long,
+    val sequenceIndex: Int,
+    val dueEpochDay: Long,
+    val completedEpochDay: Long?,
+    val estimatedMinutes: Int,
+    val selectedTimeBudgetMinutes: Int? = null,
+)

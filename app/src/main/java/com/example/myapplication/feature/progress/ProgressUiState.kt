@@ -2,6 +2,7 @@ package com.example.myapplication.feature.progress
 
 import com.example.myapplication.core.model.MuscleGroup
 import java.time.YearMonth
+import com.example.myapplication.core.progress.WeeklyInsight
 
 data class WeeklyCompletedStats(
     val weekLabel: String,
@@ -29,6 +30,7 @@ sealed interface ProgressUiState {
         val canNavigateNext: Boolean,
         val weeklyStats: List<WeeklyCompletedStats> = emptyList(),
         val muscleStats: List<MuscleCompletedStats> = emptyList(),
+        val weeklyInsights: List<WeeklyInsight> = emptyList(),
     ) : ProgressUiState
 
     data class NoActiveGoal(

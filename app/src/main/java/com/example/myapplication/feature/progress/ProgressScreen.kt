@@ -65,6 +65,10 @@ private fun ProgressContent(
 
         SummaryCard(state)
 
+        if (state.weeklyInsights.isNotEmpty()) {
+            WeeklyInsightsCard(state.weeklyInsights.map { it.messageVi })
+        }
+
         // Progress Charts (Weekly frequency & MuscleFocus)
         ProgressChartsSection(
             weeklyStats = state.weeklyStats,
@@ -78,6 +82,32 @@ private fun ProgressContent(
             state.selectedMonth, state.markedEpochDays, state.completedInMonth,
             state.canNavigatePrevious, state.canNavigateNext, previous, next
         )
+    }
+}
+
+@Composable
+private fun WeeklyInsightsCard(messages: List<String>) {
+    val colors = MaterialTheme.colorScheme
+    val customColors = colors.customColors
+    Surface(
+        color = colors.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Nhận xét tuần", fontWeight = FontWeight.Bold, color = customColors.primaryText)
+            messages.forEach { message ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("•", color = EnergyOrange, fontWeight = FontWeight.Bold)
+                    Text(message, color = customColors.primaryText)
+                }
+            }
+            Text(
+                "Phân tích từ lịch tập và phản hồi đã lưu trên thiết bị.",
+                color = customColors.mutedText,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
