@@ -49,6 +49,34 @@ class TodayViewModelTest {
         assertEquals(ProgramPhase.DELOAD, (vm.uiState.value as TodayUiState.Workout).phase)
     }
 
+    @Test fun `replacement dialog exposes reviewed candidates and applies selection`() = runTest(dispatcher) {
+        val repository = FakeTodayRepository(goal(), workout())
+        val vm = TodayViewModel(repository, substitutionCatalog) { 100L }
+        runCurrent()
+
+        vm.requestSubstitution(0)
+        val dialog = (vm.uiState.value as TodayUiState.Workout).substitution!!
+        assertEquals(listOf("Knee push-up"), dialog.candidates.map { it.nameVi })
+        assertTrue(dialog.candidates.single().instructionsVi.isNotEmpty())
+
+        vm.applySubstitution("knee_push_up")
+        advanceUntilIdle()
+
+        assertEquals(Triple(7L, 0, "knee_push_up"), repository.substitutions.single())
+    }
+
+    @Test fun `replacement reports when no compatible candidate exists`() = runTest(dispatcher) {
+        val vm = TodayViewModel(FakeTodayRepository(goal(), workout()), catalog) { 100L }
+        runCurrent()
+
+        vm.requestSubstitution(0)
+
+        assertEquals(
+            "Không có bài thay thế phù hợp với thiết bị hiện tại.",
+            (vm.uiState.value as TodayUiState.Workout).interactionError,
+        )
+    }
+
     @Test fun `shows both recovery modes goal complete and missing catalog error`() = runTest(dispatcher) {
         val repository = FakeTodayRepository(goal(RestDayMode.FULL_REST), workout(due = 101))
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
@@ -221,9 +249,21 @@ class TodayViewModelTest {
         7, 1, 0, "Toàn thân A", "Ngực và thân giữa", 25, due,
         listOf(WorkoutExercise(0, exerciseId, ExercisePrescription(exerciseId, 3, 8, 12, restSeconds = 60), checked)))
 
-    companion object { val catalog = listOf(ExerciseDefinition("push_up", "project:push_up", "Chống đẩy",
-        ExperienceLevel.BEGINNER, listOf(Equipment.BODYWEIGHT), MovementPattern.HORIZONTAL_PUSH,
-        MuscleGroup.CHEST, instructionsVi = listOf("Giữ thân thẳng", "Hạ ngực có kiểm soát"))) }
+    companion object {
+        val catalog = listOf(ExerciseDefinition("push_up", "project:push_up", "Chống đẩy",
+            ExperienceLevel.BEGINNER, listOf(Equipment.BODYWEIGHT), MovementPattern.HORIZONTAL_PUSH,
+            MuscleGroup.CHEST, instructionsVi = listOf("Giữ thân thẳng", "Hạ ngực có kiểm soát")))
+        val substitutionCatalog = listOf(
+            catalog.single().copy(substituteIds = listOf("knee_push_up")),
+            catalog.single().copy(
+                id = "knee_push_up",
+                sourceId = "project:knee_push_up",
+                nameVi = "Knee push-up",
+                instructionsVi = listOf("Chống gối trên sàn"),
+                substituteIds = listOf("push_up"),
+            ),
+        )
+    }
 }
 
 private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) : WorkoutRepository {
@@ -234,6 +274,7 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
     var checkGate: CompletableDeferred<Unit>? = null
     var cancelCompletion = false
     val completionArguments = mutableListOf<Pair<Long, Long>>()
+    val substitutions = mutableListOf<Triple<Long, Int, String>>()
     override fun observeActiveGoal(): Flow<ActiveGoal?> = active
     override fun observeCurrentWorkout(): Flow<WorkoutSession?> = current
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = flowOf(emptyList())
@@ -245,6 +286,14 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
         completions++; completionArguments += sessionId to completedEpochDay; completionGate?.await()
         if (cancelCompletion) throw kotlinx.coroutines.CancellationException("cancelled")
         if (failCompletion) error("disk"); return completionResult
+    }
+    override suspend fun substituteExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): ExerciseSubstitutionResult {
+        substitutions += Triple(sessionId, orderIndex, replacementExerciseId)
+        return ExerciseSubstitutionResult.Applied
     }
     override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) = Unit
     override suspend fun archiveActiveGoal() = Unit

@@ -22,11 +22,12 @@ class AppContainer(context: Context) {
             GymDatabase.MIGRATION_3_4,
             GymDatabase.MIGRATION_4_5,
             GymDatabase.MIGRATION_5_6,
+            GymDatabase.MIGRATION_6_7,
         )
         .build()
 
     val catalogRepository = AssetCatalogRepository(applicationContext)
-    val workoutRepository = RoomWorkoutRepository(database)
+    val workoutRepository = RoomWorkoutRepository(database, catalogRepository.exercises)
     val workoutFeedbackRepository = com.example.myapplication.data.RoomWorkoutFeedbackRepository(database)
     val settingsRepository = DataStoreSettingsRepository(applicationContext)
     val reminderScheduler = AlarmReminderScheduler(applicationContext)

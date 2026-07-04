@@ -82,6 +82,34 @@ interface WorkoutDao {
 
     @Query(
         """
+        UPDATE session_exercises
+        SET originalExerciseId = COALESCE(originalExerciseId, exerciseId),
+            exerciseId = :replacementExerciseId
+        WHERE sessionId = :sessionId AND orderIndex = :orderIndex AND checked = 0
+          AND EXISTS (
+            SELECT 1 FROM workout_sessions target
+            INNER JOIN goals target_goal ON target_goal.id = target.goalId
+            WHERE target.id = session_exercises.sessionId
+              AND target.completedEpochDay IS NULL
+              AND target_goal.archived = 0
+              AND target.id = (
+                SELECT candidate.id FROM workout_sessions candidate
+                INNER JOIN goals active_goal ON active_goal.id = candidate.goalId
+                WHERE active_goal.archived = 0 AND candidate.completedEpochDay IS NULL
+                ORDER BY candidate.sequenceIndex ASC, candidate.id ASC
+                LIMIT 1
+              )
+          )
+        """,
+    )
+    suspend fun substituteCurrentExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): Int
+
+    @Query(
+        """
         UPDATE session_exercises SET checked = :checked
         WHERE sessionId = :sessionId AND orderIndex = :orderIndex
           AND EXISTS (

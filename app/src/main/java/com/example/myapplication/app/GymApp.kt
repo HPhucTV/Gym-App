@@ -163,6 +163,9 @@ fun GymApp(container: AppContainer) {
                 pendingFeedback = pendingFeedback,
                 onDifficultySelected = todayViewModel::submitDifficulty,
                 onDismissFeedback = todayViewModel::dismissFeedback,
+                onRequestSubstitution = todayViewModel::requestSubstitution,
+                onApplySubstitution = todayViewModel::applySubstitution,
+                onDismissSubstitution = todayViewModel::dismissSubstitution,
             )
         },
         progressContent = { onNavigateToCatalog ->

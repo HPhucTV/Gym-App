@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.program.ProgramPhase
 import com.example.myapplication.core.program.ProgramPhasePlanner
+import com.example.myapplication.core.catalog.ExerciseSubstitutionEngine
 import com.example.myapplication.core.model.*
 import com.example.myapplication.data.*
 import kotlinx.coroutines.CancellationException
@@ -91,6 +92,7 @@ class TodayViewModel(
     )
 
     private val catalog = exercises.associateBy { it.id }
+    private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
     private val today = MutableStateFlow(currentEpochDay())
     private val operations = MutableStateFlow(Operations())
     private val commandMutex = Mutex()
@@ -146,6 +148,91 @@ class TodayViewModel(
                     operations.update { it.copy(interactionError = state.sessionId to (error.message ?: "Lỗi phản hồi.")) }
                 } finally {
                     operations.update { it.copy(pending = it.pending - (state.sessionId to orderIndex)) }
+                }
+            }
+        }
+    }
+
+    fun requestSubstitution(orderIndex: Int) {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        val row = state.rows.firstOrNull { it.orderIndex == orderIndex } ?: return
+        if (row.checked || orderIndex in state.pendingOrderIndices) return
+        val profile = lastGoalConfig?.equipmentProfile ?: return
+        val originalId = row.originalExerciseId ?: row.exerciseId
+        val candidates = buildList {
+            if (row.originalExerciseId != null && row.exerciseId != originalId) {
+                catalog[originalId]?.let(::add)
+            }
+            addAll(substitutionEngine.candidates(originalId, profile).filter { it.id != row.exerciseId })
+        }.distinctBy { it.id }.take(3)
+
+        if (candidates.isEmpty()) {
+            val message = "Không có bài thay thế phù hợp với thiết bị hiện tại."
+            operations.update {
+                it.copy(
+                    interactionError = state.sessionId to message,
+                )
+            }
+            _uiState.value = state.copy(interactionError = message, substitution = null)
+            return
+        }
+        _uiState.value = state.copy(
+            interactionError = null,
+            substitution = ExerciseSubstitutionUi(
+                orderIndex = orderIndex,
+                currentNameVi = row.nameVi,
+                candidates = candidates.map { candidate ->
+                    ExerciseSubstitutionCandidateUi(
+                        exerciseId = candidate.id,
+                        nameVi = candidate.nameVi,
+                        equipment = candidate.equipment,
+                        instructionsVi = candidate.instructionsVi,
+                        restoresOriginal = candidate.id == row.originalExerciseId,
+                    )
+                },
+            ),
+        )
+    }
+
+    fun dismissSubstitution() {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        _uiState.value = state.copy(substitution = null)
+    }
+
+    fun applySubstitution(replacementExerciseId: String) {
+        val state = _uiState.value as? TodayUiState.Workout ?: return
+        val dialog = state.substitution ?: return
+        if (dialog.candidates.none { it.exerciseId == replacementExerciseId }) return
+        _uiState.value = state.copy(substitution = null)
+        operations.update {
+            it.copy(
+                pending = it.pending + (state.sessionId to dialog.orderIndex),
+                interactionError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                when (repository.substituteExercise(state.sessionId, dialog.orderIndex, replacementExerciseId)) {
+                    ExerciseSubstitutionResult.Applied -> Unit
+                    ExerciseSubstitutionResult.InvalidCandidate -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Bài thay thế không còn phù hợp.")
+                    }
+                    ExerciseSubstitutionResult.StaleSession -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Buổi tập đã thay đổi. Vui lòng thử lại.")
+                    }
+                    ExerciseSubstitutionResult.AlreadyChecked -> operations.update {
+                        it.copy(interactionError = state.sessionId to "Bỏ đánh dấu hoàn thành trước khi thay bài.")
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                operations.update {
+                    it.copy(interactionError = state.sessionId to "Không thể thay bài. Vui lòng thử lại.")
+                }
+            } finally {
+                operations.update {
+                    it.copy(pending = it.pending - (state.sessionId to dialog.orderIndex))
                 }
             }
         }
@@ -340,7 +427,7 @@ class TodayViewModel(
 
             WorkoutRowUi(exercise.orderIndex, definition.nameVi, finalPrescriptionText,
                 exercise.prescription.restSeconds, definition.instructionsVi, exercise.checked, exercise.exerciseId,
-                definition.primaryMuscle)
+                definition.primaryMuscle, exercise.originalExerciseId)
         }
         val pending = ops.pending.filter { it.first == session.id }.map { it.second }.toSet()
         val checked = rows.count { it.checked }

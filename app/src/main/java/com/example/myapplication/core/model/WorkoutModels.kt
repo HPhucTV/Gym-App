@@ -22,6 +22,7 @@ data class WorkoutExercise(
     val exerciseId: String,
     val prescription: ExercisePrescription,
     val checked: Boolean,
+    val originalExerciseId: String? = null,
 )
 
 data class CompletedWorkout(

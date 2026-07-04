@@ -12,6 +12,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ fun ExerciseCard(
     row: WorkoutRowUi,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    onSubstitute: () -> Unit = {},
 ) {
     var expanded by rememberSaveable(sessionId, row.orderIndex, row.exerciseId) { mutableStateOf(false) }
 
@@ -154,6 +156,18 @@ fun ExerciseCard(
                         Text(instruction, color = customColors.primaryText, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+            }
+        }
+
+        if (!row.checked) {
+            TextButton(
+                onClick = onSubstitute,
+                enabled = enabled,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .testTag("exercise-substitute-${row.orderIndex}"),
+            ) {
+                Text("Thay bài", color = EnergyOrange, fontWeight = FontWeight.SemiBold)
             }
         }
     }

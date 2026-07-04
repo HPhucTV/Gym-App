@@ -14,7 +14,19 @@ interface WorkoutRepository {
     suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long)
     suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean)
     suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult
+    suspend fun substituteExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): ExerciseSubstitutionResult = ExerciseSubstitutionResult.InvalidCandidate
     suspend fun archiveActiveGoal()
+}
+
+sealed interface ExerciseSubstitutionResult {
+    data object Applied : ExerciseSubstitutionResult
+    data object InvalidCandidate : ExerciseSubstitutionResult
+    data object StaleSession : ExerciseSubstitutionResult
+    data object AlreadyChecked : ExerciseSubstitutionResult
 }
 
 sealed interface CompleteWorkoutResult {

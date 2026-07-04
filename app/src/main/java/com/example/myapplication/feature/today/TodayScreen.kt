@@ -45,6 +45,9 @@ fun TodayScreen(
     pendingFeedback: PendingWorkoutFeedback? = null,
     onDifficultySelected: (WorkoutDifficulty) -> Unit = {},
     onDismissFeedback: () -> Unit = {},
+    onRequestSubstitution: (Int) -> Unit = {},
+    onApplySubstitution: (String) -> Unit = {},
+    onDismissSubstitution: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -65,7 +68,8 @@ fun TodayScreen(
                 onComplete = onComplete,
                 onNavigateToCatalog = onNavigateToCatalog,
                 onNavigateToNutrition = onNavigateToNutrition,
-                onRefreshCoachTip = onRefreshCoachTip
+                onRefreshCoachTip = onRefreshCoachTip,
+                onRequestSubstitution = onRequestSubstitution,
             )
         }
 
@@ -151,7 +155,57 @@ fun TodayScreen(
                 onDismiss = onDismissFeedback,
             )
         }
+
+        (state as? TodayUiState.Workout)?.substitution?.let { substitution ->
+            ExerciseSubstitutionDialog(
+                state = substitution,
+                onApply = onApplySubstitution,
+                onDismiss = onDismissSubstitution,
+            )
+        }
     }
+}
+
+@Composable
+private fun ExerciseSubstitutionDialog(
+    state: ExerciseSubstitutionUi,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thay ${state.currentNameVi}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                state.candidates.forEach { candidate ->
+                    OutlinedButton(
+                        onClick = { onApply(candidate.exerciseId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("substitute-${candidate.exerciseId}"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(
+                                if (candidate.restoresOriginal) "${candidate.nameVi} · Bài gốc" else candidate.nameVi,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                candidate.equipment.joinToString { it.name.lowercase().replace('_', ' ') },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            candidate.instructionsVi.firstOrNull()?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
 }
 
 @Composable
@@ -427,6 +481,7 @@ private fun WorkoutContent(
     onNavigateToCatalog: () -> Unit,
     onNavigateToNutrition: () -> Unit,
     onRefreshCoachTip: () -> Unit,
+    onRequestSubstitution: (Int) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -460,13 +515,15 @@ private fun WorkoutContent(
                     state.sessionId,
                     row,
                     enabled = !state.isCompleting && row.orderIndex !in state.pendingOrderIndices,
-                ) { checked ->
-                    onCheckedChange(row.orderIndex, checked)
-                    if (checked && row.restSeconds > 0) {
-                        timerInitialSeconds = row.restSeconds
-                        timerVisible = true
-                    }
-                }
+                    onCheckedChange = { checked ->
+                        onCheckedChange(row.orderIndex, checked)
+                        if (checked && row.restSeconds > 0) {
+                            timerInitialSeconds = row.restSeconds
+                            timerVisible = true
+                        }
+                    },
+                    onSubstitute = { onRequestSubstitution(row.orderIndex) },
+                )
             }
 
             // Interaction error

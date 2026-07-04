@@ -8,6 +8,8 @@ import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutExercise
 import com.example.myapplication.core.model.WorkoutSession
+import com.example.myapplication.core.model.ExerciseDefinition
+import com.example.myapplication.core.catalog.ExerciseSubstitutionEngine
 import com.example.myapplication.core.model.trainingDaysFromMask
 import com.example.myapplication.core.model.trainingDaysMask
 import com.example.myapplication.core.program.AdaptiveProgramPlanner
@@ -24,8 +26,10 @@ import kotlin.math.floor
 
 class RoomWorkoutRepository(
     private val database: GymDatabase,
+    exercises: List<ExerciseDefinition> = emptyList(),
 ) : WorkoutRepository {
     private val dao = database.workoutDao()
+    private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
 
     override fun observeActiveGoal(): Flow<ActiveGoal?> = dao.observeActiveGoal().map { row ->
         row?.let {
@@ -118,6 +122,36 @@ class RoomWorkoutRepository(
         dao.setCurrentExerciseChecked(sessionId, orderIndex, checked)
     }
 
+    override suspend fun substituteExercise(
+        sessionId: Long,
+        orderIndex: Int,
+        replacementExerciseId: String,
+    ): ExerciseSubstitutionResult = database.withTransaction {
+        if (dao.getCurrentSessionId() != sessionId) {
+            return@withTransaction ExerciseSubstitutionResult.StaleSession
+        }
+        val row = dao.getExercisesForSession(sessionId).firstOrNull { it.orderIndex == orderIndex }
+            ?: return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
+        if (row.checked) return@withTransaction ExerciseSubstitutionResult.AlreadyChecked
+
+        val session = dao.getSession(sessionId)
+            ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
+        val profile = dao.getGoal(session.goalId)?.equipmentProfile
+            ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
+        val originalId = row.originalExerciseId ?: row.exerciseId
+        val validIds = substitutionEngine.candidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
+        if (row.originalExerciseId != null) validIds += originalId
+        if (replacementExerciseId !in validIds) {
+            return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
+        }
+
+        if (dao.substituteCurrentExercise(sessionId, orderIndex, replacementExerciseId) == 1) {
+            ExerciseSubstitutionResult.Applied
+        } else {
+            ExerciseSubstitutionResult.StaleSession
+        }
+    }
+
     override suspend fun completeWorkout(
         sessionId: Long,
         completedEpochDay: Long,
@@ -183,6 +217,7 @@ class RoomWorkoutRepository(
             WorkoutExercise(
                 orderIndex = exercise.orderIndex,
                 exerciseId = exercise.exerciseId,
+                originalExerciseId = exercise.originalExerciseId,
                 prescription = ExercisePrescription(
                     exerciseId = exercise.exerciseId,
                     sets = if (session.completedEpochDay == null) {

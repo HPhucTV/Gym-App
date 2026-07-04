@@ -153,6 +153,53 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_6_7_preserves_exercise_and_defaults_original_id_to_null() {
+        helper.createDatabase(TEST_DATABASE, 6).apply {
+            execSQL(
+                """
+                INSERT INTO goals (
+                    id, programId, goal, level, equipmentProfile, sessionsPerWeek,
+                    durationWeeks, restDayMode, trainingDaysMask, sessionDurationMinutes,
+                    createdEpochDay, archived
+                ) VALUES (1, 'general', 'GENERAL_FITNESS', 'BEGINNER', 'BODYWEIGHT_ONLY', 3, 4, 'FULL_REST', 21, 45, 20600, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO workout_sessions (
+                    id, goalId, sequenceIndex, titleVi, focusVi, estimatedMinutes,
+                    dueEpochDay, completedEpochDay, volumeScalePercent
+                ) VALUES (10, 1, 0, 'Buổi 1', 'Toàn thân', 45, 20640, NULL, 100)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO session_exercises (
+                    sessionId, orderIndex, exerciseId, sets, repsMin, repsMax,
+                    durationSeconds, restSeconds, checked
+                ) VALUES (10, 0, 'squat', 3, 8, 12, NULL, 60, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            7,
+            true,
+            GymDatabase.MIGRATION_6_7,
+        ).use { migrated ->
+            migrated.query(
+                "SELECT exerciseId, originalExerciseId FROM session_exercises WHERE sessionId = 10",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("squat", cursor.getString(0))
+                assertTrue(cursor.isNull(1))
+            }
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)
