@@ -13,6 +13,7 @@ import com.example.myapplication.core.model.WorkoutSession
 import com.example.myapplication.core.nutrition.EntrySource
 import com.example.myapplication.core.nutrition.Nutrients
 import com.example.myapplication.core.nutrition.NutritionDay
+import com.example.myapplication.core.nutrition.MealTemplate
 import com.example.myapplication.data.NutritionData
 import com.example.myapplication.data.NutritionRepository
 import com.example.myapplication.data.WorkoutRepository
@@ -34,6 +35,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -167,6 +169,109 @@ class NutritionViewModelTest {
         assertEquals(1500, state.history[1].consumed.calories)
     }
 
+    @Test
+    fun `scan becomes editable draft and accepted values are parsed once`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(
+            FakeWorkoutRepository(), repo, FakeFoodAnalysisClient(scanResult()), flowOf(true), { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.scanFood(null)
+        advanceUntilIdle()
+        var draft = (viewModel.uiState.value as NutritionUiState.Content).draft!!
+        assertEquals("Com ga", draft.nameVi)
+        viewModel.updateDraftCalories(" 600 ")
+        viewModel.updateDraftProtein("35")
+        viewModel.updateDraftCarbs("70")
+        viewModel.updateDraftFat("18")
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+
+        assertEquals(Nutrients(600, 35, 70, 18), repo.additions.single().nutrients)
+        assertNull((viewModel.uiState.value as NutritionUiState.Content).draft)
+    }
+
+    @Test
+    fun `invalid draft stays open and save as template follows successful nutrition write`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.startManualEntry()
+        viewModel.updateDraftName(" ")
+        viewModel.updateDraftCalories("0")
+        viewModel.updateDraftProtein("-1")
+        viewModel.acceptDraft()
+        runCurrent()
+        assertTrue((viewModel.uiState.value as NutritionUiState.Content).draft!!.errors.isNotEmpty())
+        assertTrue(repo.additions.isEmpty())
+
+        viewModel.updateDraftName("Bữa phụ")
+        viewModel.updateDraftCalories("250")
+        viewModel.updateDraftProtein("12")
+        viewModel.updateDraftCarbs("30")
+        viewModel.updateDraftFat("8")
+        viewModel.setDraftSaveAsTemplate(true)
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.additions.size)
+        assertEquals(listOf("Bữa phụ"), repo.savedTemplateNames)
+    }
+
+    @Test
+    fun `template applies once and deletion requires confirmation`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository().apply {
+            templates.value = listOf(MealTemplate(7, "Bữa quen", Nutrients(400, 25, 45, 10), 1))
+        }
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.applyTemplate(7)
+        viewModel.applyTemplate(7)
+        runCurrent()
+        assertEquals(listOf(7L), repo.appliedTemplateIds)
+
+        viewModel.requestDeleteTemplate(7)
+        runCurrent()
+        assertEquals(7L, (viewModel.uiState.value as NutritionUiState.Content).pendingDeleteTemplateId)
+        viewModel.cancelDeleteTemplate()
+        viewModel.confirmDeleteTemplate()
+        runCurrent()
+        assertTrue(repo.deletedTemplateIds.isEmpty())
+        viewModel.requestDeleteTemplate(7)
+        viewModel.confirmDeleteTemplate()
+        advanceUntilIdle()
+        assertEquals(listOf(7L), repo.deletedTemplateIds)
+    }
+
+    @Test
+    fun `template save retry never records draft nutrients twice`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository().apply { failTemplateSaveOnce = true }
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+        viewModel.startManualEntry()
+        viewModel.updateDraftName("Bữa trưa")
+        viewModel.updateDraftCalories("500")
+        viewModel.updateDraftProtein("30")
+        viewModel.updateDraftCarbs("60")
+        viewModel.updateDraftFat("15")
+        viewModel.setDraftSaveAsTemplate(true)
+
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.additions.size)
+        assertEquals(2, repo.templateSaveAttempts)
+    }
+
     private fun TestScope.collectUiState(viewModel: NutritionViewModel) {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
     }
@@ -210,6 +315,12 @@ private data class AddedNutrition(
 private class FakeNutritionRepository : NutritionRepository {
     private val data = MutableStateFlow(NutritionData())
     val additions = mutableListOf<AddedNutrition>()
+    val templates = MutableStateFlow<List<MealTemplate>>(emptyList())
+    val savedTemplateNames = mutableListOf<String>()
+    val appliedTemplateIds = mutableListOf<Long>()
+    val deletedTemplateIds = mutableListOf<Long>()
+    var failTemplateSaveOnce = false
+    var templateSaveAttempts = 0
 
     override val nutritionData: Flow<NutritionData> = data
 
@@ -220,6 +331,18 @@ private class FakeNutritionRepository : NutritionRepository {
 
     val historyData = MutableStateFlow<List<NutritionDay>>(emptyList())
     override fun observeAllNutrition(): Flow<List<NutritionDay>> = historyData
+    override fun observeMealTemplates(): Flow<List<MealTemplate>> = templates
+    override suspend fun saveMealTemplate(id: Long?, nameVi: String, nutrients: Nutrients): Long {
+        templateSaveAttempts++
+        if (failTemplateSaveOnce) {
+            failTemplateSaveOnce = false
+            error("disk")
+        }
+        savedTemplateNames += nameVi
+        return id ?: 1L
+    }
+    override suspend fun applyMealTemplate(id: Long, epochDay: Long) { appliedTemplateIds += id }
+    override suspend fun deleteMealTemplate(id: Long) { deletedTemplateIds += id }
 
     override suspend fun addNutrients(epochDay: Long, nutrients: Nutrients, source: EntrySource) {
         additions += AddedNutrition(epochDay, nutrients, source)
