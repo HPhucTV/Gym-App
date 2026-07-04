@@ -6,6 +6,7 @@ import com.example.myapplication.core.model.GoalConfig
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutSession
 import kotlinx.coroutines.flow.Flow
+import com.example.myapplication.core.program.ScheduleChangePreview
 
 interface WorkoutRepository {
     fun observeActiveGoal(): Flow<ActiveGoal?>
@@ -21,7 +22,16 @@ interface WorkoutRepository {
     ): ExerciseSubstitutionResult = ExerciseSubstitutionResult.InvalidCandidate
     suspend fun applyTimeBudget(sessionId: Long, minutes: Int?): TimeBudgetResult =
         TimeBudgetResult.StaleSession
+    suspend fun previewScheduleChange(sessionId: Long, newEpochDay: Long): ScheduleChangePreview =
+        throw IllegalArgumentException("Schedule changes are unavailable")
+    suspend fun applyScheduleChange(preview: ScheduleChangePreview): ScheduleChangeResult =
+        ScheduleChangeResult.Stale
     suspend fun archiveActiveGoal()
+}
+
+sealed interface ScheduleChangeResult {
+    data object Applied : ScheduleChangeResult
+    data object Stale : ScheduleChangeResult
 }
 
 sealed interface TimeBudgetResult {

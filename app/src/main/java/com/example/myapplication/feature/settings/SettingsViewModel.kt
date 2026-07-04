@@ -21,6 +21,7 @@ class SettingsViewModel(
     private val saving = MutableStateFlow(false)
     private val confirmation = MutableStateFlow(PendingConfirmation.NONE)
     private val message = MutableStateFlow<String?>(null)
+    private val schedulePreview = MutableStateFlow<com.example.myapplication.core.program.ScheduleChangePreview?>(null)
     private val _events = Channel<SettingsEvent>(Channel.BUFFERED)
     val events: Flow<SettingsEvent> = _events.receiveAsFlow()
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -28,12 +29,67 @@ class SettingsViewModel(
 
     init {
         viewModelScope.launch {
-            combine(workoutRepository.observeActiveGoal(), settingsRepository.settings, saving, confirmation, message) { goal, prefs, busy, pending, note ->
+            val base = combine(workoutRepository.observeActiveGoal(), settingsRepository.settings, saving, confirmation, message) { goal, prefs, busy, pending, note ->
                 if (goal == null) SettingsUiState.Error("Không tìm thấy mục tiêu đang hoạt động.") else SettingsUiState.Content(
                     GoalSummary(goal.config.goal, goal.config.level, goal.config.equipmentProfile, goal.config.sessionsPerWeek, goal.config.durationWeeks),
                     prefs.restDayMode ?: goal.config.restDayMode, prefs.reminderEnabled, prefs.reminderHour, prefs.reminderMinute,
                     prefs.customServerUrl, prefs.darkModeEnabled, busy, pending, note)
+            }
+            combine(base, workoutRepository.observeCurrentWorkout(), schedulePreview) { state, session, preview ->
+                if (state is SettingsUiState.Content) {
+                    state.copy(
+                        currentSessionId = session?.id,
+                        currentDueEpochDay = session?.dueEpochDay,
+                        schedulePreview = preview,
+                    )
+                } else state
             }.collect { _uiState.value = it }
+        }
+    }
+
+    fun previewScheduleChange(newEpochDay: Long) {
+        val state = _uiState.value as? SettingsUiState.Content ?: return
+        val sessionId = state.currentSessionId ?: return
+        if (!startSaving()) return
+        viewModelScope.launch {
+            try {
+                schedulePreview.value = workoutRepository.previewScheduleChange(sessionId, newEpochDay)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                message.value = "Không thể xem trước lịch mới. Vui lòng chọn ngày khác."
+            } finally {
+                saving.value = false
+            }
+        }
+    }
+
+    fun cancelSchedulePreview() {
+        if (!saving.value) schedulePreview.value = null
+    }
+
+    fun confirmScheduleChange() {
+        val preview = schedulePreview.value ?: return
+        if (!startSaving()) return
+        viewModelScope.launch {
+            try {
+                when (workoutRepository.applyScheduleChange(preview)) {
+                    ScheduleChangeResult.Applied -> {
+                        schedulePreview.value = null
+                        message.value = "Đã cập nhật lịch tập sắp tới."
+                    }
+                    ScheduleChangeResult.Stale -> {
+                        schedulePreview.value = null
+                        message.value = "Lịch tập đã thay đổi. Vui lòng xem trước lại."
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                message.value = "Không thể cập nhật lịch tập. Vui lòng thử lại."
+            } finally {
+                saving.value = false
+            }
         }
     }
 

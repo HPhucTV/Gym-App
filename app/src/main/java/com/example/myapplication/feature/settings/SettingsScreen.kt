@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.testTag
 import com.example.myapplication.ui.theme.EnergyOrange
 import androidx.compose.ui.text.font.FontWeight
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun SettingsScreen(
@@ -37,6 +39,9 @@ fun SettingsScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToCheckIn: () -> Unit,
     onNavigateToRecommendations: () -> Unit,
+    onRequestScheduleDate: (Long) -> Unit = {},
+    onCancelSchedulePreview: () -> Unit = {},
+    onConfirmScheduleChange: () -> Unit = {},
     onBack: (() -> Unit)? = null,
 ) {
     when (state) {
@@ -44,7 +49,8 @@ fun SettingsScreen(
         is SettingsUiState.Error -> Text(state.message, Modifier.padding(24.dp))
         is SettingsUiState.Content -> SettingsContent(
             state, onRest, onReminder, onTime, onServerUrlChanged, onDarkModeChanged, onRequestReplace, onRequestDelete, onCancel, onConfirm,
-            onNavigateToProfile, onNavigateToCheckIn, onNavigateToRecommendations, onBack
+            onNavigateToProfile, onNavigateToCheckIn, onNavigateToRecommendations,
+            onRequestScheduleDate, onCancelSchedulePreview, onConfirmScheduleChange, onBack
         )
     }
 }
@@ -64,6 +70,9 @@ private fun SettingsContent(
     onNavigateToProfile: () -> Unit,
     onNavigateToCheckIn: () -> Unit,
     onNavigateToRecommendations: () -> Unit,
+    onRequestScheduleDate: (Long) -> Unit,
+    onCancelSchedulePreview: () -> Unit,
+    onConfirmScheduleChange: () -> Unit,
     onBack: (() -> Unit)?,
 ) {
     val context = LocalContext.current
@@ -96,6 +105,27 @@ private fun SettingsContent(
                 Text(goalLabel(state.goal.goal), style = MaterialTheme.typography.titleLarge)
                 Text("${levelLabel(state.goal.level)} • ${equipmentLabel(state.goal.equipment)}")
                 Text("${state.goal.sessionsPerWeek} buổi/tuần • ${state.goal.durationWeeks} tuần")
+            }
+        }
+        state.currentDueEpochDay?.let { dueEpochDay ->
+            OutlinedButton(
+                onClick = {
+                    val initial = LocalDate.ofEpochDay(dueEpochDay)
+                    android.app.DatePickerDialog(
+                        context,
+                        { _, year, month, day ->
+                            onRequestScheduleDate(LocalDate.of(year, month + 1, day).toEpochDay())
+                        },
+                        initial.year,
+                        initial.monthValue - 1,
+                        initial.dayOfMonth,
+                    ).show()
+                },
+                enabled = !state.saving,
+                modifier = Modifier.fillMaxWidth().testTag("settings-reschedule-button"),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Điều chỉnh lịch sắp tới")
             }
         }
         Text("Ngày nghỉ", style = MaterialTheme.typography.titleMedium)
@@ -242,7 +272,33 @@ private fun SettingsContent(
             },
         )
     }
+    state.schedulePreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = onCancelSchedulePreview,
+            title = { Text("Xác nhận lịch tập mới") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    preview.changes.forEach { change ->
+                        Text("${formatScheduleDate(change.oldEpochDay)} → ${formatScheduleDate(change.newEpochDay)}")
+                    }
+                    preview.warningsVi.forEach { warning ->
+                        Text(warning, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelSchedulePreview, enabled = !state.saving) { Text("Hủy") }
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmScheduleChange, enabled = !state.saving) { Text("Xác nhận") }
+            },
+        )
+    }
 }
+
+private val scheduleDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+private fun formatScheduleDate(epochDay: Long): String =
+    LocalDate.ofEpochDay(epochDay).format(scheduleDateFormatter)
 
 private fun goalLabel(value: FitnessGoal) = when (value) {
     FitnessGoal.GENERAL_FITNESS -> "Thể lực tổng quát"

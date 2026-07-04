@@ -13,6 +13,8 @@ import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import com.example.myapplication.core.program.ScheduleChangePreview
+import com.example.myapplication.core.program.SessionDateChange
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -143,17 +145,62 @@ class SettingsViewModelTest {
         assertEquals(0, repo.archives)
         assertNotNull(repo.active.value)
     }
+
+    @Test fun `schedule preview is write free and cancel discards it`() = runTest(dispatcher) {
+        val repo = FakeWorkoutRepository(currentWorkout = workout())
+        val vm = SettingsViewModel(repo, FakeSettingsRepository(), FakeScheduler())
+        runCurrent()
+
+        vm.previewScheduleChange(105)
+        advanceUntilIdle()
+        val content = vm.uiState.value as SettingsUiState.Content
+        assertEquals(105L, content.schedulePreview!!.changes.first().newEpochDay)
+        assertEquals(0, repo.scheduleApplies)
+
+        vm.cancelSchedulePreview()
+        runCurrent()
+        assertNull((vm.uiState.value as SettingsUiState.Content).schedulePreview)
+        assertEquals(0, repo.scheduleApplies)
+    }
+
+    @Test fun `confirm applies exact preview once and stale result stays recoverable`() = runTest(dispatcher) {
+        val repo = FakeWorkoutRepository(currentWorkout = workout())
+        val vm = SettingsViewModel(repo, FakeSettingsRepository(), FakeScheduler())
+        runCurrent()
+        vm.previewScheduleChange(105)
+        advanceUntilIdle()
+
+        vm.confirmScheduleChange()
+        vm.confirmScheduleChange()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.scheduleApplies)
+        assertNull((vm.uiState.value as SettingsUiState.Content).schedulePreview)
+    }
     private fun goal() = ActiveGoal(1, GoalConfig(FitnessGoal.GENERAL_FITNESS, ExperienceLevel.BEGINNER,
         EquipmentProfile.BODYWEIGHT_ONLY, 3, 4, RestDayMode.FULL_REST), 12)
+    private fun workout() = WorkoutSession(7, 1, 0, "Buổi hiện tại", "Toàn thân", 30, 100, emptyList())
 
     private inner class FakeWorkoutRepository(
         private val archiveFailure: Throwable? = null,
         private val onArchive: () -> Unit = {},
+        currentWorkout: WorkoutSession? = null,
     ) : WorkoutRepository {
         val active = MutableStateFlow<ActiveGoal?>(goal()); val history = MutableStateFlow(listOf(CompletedWorkout(1, 10))); var archives = 0
+        val current = MutableStateFlow(currentWorkout)
+        var scheduleApplies = 0
         override fun observeActiveGoal(): Flow<ActiveGoal?> = active
         override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = history
-        override fun observeCurrentWorkout(): Flow<WorkoutSession?> = flowOf(null)
+        override fun observeCurrentWorkout(): Flow<WorkoutSession?> = current
+        override suspend fun previewScheduleChange(sessionId: Long, newEpochDay: Long) =
+            ScheduleChangePreview(
+                listOf(SessionDateChange(sessionId, current.value!!.dueEpochDay, newEpochDay)),
+                listOf("Cảnh báo thử nghiệm"),
+            )
+        override suspend fun applyScheduleChange(preview: ScheduleChangePreview): ScheduleChangeResult {
+            scheduleApplies++
+            return ScheduleChangeResult.Applied
+        }
         override suspend fun archiveActiveGoal() { onArchive(); archiveFailure?.let { throw it }; archives++; active.value = null }
         override suspend fun createGoal(config: GoalConfig, program: ProgramTemplate, startEpochDay: Long) = Unit
         override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) = Unit

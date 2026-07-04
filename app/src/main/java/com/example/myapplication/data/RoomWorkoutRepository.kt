@@ -16,6 +16,9 @@ import com.example.myapplication.core.program.AdaptiveProgramPlanner
 import com.example.myapplication.core.program.SchedulePlanner
 import com.example.myapplication.core.program.TrainingSchedule
 import com.example.myapplication.core.program.SessionTimeBudgetPlanner
+import com.example.myapplication.core.program.ReschedulableSession
+import com.example.myapplication.core.program.ScheduleChangePreview
+import com.example.myapplication.core.program.ScheduleRescheduler
 import com.example.myapplication.data.local.GoalEntity
 import com.example.myapplication.data.local.GymDatabase
 import com.example.myapplication.data.local.SessionExerciseEntity
@@ -28,6 +31,7 @@ import kotlin.math.floor
 class RoomWorkoutRepository(
     private val database: GymDatabase,
     exercises: List<ExerciseDefinition> = emptyList(),
+    private val currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : WorkoutRepository {
     private val dao = database.workoutDao()
     private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
@@ -194,6 +198,54 @@ class RoomWorkoutRepository(
             )
         }
         TimeBudgetResult.Applied
+    }
+
+    override suspend fun previewScheduleChange(
+        sessionId: Long,
+        newEpochDay: Long,
+    ): ScheduleChangePreview = database.withTransaction {
+        if (dao.getCurrentSessionId() != sessionId) {
+            throw IllegalArgumentException("Only the current pending session can be rescheduled")
+        }
+        val session = dao.getSession(sessionId)
+            ?: throw IllegalArgumentException("Unknown session $sessionId")
+        val goal = dao.getGoal(session.goalId)
+            ?: throw IllegalArgumentException("Unknown goal ${session.goalId}")
+        ScheduleRescheduler.preview(
+            sessions = dao.getSessionsForGoal(session.goalId).map { row ->
+                ReschedulableSession(
+                    sessionId = row.id,
+                    sequenceIndex = row.sequenceIndex,
+                    dueEpochDay = row.dueEpochDay,
+                    completedEpochDay = row.completedEpochDay,
+                    demanding = row.estimatedMinutes >= 30,
+                )
+            },
+            selectedSessionId = sessionId,
+            newEpochDay = newEpochDay,
+            todayEpochDay = currentEpochDay(),
+            trainingDays = trainingDaysFromMask(goal.trainingDaysMask),
+        )
+    }
+
+    override suspend fun applyScheduleChange(
+        preview: ScheduleChangePreview,
+    ): ScheduleChangeResult = database.withTransaction {
+        val first = preview.changes.firstOrNull() ?: return@withTransaction ScheduleChangeResult.Stale
+        if (dao.getCurrentSessionId() != first.sessionId) {
+            return@withTransaction ScheduleChangeResult.Stale
+        }
+        val unchanged = preview.changes.all { change ->
+            dao.getSession(change.sessionId)?.let { row ->
+                row.completedEpochDay == null && row.dueEpochDay == change.oldEpochDay
+            } == true
+        }
+        if (!unchanged) return@withTransaction ScheduleChangeResult.Stale
+
+        preview.changes.forEach { change ->
+            dao.updateSessionDueEpochDay(change.sessionId, change.newEpochDay)
+        }
+        ScheduleChangeResult.Applied
     }
 
     override suspend fun completeWorkout(

@@ -41,7 +41,7 @@ class RoomWorkoutRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, GymDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = RoomWorkoutRepository(database, exercises())
+        repository = RoomWorkoutRepository(database, exercises(), currentEpochDay = { 100L })
     }
 
     @After
@@ -210,6 +210,34 @@ class RoomWorkoutRepositoryTest {
         repository.completeWorkout(first.id, 100)
 
         assertEquals(TimeBudgetResult.StaleSession, repository.applyTimeBudget(first.id, 15))
+    }
+
+    @Test
+    fun schedulePreview_isWriteFree_andApplyRejectsStaleDates() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+
+        val preview = repository.previewScheduleChange(current.id, 104)
+        assertEquals(104L, preview.changes.first().newEpochDay)
+        assertEquals(100L, repository.observeCurrentWorkout().first()?.dueEpochDay)
+
+        database.workoutDao().updateSessionDueEpochDay(current.id, 101)
+        assertEquals(ScheduleChangeResult.Stale, repository.applyScheduleChange(preview))
+        assertEquals(101L, repository.observeCurrentWorkout().first()?.dueEpochDay)
+    }
+
+    @Test
+    fun scheduleApply_updatesAllPreviewRowsAtomically() = runTest {
+        repository.createGoal(config(), program(), 100)
+        val current = requireNotNull(repository.observeCurrentWorkout().first())
+        val preview = repository.previewScheduleChange(current.id, 104)
+
+        assertEquals(ScheduleChangeResult.Applied, repository.applyScheduleChange(preview))
+
+        assertEquals(
+            preview.changes.map { it.newEpochDay },
+            database.workoutDao().getSessionsForGoal(current.goalId).map { it.dueEpochDay },
+        )
     }
 
     private fun program(id: String = "program_a", threeSessions: Boolean = false): ProgramTemplate {
