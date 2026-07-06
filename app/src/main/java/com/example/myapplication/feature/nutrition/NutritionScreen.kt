@@ -1,6 +1,12 @@
 package com.example.myapplication.feature.nutrition
 
 import android.graphics.Bitmap
+import androidx.core.content.FileProvider
+import android.net.Uri
+import java.io.File
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -80,12 +86,23 @@ fun NutritionScreen(
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    var photoFile by remember { mutableStateOf<File?>(null) }
+    var photoUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap ->
-        if (bitmap != null) {
-            onScan(bitmap)
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            val uri = photoUri
+            val file = photoFile
+            if (uri != null && file != null) {
+                val bitmap = loadResizedBitmapFromFile(context, file, uri)
+                if (bitmap != null) {
+                    onScan(bitmap)
+                }
+            }
         }
     }
 
@@ -93,7 +110,19 @@ fun NutritionScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            cameraLauncher.launch(null)
+            try {
+                val file = File.createTempFile("captured_food_", ".jpg", context.cacheDir)
+                photoFile = file
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+                photoUri = uri
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                android.util.Log.e("NutritionScreen", "Failed to create temp file or launch camera", e)
+            }
         }
     }
 
@@ -392,7 +421,7 @@ private fun DraftField(
         supportingText = error?.let { message -> { Text(message) } },
         keyboardOptions = if (numeric) {
             androidx.compose.foundation.text.KeyboardOptions(
-                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
             )
         } else androidx.compose.foundation.text.KeyboardOptions.Default,
         enabled = !saving,
@@ -1169,3 +1198,87 @@ private class BarcodeAnalyzer(
         }
     }
 }
+
+private fun loadResizedBitmapFromFile(
+    context: android.content.Context,
+    file: java.io.File,
+    uri: android.net.Uri,
+    maxDimension: Int = 1080
+): android.graphics.Bitmap? {
+    return try {
+        val options = android.graphics.BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            android.graphics.BitmapFactory.decodeStream(input, null, options)
+        }
+
+        val srcWidth = options.outWidth
+        val srcHeight = options.outHeight
+
+        var inSampleSize = 1
+        if (srcWidth > maxDimension || srcHeight > maxDimension) {
+            val halfWidth = srcWidth / 2
+            val halfHeight = srcHeight / 2
+            while ((halfWidth / inSampleSize) >= maxDimension && (halfHeight / inSampleSize) >= maxDimension) {
+                inSampleSize *= 2
+            }
+        }
+
+        val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+            inSampleSize = inSampleSize
+        }
+        val sampledBitmap = context.contentResolver.openInputStream(uri)?.use { input ->
+            android.graphics.BitmapFactory.decodeStream(input, null, decodeOptions)
+        } ?: return null
+
+        val scaledBitmap = if (sampledBitmap.width > maxDimension || sampledBitmap.height > maxDimension) {
+            val ratio = sampledBitmap.width.toFloat() / sampledBitmap.height.toFloat()
+            val targetWidth: Int
+            val targetHeight: Int
+            if (sampledBitmap.width > sampledBitmap.height) {
+                targetWidth = maxDimension
+                targetHeight = (maxDimension / ratio).toInt()
+            } else {
+                targetHeight = maxDimension
+                targetWidth = (maxDimension * ratio).toInt()
+            }
+            android.graphics.Bitmap.createScaledBitmap(sampledBitmap, targetWidth, targetHeight, true).also {
+                if (it != sampledBitmap) {
+                    sampledBitmap.recycle()
+                }
+            }
+        } else {
+            sampledBitmap
+        }
+
+        val exifInterface = android.media.ExifInterface(file.absolutePath)
+        val orientation = exifInterface.getAttributeInt(
+            android.media.ExifInterface.TAG_ORIENTATION,
+            android.media.ExifInterface.ORIENTATION_NORMAL
+        )
+        val rotationDegrees = when (orientation) {
+            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+            else -> 0
+        }
+
+        if (rotationDegrees != 0) {
+            val matrix = android.graphics.Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+            val rotatedBitmap = android.graphics.Bitmap.createBitmap(
+                scaledBitmap, 0, 0, scaledBitmap.width, scaledBitmap.height, matrix, true
+            )
+            if (rotatedBitmap != scaledBitmap) {
+                scaledBitmap.recycle()
+            }
+            rotatedBitmap
+        } else {
+            scaledBitmap
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("loadResizedBitmapFromFile", "Error decoding or resizing image", e)
+        null
+    }
+}
+

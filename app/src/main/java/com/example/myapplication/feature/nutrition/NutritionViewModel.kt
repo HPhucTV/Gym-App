@@ -1,6 +1,7 @@
 package com.example.myapplication.feature.nutrition
 
 import android.graphics.Bitmap
+import kotlin.math.roundToInt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.core.model.FitnessGoal
@@ -451,9 +452,13 @@ private fun EditableNutritionDraft.validateAndParse(): ParsedDraft {
     val normalizedName = nameVi.trim()
     if (normalizedName.length !in 1..60) errors["nameVi"] = "Tên món cần từ 1 đến 60 ký tự."
     fun parse(field: String, raw: String): Int? {
-        val value = raw.trim().toIntOrNull()
-        if (value == null || value < 0) errors[field] = "Nhập số nguyên không âm."
-        return value
+        val cleaned = raw.trim().replace(',', '.')
+        val doubleValue = cleaned.toDoubleOrNull()
+        if (doubleValue == null || doubleValue < 0.0) {
+            errors[field] = "Nhập số không âm."
+            return null
+        }
+        return doubleValue.roundToInt()
     }
     val calories = parse("calories", caloriesText)
     val protein = parse("protein", proteinText)

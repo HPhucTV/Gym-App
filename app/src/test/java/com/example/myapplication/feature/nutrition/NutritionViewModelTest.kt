@@ -297,6 +297,26 @@ class NutritionViewModelTest {
         assertEquals(2, repo.templateSaveAttempts)
     }
 
+    @Test
+    fun `manual entry draft parses decimal values and rounds them`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.startManualEntry()
+        viewModel.updateDraftName("Thức ăn thập phân")
+        viewModel.updateDraftCalories("250.6")
+        viewModel.updateDraftProtein("12.4")
+        viewModel.updateDraftCarbs("30,5")
+        viewModel.updateDraftFat("8.0")
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.additions.size)
+        assertEquals(Nutrients(251, 12, 31, 8), repo.additions.single().nutrients)
+    }
+
     private fun TestScope.collectUiState(viewModel: NutritionViewModel) {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
     }
