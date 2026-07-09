@@ -82,6 +82,7 @@ interface PersonalizationDao {
                 consumedProteinGrams = current.consumedProteinGrams + template.proteinGrams,
                 consumedCarbsGrams = current.consumedCarbsGrams + template.carbsGrams,
                 consumedFatGrams = current.consumedFatGrams + template.fatGrams,
+                consumedFiberGrams = current.consumedFiberGrams + template.fiberGrams,
                 lastEntrySource = source,
                 updatedAtEpochMillis = updatedAtEpochMillis,
             ),

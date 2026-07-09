@@ -3,12 +3,15 @@ package com.example.myapplication.feature.onboarding
 import com.example.myapplication.core.model.*
 import java.time.DayOfWeek
 
-enum class OnboardingStep { GOAL, LEVEL, EQUIPMENT, TRAINING_DAYS, SESSION_DURATION, REST_BEHAVIOR, REVIEW }
+enum class OnboardingStep { PERSONAL_INFO, GOAL, LEVEL, EQUIPMENT, TRAINING_DAYS, SESSION_DURATION, REST_BEHAVIOR, REVIEW }
 
 data class WorkoutCommitment(val sessionsPerWeek: Int, val durationWeeks: Int)
 
 data class OnboardingDraft(
     val goal: FitnessGoal? = null,
+    val goals: List<FitnessGoal> = emptyList(),
+    val gender: Gender? = null,
+    val bodyType: BodyType? = null,
     val level: ExperienceLevel? = null,
     val equipment: EquipmentProfile? = null,
     val sessionsPerWeek: Int? = null,

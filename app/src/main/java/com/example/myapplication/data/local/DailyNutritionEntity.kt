@@ -10,6 +10,7 @@ data class DailyNutritionEntity(
     val consumedProteinGrams: Int = 0,
     val consumedCarbsGrams: Int = 0,
     val consumedFatGrams: Int = 0,
+    val consumedFiberGrams: Int = 0,
     val targetBasalCalories: Int? = null,
     val targetMaintenanceCalories: Int? = null,
     val targetCalories: Int? = null,
@@ -17,5 +18,6 @@ data class DailyNutritionEntity(
     val targetCarbsGrams: Int? = null,
     val targetFatGrams: Int? = null,
     val lastEntrySource: String? = null,
+    val waterIntakeMl: Int = 0,
     val updatedAtEpochMillis: Long = 0,
 )

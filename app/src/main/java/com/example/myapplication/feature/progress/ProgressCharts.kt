@@ -27,6 +27,12 @@ import com.example.myapplication.ui.theme.BorderGray
 import com.example.myapplication.ui.theme.EnergyOrange
 import com.example.myapplication.ui.theme.SuccessGreen
 import com.example.myapplication.ui.theme.customColors
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.clickable
+import com.example.myapplication.data.local.WeightMeasurementEntity
 
 @Composable
 fun ProgressChartsSection(
@@ -252,4 +258,193 @@ private fun muscleEmoji(muscle: MuscleGroup): String = when (muscle) {
     MuscleGroup.FULL_BODY -> "🏋️"
     MuscleGroup.CARDIO -> "❤️"
     MuscleGroup.MOBILITY -> "🧘"
+}
+
+@Composable
+fun WeightHistoryChartCard(
+    weightHistory: List<WeightMeasurementEntity>,
+    currentFilter: WeightFilter,
+    onFilterSelected: (WeightFilter) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val customColors = colors.customColors
+
+    Surface(
+        color = colors.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Xu hướng cân nặng ⚖️",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.primaryText
+                )
+
+                // Weight Filter Selector (7, 30, 90 days)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    WeightFilter.values().forEach { filter ->
+                        val active = filter == currentFilter
+                        Text(
+                            text = when (filter) {
+                                WeightFilter.LAST_7_DAYS -> "7N"
+                                WeightFilter.LAST_30_DAYS -> "30N"
+                                WeightFilter.LAST_90_DAYS -> "90N"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (active) Color.White else customColors.mutedText,
+                            modifier = Modifier
+                                .background(
+                                    color = if (active) EnergyOrange else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { onFilterSelected(filter) }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            val sortedWeights = weightHistory.sortedBy { it.epochDay }
+
+            if (sortedWeights.size < 2) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (sortedWeights.isEmpty()) {
+                            "Hãy ghi nhận cân nặng trong phần Hồ sơ\nhoặc Check-in hàng tuần."
+                        } else {
+                            "Đã ghi nhận ${sortedWeights.first().weightKg} kg.\nCần ít nhất 2 ngày đo khác nhau để vẽ biểu đồ."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = customColors.mutedText,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            } else {
+                val minWeight = sortedWeights.minOf { it.weightKg }
+                val maxWeight = sortedWeights.maxOf { it.weightKg }
+                val weightRange = maxWeight - minWeight
+                val yMin = minWeight - maxOf(1.0, weightRange * 0.1)
+                val yMax = maxWeight + maxOf(1.0, weightRange * 0.1)
+                val yRange = (yMax - yMin).coerceAtLeast(0.1)
+
+                val minDay = sortedWeights.first().epochDay
+                val maxDay = sortedWeights.last().epochDay
+                val dayRange = (maxDay - minDay).coerceAtLeast(1)
+
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val paddingX = 40.dp.toPx()
+                    val paddingY = 20.dp.toPx()
+                    val chartWidth = width - paddingX * 2
+                    val chartHeight = height - paddingY * 2
+
+                    val points = sortedWeights.map { measurement ->
+                        val xFraction = if (dayRange == 0L) 0.5f else (measurement.epochDay - minDay).toFloat() / dayRange
+                        val yFraction = (measurement.weightKg - yMin).toFloat() / yRange
+                        val x = paddingX + xFraction * chartWidth
+                        val y = paddingY + (1f - yFraction.toFloat()) * chartHeight
+                        Offset(x, y)
+                    }
+
+                    // 1. Draw Grid Lines (yMin, average, yMax)
+                    val gridColor = colors.outline.copy(alpha = 0.3f)
+                    val dashPathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+
+                    // Average line
+                    val avgWeight = sortedWeights.map { it.weightKg }.average()
+                    val avgYFraction = (avgWeight - yMin).toFloat() / yRange
+                    val avgY = paddingY + (1f - avgYFraction.toFloat()) * chartHeight
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(paddingX, avgY),
+                        end = Offset(width - paddingX, avgY),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = dashPathEffect
+                    )
+
+                    // Draw the connection lines
+                    for (i in 0 until points.size - 1) {
+                        drawLine(
+                            color = EnergyOrange,
+                            start = points[i],
+                            end = points[i + 1],
+                            strokeWidth = 3.dp.toPx()
+                        )
+                    }
+
+                    // Draw dots and text labels
+                    val textColor = customColors.primaryText.toArgb()
+                    val dateColor = customColors.mutedText.toArgb()
+
+                    val labelPaint = android.graphics.Paint().apply {
+                        color = textColor
+                        textSize = 9.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }
+
+                    val datePaint = android.graphics.Paint().apply {
+                        color = dateColor
+                        textSize = 8.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+
+                    val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM")
+
+                    points.forEachIndexed { index, offset ->
+                        val measurement = sortedWeights[index]
+
+                        // Draw Circle dot
+                        drawCircle(
+                            color = EnergyOrange,
+                            radius = 5.dp.toPx(),
+                            center = offset
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.dp.toPx(),
+                            center = offset
+                        )
+
+                        // Draw Weight Text (above dot)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "%.1f".format(measurement.weightKg),
+                            offset.x,
+                            offset.y - 8.dp.toPx(),
+                            labelPaint
+                        )
+
+                        // Draw Date Text (below dot)
+                        val dateStr = java.time.LocalDate.ofEpochDay(measurement.epochDay).format(dateFormatter)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            dateStr,
+                            offset.x,
+                            offset.y + 18.dp.toPx(),
+                            datePaint
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

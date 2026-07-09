@@ -181,6 +181,7 @@ fun GymApp(container: AppContainer) {
                             container.catalogRepository.programs,
                             container.catalogRepository.exercises,
                             container.workoutFeedbackRepository,
+                            container.database.personalizationDao(),
                         ) { LocalDate.now().toEpochDay() }
                     }
                 }
@@ -201,6 +202,7 @@ fun GymApp(container: AppContainer) {
                 onPreviousMonth = progressViewModel::previousMonth,
                 onNextMonth = progressViewModel::nextMonth,
                 onNavigateToCatalog = onNavigateToCatalog,
+                onWeightFilterSelected = progressViewModel::changeWeightFilter,
             )
         },
         settingsContent = { onNavigateToProfile, onNavigateToCheckIn, onNavigateToRecommendations ->
@@ -234,6 +236,7 @@ fun GymApp(container: AppContainer) {
                             workoutRepository = container.workoutRepository,
                             nutritionRepository = container.nutritionRepository,
                             personalizationDao = container.database.personalizationDao(),
+                            foodCatalogDao = container.database.foodCatalogDao(),
                             foodAnalysisClient = container.foodAnalysisClient,
                             cloudAiConsent = container.database.personalizationDao().observeProfile()
                                 .map { profile -> profile?.cloudAiConsent == true },
@@ -247,7 +250,6 @@ fun GymApp(container: AppContainer) {
                 state = state,
                 onBack = onBack,
                 onScan = nutritionViewModel::scanFood,
-                onScanBarcode = nutritionViewModel::scanBarcode,
                 onAccept = nutritionViewModel::acceptDraft,
                 onDiscard = nutritionViewModel::discardScanResult,
                 onUpdateResult = nutritionViewModel::updateScanResult,
@@ -259,6 +261,7 @@ fun GymApp(container: AppContainer) {
                 onDraftProtein = nutritionViewModel::updateDraftProtein,
                 onDraftCarbs = nutritionViewModel::updateDraftCarbs,
                 onDraftFat = nutritionViewModel::updateDraftFat,
+                onDraftFiber = nutritionViewModel::updateDraftFiber,
                 onDraftSaveAsTemplate = nutritionViewModel::setDraftSaveAsTemplate,
                 onApplyTemplate = nutritionViewModel::applyTemplate,
                 onRequestDeleteTemplate = nutritionViewModel::requestDeleteTemplate,
@@ -268,6 +271,19 @@ fun GymApp(container: AppContainer) {
                 onUpdateTemplateName = nutritionViewModel::updateTemplateName,
                 onCancelRenameTemplate = nutritionViewModel::cancelRenameTemplate,
                 onConfirmRenameTemplate = nutritionViewModel::confirmRenameTemplate,
+                onImportCsv = nutritionViewModel::importNutritionFromCsv,
+                onSearchCatalog = nutritionViewModel::searchFoodCatalog,
+                onClearCatalog = nutritionViewModel::clearFoodCatalog,
+                onAddFoodFromCatalog = nutritionViewModel::addFoodFromCatalog,
+                onAddToCart = nutritionViewModel::addToCart,
+                onRemoveFromCart = nutritionViewModel::removeFromCart,
+                onUpdateCartGrams = nutritionViewModel::updateCartGrams,
+                onClearCart = nutritionViewModel::clearCart,
+                onConfirmEatCart = nutritionViewModel::confirmEatCart,
+                onToggleFavoriteCatalog = nutritionViewModel::toggleFavoriteCatalog,
+                onDeleteLoggedFood = nutritionViewModel::deleteLoggedFood,
+                onCopyYesterdayMeals = nutritionViewModel::copyYesterdayMeals,
+                onSelectScanRecommendation = nutritionViewModel::selectScanRecommendation,
             )
         },
         profileContent = { onBack, onNavigateToSettings ->

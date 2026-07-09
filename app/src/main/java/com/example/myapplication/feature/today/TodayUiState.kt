@@ -41,6 +41,7 @@ sealed interface TodayUiState {
         val canChangeTimeBudget: Boolean = true,
         val warmUp: AdvisoryMovementBlockUi? = null,
         val coolDown: AdvisoryMovementBlockUi? = null,
+        val soreMuscles: Set<String> = emptySet(),
     ) : TodayUiState
 
     data class Recovery(
@@ -65,6 +66,8 @@ data class WorkoutRowUi(
     val exerciseId: String = nameVi,
     val primaryMuscle: MuscleGroup = MuscleGroup.FULL_BODY,
     val originalExerciseId: String? = null,
+    val isLightWorkout: Boolean = false,
+    val gif3dPath: String? = null,
 )
 
 data class ExerciseSubstitutionUi(

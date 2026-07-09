@@ -18,6 +18,9 @@ import com.example.myapplication.data.NutritionData
 import com.example.myapplication.data.NutritionRepository
 import com.example.myapplication.data.WorkoutRepository
 import com.example.myapplication.feature.onboarding.MainDispatcherRule
+import com.example.myapplication.data.local.LoggedFoodEntity
+import com.example.myapplication.data.local.FoodCatalogEntity
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -114,27 +117,6 @@ class NutritionViewModelTest {
 
         val state = viewModel.uiState.value as NutritionUiState.Content
         assertFalse(state.scanning)
-        assertNull(state.scanError)
-    }
- 
-    @Test
-    fun `scanBarcode with valid code returns result`() = runTest(dispatcher) {
-        val viewModel = NutritionViewModel(
-            workoutRepository = FakeWorkoutRepository(),
-            nutritionRepository = FakeNutritionRepository(),
-            foodAnalysisClient = FakeFoodAnalysisClient(),
-            cloudAiConsent = flowOf(true),
-            currentEpochDay = { 20636L },
-        )
-        collectUiState(viewModel)
-        runCurrent()
- 
-        viewModel.scanBarcode("8934563138073")
-        advanceUntilIdle()
- 
-        val state = viewModel.uiState.value as NutritionUiState.Content
-        assertNotNull(state.scanResult)
-        assertEquals("Snack Toonies Chef (Mã vạch)", state.scanResult?.dishName)
         assertNull(state.scanError)
     }
 
@@ -317,6 +299,169 @@ class NutritionViewModelTest {
         assertEquals(Nutrients(251, 12, 31, 8), repo.additions.single().nutrients)
     }
 
+    @Test
+    fun `importNutritionFromCsv parses and inserts into catalog`() = runTest(dispatcher) {
+        val fakeDao = object : com.example.myapplication.data.local.FoodCatalogDao {
+            val inserted = mutableListOf<List<com.example.myapplication.data.local.FoodCatalogEntity>>()
+            override fun observeAll() = flowOf(emptyList<com.example.myapplication.data.local.FoodCatalogEntity>())
+            override fun observeCount() = flowOf(0)
+            override fun searchByName(query: String) = flowOf(emptyList<com.example.myapplication.data.local.FoodCatalogEntity>())
+            override suspend fun insertAll(items: List<com.example.myapplication.data.local.FoodCatalogEntity>) {
+                inserted.add(items)
+            }
+            override suspend fun deleteAll() {}
+            override suspend fun getAllNow() = emptyList<com.example.myapplication.data.local.FoodCatalogEntity>()
+            override suspend fun deleteByBatch(batchId: String) {}
+            override suspend fun countAll() = 0
+            override suspend fun toggleFavorite(id: Long, isFavorite: Boolean) = 0
+            override fun observeFavorites() = flowOf(emptyList<com.example.myapplication.data.local.FoodCatalogEntity>())
+            override fun searchFavorites(query: String) = flowOf(emptyList<com.example.myapplication.data.local.FoodCatalogEntity>())
+        }
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = FakeNutritionRepository(),
+            foodCatalogDao = fakeDao,
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        val csv = """
+            Food,Grams,Calories,fat,Carbs,Protein
+            milk,100,61,3,4,3
+        """.trimIndent()
+
+        viewModel.importNutritionFromCsv(csv)
+        advanceUntilIdle()
+
+        assertEquals(1, fakeDao.inserted.size)
+        assertEquals("milk", fakeDao.inserted[0][0].name)
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(true, state.importSuccess)
+    }
+
+    @Test
+    fun `cart operations works correctly`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        val food = FoodCatalogEntity(
+            id = 101,
+            name = "Thịt bò",
+            caloriesPerServing = 250.0,
+            gramsPerServing = 100.0,
+            proteinPerServing = 26.0,
+            carbsPerServing = 0.0,
+            fatPerServing = 15.0,
+            isFavorite = false,
+            importBatchId = ""
+        )
+
+        // 1. Add to cart
+        viewModel.addToCart(food, 200.0, "LUNCH")
+        runCurrent()
+        var state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(1, state.cart.size)
+        assertEquals(200.0, state.cart[0].grams, 0.01)
+        assertEquals("LUNCH", state.cart[0].mealTime)
+
+        // 2. Add same item increases grams
+        viewModel.addToCart(food, 100.0, "LUNCH")
+        runCurrent()
+        state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(300.0, state.cart[0].grams, 0.01)
+
+        // 3. Update grams
+        viewModel.updateCartGrams(101, "LUNCH", 150.0)
+        runCurrent()
+        state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(150.0, state.cart[0].grams, 0.01)
+
+        // 4. Remove from cart
+        viewModel.removeFromCart(101, "LUNCH")
+        runCurrent()
+        state = viewModel.uiState.value as NutritionUiState.Content
+        assertTrue(state.cart.isEmpty())
+    }
+
+    @Test
+    fun `confirm eat cart adds foods to repository and clears cart`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        val food = FoodCatalogEntity(
+            id = 101,
+            name = "Trứng",
+            caloriesPerServing = 155.0,
+            gramsPerServing = 100.0,
+            proteinPerServing = 13.0,
+            carbsPerServing = 1.1,
+            fatPerServing = 11.0,
+            isFavorite = false,
+            importBatchId = ""
+        )
+
+        viewModel.addToCart(food, 50.0, "BREAKFAST")
+        runCurrent()
+        viewModel.confirmEatCart()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertTrue(state.cart.isEmpty())
+        assertEquals(1, repo.loggedFoods.value.size)
+        assertEquals("Trứng", repo.loggedFoods.value[0].name)
+        assertEquals("BREAKFAST", repo.loggedFoods.value[0].mealTime)
+    }
+
+    @Test
+    fun `selectScanRecommendation sets draft and clears scanResultState`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(FakeWorkoutRepository(), repo, currentEpochDay = { 20636L })
+        collectUiState(viewModel)
+        runCurrent()
+
+        val scanResult = ScanResult(
+            dishName = "Phở bò",
+            totalCalories = 450,
+            proteinGrams = 20,
+            carbsGrams = 60,
+            fatGrams = 12,
+            fitnessScore = 8,
+            advice = "Ăn tốt",
+            constituents = emptyList(),
+            sweatPayment = null,
+            recommendations = listOf(
+                ScanRecommendation("Phở bò", 0.95, 450, 20, 60, 12),
+                ScanRecommendation("Hủ tiếu", 0.65, 500, 18, 65, 14)
+            )
+        )
+
+        // Inject scanResult directly (simulate successful scan)
+        val field = viewModel.javaClass.getDeclaredField("scanResultState")
+        field.isAccessible = true
+        (field.get(viewModel) as MutableStateFlow<ScanResult?>).value = scanResult
+        runCurrent()
+
+        // Verify the recommendation is in the UI state
+        var state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(scanResult, state.scanResult)
+
+        // Select recommendation
+        viewModel.selectScanRecommendation(scanResult.recommendations[0])
+        runCurrent()
+
+        state = viewModel.uiState.value as NutritionUiState.Content
+        // Scan result should be cleared
+        assertEquals(null, state.scanResult)
+        // Draft should be populated with selected recommendation
+        assertEquals("Phở bò", state.draft?.nameVi)
+        assertEquals("450", state.draft?.caloriesText)
+    }
+
     private fun TestScope.collectUiState(viewModel: NutritionViewModel) {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
     }
@@ -335,6 +480,9 @@ class NutritionViewModelTest {
             exerciseName = "Squat khong ta",
             extraSets = 1,
         ),
+        recommendations = listOf(
+            ScanRecommendation("Com ga", 0.9, 510, 31, 62, 16)
+        )
     )
 }
 
@@ -347,28 +495,6 @@ private class FakeFoodAnalysisClient(
     override suspend fun analyze(bitmap: android.graphics.Bitmap?): ScanResult? {
         calls++
         failure?.let { throw it }
-        return result
-    }
-
-    override suspend fun lookupBarcode(barcode: String): ScanResult? {
-        calls++
-        failure?.let { throw it }
-        if (barcode == "8934563138073") {
-            return ScanResult(
-                dishName = "Snack Toonies Chef (Mã vạch)",
-                totalCalories = 284,
-                proteinGrams = 3,
-                carbsGrams = 28,
-                fatGrams = 18,
-                fitnessScore = 4,
-                advice = "Đồ ăn vặt đóng gói.",
-                constituents = emptyList(),
-                sweatPayment = null,
-                calculationProcess = "Mã vạch: 8934563138073",
-                confidence = 1.0,
-                needsUserConfirmation = false
-            )
-        }
         return result
     }
 }
@@ -388,6 +514,12 @@ private class FakeNutritionRepository : NutritionRepository {
     val deletedTemplateIds = mutableListOf<Long>()
     var failTemplateSaveOnce = false
     var templateSaveAttempts = 0
+
+    val loggedFoods = MutableStateFlow<List<LoggedFoodEntity>>(emptyList())
+    val favoriteFoods = MutableStateFlow<List<FoodCatalogEntity>>(emptyList())
+    val recentFoods = MutableStateFlow<List<FoodCatalogEntity>>(emptyList())
+    val deletedLoggedFoodIds = mutableListOf<Long>()
+    var copyYesterdayCalled = false
 
     override val nutritionData: Flow<NutritionData> = data
 
@@ -420,6 +552,55 @@ private class FakeNutritionRepository : NutritionRepository {
             fatEaten = data.value.fatEaten + nutrients.fatGrams,
         )
     }
+
+    override fun observeLoggedFoods(epochDay: Long): Flow<List<LoggedFoodEntity>> = loggedFoods
+    override suspend fun loggedFoodsNow(epochDay: Long): List<LoggedFoodEntity> = loggedFoods.value
+    override fun observeRecentFoods(limit: Int): Flow<List<FoodCatalogEntity>> = recentFoods
+    override fun observeFavorites(): Flow<List<FoodCatalogEntity>> = favoriteFoods
+    override fun searchFavorites(query: String): Flow<List<FoodCatalogEntity>> = favoriteFoods.map { list ->
+        list.filter { it.name.contains(query, ignoreCase = true) }
+    }
+    override suspend fun toggleFavorite(foodCatalogId: Long, isFavorite: Boolean) {
+        favoriteFoods.value = favoriteFoods.value.map {
+            if (it.id == foodCatalogId) it.copy(isFavorite = isFavorite) else it
+        }
+    }
+    override suspend fun logFood(
+        epochDay: Long,
+        name: String,
+        mealTime: String,
+        grams: Double,
+        calories: Int,
+        proteinGrams: Int,
+        carbsGrams: Int,
+        fatGrams: Int,
+        fiberGrams: Int,
+        foodCatalogId: Long?
+    ) {
+        val newLog = LoggedFoodEntity(
+            id = (loggedFoods.value.size + 1).toLong(),
+            epochDay = epochDay,
+            name = name,
+            mealTime = mealTime,
+            grams = grams,
+            calories = calories,
+            proteinGrams = proteinGrams,
+            carbsGrams = carbsGrams,
+            fatGrams = fatGrams,
+            fiberGrams = fiberGrams,
+            timestamp = System.currentTimeMillis()
+        )
+        loggedFoods.value = loggedFoods.value + newLog
+    }
+    override suspend fun deleteLoggedFood(id: Long) {
+        deletedLoggedFoodIds += id
+        loggedFoods.value = loggedFoods.value.filter { it.id != id }
+    }
+    override suspend fun copyYesterdayMeals(yesterdayEpochDay: Long, todayEpochDay: Long) {
+        copyYesterdayCalled = true
+    }
+
+    override suspend fun addWater(epochDay: Long, waterMl: Int) = Unit
 
     override suspend fun setTarget(epochDay: Long, target: com.example.myapplication.core.nutrition.NutritionTarget) = Unit
     override suspend fun setSweatPayment(exerciseId: String, exerciseName: String, extraSets: Int, active: Boolean) = Unit

@@ -26,6 +26,7 @@ data class CelebrationState(
 class TodayViewModel(
     private val repository: WorkoutRepository,
     exercises: List<ExerciseDefinition>,
+    private val settingsRepository: SettingsRepository? = null,
     private val restDayOverride: Flow<RestDayMode?> = flowOf(null),
     private val nutritionRepository: NutritionRepository? = null,
     private val achievementChecker: com.example.myapplication.core.achievement.AchievementChecker? = null,
@@ -91,6 +92,7 @@ class TodayViewModel(
         val day: Long,
         val ops: Operations,
         val rest: RestDayMode?,
+        val soreMuscles: Set<String> = emptySet(),
     )
 
     private val catalog = exercises.associateBy { it.id }
@@ -110,14 +112,22 @@ class TodayViewModel(
     init {
         viewModelScope.launch {
             val nutritionFlow = nutritionRepository?.nutritionData ?: flowOf(NutritionData())
+            val soreMusclesFlow = settingsRepository?.settings?.map { it.soreMuscles } ?: flowOf(emptySet())
             val mainFlow = combine(
                 repository.observeActiveGoal(),
                 repository.observeCurrentWorkout(),
                 today,
                 operations,
-                restDayOverride
-            ) { goal, session, day, ops, rest ->
-                ActiveGoalFlowBundle(goal, session, day, ops, rest)
+                restDayOverride,
+                soreMusclesFlow
+            ) { array ->
+                val goal = array[0] as ActiveGoal?
+                val session = array[1] as WorkoutSession?
+                val day = array[2] as Long
+                val ops = array[3] as Operations
+                val rest = array[4] as RestDayMode?
+                val soreMuscles = array[5] as Set<String>
+                ActiveGoalFlowBundle(goal, session, day, ops, rest, soreMuscles)
             }
 
             combine(mainFlow, nutritionFlow, isRefreshingCoach) { bundle, nutrition, refreshingCoach ->
@@ -129,8 +139,22 @@ class TodayViewModel(
                     bundle.rest,
                     nutrition,
                     refreshingCoach,
+                    bundle.soreMuscles,
                 )
             }.collect { _uiState.value = it }
+        }
+    }
+
+    fun toggleSoreMuscle(muscleName: String) {
+        val settingsRepo = settingsRepository ?: return
+        viewModelScope.launch {
+            val currentSettings = settingsRepo.settings.first()
+            val newSoreMuscles = if (currentSettings.soreMuscles.contains(muscleName)) {
+                currentSettings.soreMuscles - muscleName
+            } else {
+                currentSettings.soreMuscles + muscleName
+            }
+            settingsRepo.setSoreMuscles(newSoreMuscles)
         }
     }
 
@@ -418,6 +442,7 @@ class TodayViewModel(
         restOverride: RestDayMode?,
         nutrition: NutritionData = NutritionData(),
         refreshingCoach: Boolean = false,
+        soreMuscles: Set<String> = emptySet(),
     ): TodayUiState {
         ops.completionError?.takeIf { it.first == session?.id }?.let { return TodayUiState.Error(it.second, canRetry = true) }
         if (goal == null) return TodayUiState.Error("Không tìm thấy mục tiêu đang hoạt động.")
@@ -456,7 +481,7 @@ class TodayViewModel(
 
             WorkoutRowUi(exercise.orderIndex, definition.nameVi, finalPrescriptionText,
                 exercise.prescription.restSeconds, definition.instructionsVi, exercise.checked, exercise.exerciseId,
-                definition.primaryMuscle, exercise.originalExerciseId)
+                definition.primaryMuscle, exercise.originalExerciseId, exercise.isLightWorkout, definition.gif3dPath)
         }
         val pending = ops.pending.filter { it.first == session.id }.map { it.second }.toSet()
         val checked = rows.count { it.checked }
@@ -496,6 +521,7 @@ class TodayViewModel(
             canChangeTimeBudget = checked == 0 && pending.isEmpty() && ops.completingSessionId == null,
             warmUp = warmUp,
             coolDown = coolDown,
+            soreMuscles = soreMuscles,
         )
     }
 }

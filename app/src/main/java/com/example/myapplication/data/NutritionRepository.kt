@@ -16,6 +16,10 @@ import com.example.myapplication.core.nutrition.MealTemplate
 import com.example.myapplication.data.local.MealTemplateEntity
 import com.example.myapplication.data.local.DailyNutritionEntity
 import com.example.myapplication.data.local.PersonalizationDao
+import com.example.myapplication.data.local.LoggedFoodEntity
+import com.example.myapplication.data.local.FoodCatalogEntity
+import com.example.myapplication.data.local.FoodCatalogDao
+import com.example.myapplication.data.local.LoggedFoodDao
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -32,6 +36,7 @@ data class NutritionData(
     val proteinEaten: Int = 0,
     val carbsEaten: Int = 0,
     val fatEaten: Int = 0,
+    val fiberEaten: Int = 0,
     val sweatExerciseId: String? = null,
     val sweatExerciseName: String? = null,
     val sweatExtraSets: Int = 0,
@@ -81,15 +86,28 @@ interface NutritionRepository {
     suspend fun deleteMealTemplate(id: Long) = Unit
     suspend fun applyMealTemplate(id: Long, epochDay: Long) = Unit
     suspend fun addNutrients(epochDay: Long, nutrients: Nutrients, source: EntrySource)
+    suspend fun addWater(epochDay: Long, waterMl: Int)
     suspend fun setTarget(epochDay: Long, target: NutritionTarget)
     suspend fun setSweatPayment(exerciseId: String, exerciseName: String, extraSets: Int, active: Boolean)
     suspend fun clearSweatPayment()
     suspend fun updateAiCoachReview(review: String)
     suspend fun resetDaily()
+
+    fun observeLoggedFoods(epochDay: Long): Flow<List<LoggedFoodEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    suspend fun loggedFoodsNow(epochDay: Long): List<LoggedFoodEntity> = emptyList()
+    fun observeRecentFoods(limit: Int): Flow<List<FoodCatalogEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    fun observeFavorites(): Flow<List<FoodCatalogEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    fun searchFavorites(query: String): Flow<List<FoodCatalogEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    suspend fun toggleFavorite(foodCatalogId: Long, isFavorite: Boolean) = Unit
+    suspend fun logFood(epochDay: Long, name: String, mealTime: String, grams: Double, calories: Int, proteinGrams: Int, carbsGrams: Int, fatGrams: Int, fiberGrams: Int = 0, foodCatalogId: Long? = null) = Unit
+    suspend fun deleteLoggedFood(id: Long) = Unit
+    suspend fun copyYesterdayMeals(yesterdayEpochDay: Long, todayEpochDay: Long) = Unit
 }
 
 class RoomNutritionRepository(
     private val personalizationDao: PersonalizationDao,
+    private val foodCatalogDao: FoodCatalogDao,
+    private val loggedFoodDao: LoggedFoodDao,
     private val legacyPreferences: LegacyNutritionPreferences,
     private val todayEpochDay: () -> Long,
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
@@ -111,6 +129,7 @@ class RoomNutritionRepository(
                     proteinEaten = day.consumed.proteinGrams,
                     carbsEaten = day.consumed.carbsGrams,
                     fatEaten = day.consumed.fatGrams,
+                    fiberEaten = day.consumed.fiberGrams,
                     sweatExerciseId = preferences.sweatExerciseId,
                     sweatExerciseName = preferences.sweatExerciseName,
                     sweatExtraSets = preferences.sweatExtraSets,
@@ -165,6 +184,7 @@ class RoomNutritionRepository(
             proteinGrams = nutrients.proteinGrams,
             carbsGrams = nutrients.carbsGrams,
             fatGrams = nutrients.fatGrams,
+            fiberGrams = nutrients.fiberGrams,
             updatedAtEpochMillis = nowEpochMillis(),
         )
         if (id == null) return personalizationDao.insertMealTemplate(entity)
@@ -195,7 +215,19 @@ class RoomNutritionRepository(
                 consumedProteinGrams = current.consumedProteinGrams + nutrients.proteinGrams,
                 consumedCarbsGrams = current.consumedCarbsGrams + nutrients.carbsGrams,
                 consumedFatGrams = current.consumedFatGrams + nutrients.fatGrams,
+                consumedFiberGrams = current.consumedFiberGrams + nutrients.fiberGrams,
                 lastEntrySource = source.name,
+                updatedAtEpochMillis = nowEpochMillis(),
+            ),
+        )
+    }
+
+    override suspend fun addWater(epochDay: Long, waterMl: Int) {
+        ensureLegacyMigration()
+        val current = entityNow(epochDay)
+        personalizationDao.upsertDailyNutrition(
+            current.copy(
+                waterIntakeMl = (current.waterIntakeMl + waterMl).coerceAtLeast(0),
                 updatedAtEpochMillis = nowEpochMillis(),
             ),
         )
@@ -238,6 +270,7 @@ class RoomNutritionRepository(
                 consumedProteinGrams = 0,
                 consumedCarbsGrams = 0,
                 consumedFatGrams = 0,
+                consumedFiberGrams = 0,
                 lastEntrySource = null,
                 updatedAtEpochMillis = nowEpochMillis(),
             ),
@@ -277,6 +310,145 @@ class RoomNutritionRepository(
 
     private fun LegacyNutritionSnapshot.hasNutritionTotals(): Boolean =
         caloriesEaten != 0 || proteinEaten != 0 || carbsEaten != 0 || fatEaten != 0
+
+    override fun observeLoggedFoods(epochDay: Long): Flow<List<LoggedFoodEntity>> {
+        return loggedFoodDao.observeDay(epochDay)
+    }
+
+    override suspend fun loggedFoodsNow(epochDay: Long): List<LoggedFoodEntity> {
+        return loggedFoodDao.dayNow(epochDay)
+    }
+
+    override fun observeRecentFoods(limit: Int): Flow<List<FoodCatalogEntity>> {
+        return loggedFoodDao.observeRecentFoods(limit).map { logged ->
+            logged.distinctBy { it.name }.map {
+                val gramsFactor = if (it.grams > 0) it.grams else 100.0
+                val servingFactor = 100.0 / gramsFactor
+                FoodCatalogEntity(
+                    id = it.foodCatalogId ?: 0L,
+                    name = it.name,
+                    gramsPerServing = 100.0,
+                    caloriesPerServing = it.calories * servingFactor,
+                    proteinPerServing = it.proteinGrams * servingFactor,
+                    carbsPerServing = it.carbsGrams * servingFactor,
+                    fatPerServing = it.fatGrams * servingFactor,
+                    fiberPerServing = it.fiberGrams * servingFactor,
+                    isFavorite = false
+                )
+            }
+        }
+    }
+
+    override fun observeFavorites(): Flow<List<FoodCatalogEntity>> {
+        return foodCatalogDao.observeFavorites()
+    }
+
+    override fun searchFavorites(query: String): Flow<List<FoodCatalogEntity>> {
+        return foodCatalogDao.searchFavorites(query)
+    }
+
+    override suspend fun toggleFavorite(foodCatalogId: Long, isFavorite: Boolean) {
+        if (foodCatalogId > 0) {
+            foodCatalogDao.toggleFavorite(foodCatalogId, isFavorite)
+        }
+    }
+
+    override suspend fun logFood(
+        epochDay: Long,
+        name: String,
+        mealTime: String,
+        grams: Double,
+        calories: Int,
+        proteinGrams: Int,
+        carbsGrams: Int,
+        fatGrams: Int,
+        fiberGrams: Int,
+        foodCatalogId: Long?,
+    ) {
+        ensureLegacyMigration()
+        val entity = LoggedFoodEntity(
+            epochDay = epochDay,
+            name = name,
+            mealTime = mealTime,
+            grams = grams,
+            calories = calories,
+            proteinGrams = proteinGrams,
+            carbsGrams = carbsGrams,
+            fatGrams = fatGrams,
+            fiberGrams = fiberGrams,
+            foodCatalogId = foodCatalogId,
+            timestamp = nowEpochMillis()
+        )
+        loggedFoodDao.insert(entity)
+
+        // Update daily total
+        val current = entityNow(epochDay)
+        personalizationDao.upsertDailyNutrition(
+            current.copy(
+                consumedCalories = current.consumedCalories + calories,
+                consumedProteinGrams = current.consumedProteinGrams + proteinGrams,
+                consumedCarbsGrams = current.consumedCarbsGrams + carbsGrams,
+                consumedFatGrams = current.consumedFatGrams + fatGrams,
+                consumedFiberGrams = current.consumedFiberGrams + fiberGrams,
+                lastEntrySource = EntrySource.MANUAL.name,
+                updatedAtEpochMillis = nowEpochMillis(),
+            )
+        )
+    }
+
+    override suspend fun deleteLoggedFood(id: Long) {
+        ensureLegacyMigration()
+        val food = loggedFoodDao.getById(id) ?: return
+        loggedFoodDao.delete(id)
+
+        // Subtract from daily total
+        val current = entityNow(food.epochDay)
+        personalizationDao.upsertDailyNutrition(
+            current.copy(
+                consumedCalories = (current.consumedCalories - food.calories).coerceAtLeast(0),
+                consumedProteinGrams = (current.consumedProteinGrams - food.proteinGrams).coerceAtLeast(0),
+                consumedCarbsGrams = (current.consumedCarbsGrams - food.carbsGrams).coerceAtLeast(0),
+                consumedFatGrams = (current.consumedFatGrams - food.fatGrams).coerceAtLeast(0),
+                consumedFiberGrams = (current.consumedFiberGrams - food.fiberGrams).coerceAtLeast(0),
+                updatedAtEpochMillis = nowEpochMillis(),
+            )
+        )
+    }
+
+    override suspend fun copyYesterdayMeals(yesterdayEpochDay: Long, todayEpochDay: Long) {
+        ensureLegacyMigration()
+        val yesterdayFoods = loggedFoodDao.dayNow(yesterdayEpochDay)
+        if (yesterdayFoods.isEmpty()) return
+
+        val newFoods = yesterdayFoods.map {
+            it.copy(
+                id = 0,
+                epochDay = todayEpochDay,
+                timestamp = nowEpochMillis()
+            )
+        }
+        loggedFoodDao.insertAll(newFoods)
+
+        // Accumulate macros
+        val totalCalories = newFoods.sumOf { it.calories }
+        val totalProtein = newFoods.sumOf { it.proteinGrams }
+        val totalCarbs = newFoods.sumOf { it.carbsGrams }
+        val totalFat = newFoods.sumOf { it.fatGrams }
+        val totalFiber = newFoods.sumOf { it.fiberGrams }
+
+        val current = entityNow(todayEpochDay)
+        personalizationDao.upsertDailyNutrition(
+            current.copy(
+                consumedCalories = current.consumedCalories + totalCalories,
+                consumedProteinGrams = current.consumedProteinGrams + totalProtein,
+                consumedCarbsGrams = current.consumedCarbsGrams + totalCarbs,
+                consumedFatGrams = current.consumedFatGrams + totalFat,
+                consumedFiberGrams = current.consumedFiberGrams + totalFiber,
+                lastEntrySource = EntrySource.MANUAL.name,
+                updatedAtEpochMillis = nowEpochMillis(),
+            )
+        )
+    }
 }
 
 class DataStoreNutritionPreferences(context: Context) : LegacyNutritionPreferences {
@@ -369,8 +541,10 @@ private fun DailyNutritionEntity?.toNutritionDay(epochDay: Long): NutritionDay {
             proteinGrams = consumedProteinGrams,
             carbsGrams = consumedCarbsGrams,
             fatGrams = consumedFatGrams,
+            fiberGrams = consumedFiberGrams,
         ),
         target = toNutritionTarget(),
+        waterIntakeMl = waterIntakeMl,
     )
 }
 
@@ -402,6 +576,6 @@ private fun DailyNutritionEntity.toNutritionTarget(): NutritionTarget? {
 private fun MealTemplateEntity.toDomain() = MealTemplate(
     id = id,
     nameVi = nameVi,
-    nutrients = Nutrients(calories, proteinGrams, carbsGrams, fatGrams),
+    nutrients = Nutrients(calories, proteinGrams, carbsGrams, fatGrams, fiberGrams),
     updatedAtEpochMillis = updatedAtEpochMillis,
 )

@@ -26,6 +26,10 @@ class AppContainer(context: Context) {
             GymDatabase.MIGRATION_7_8,
             GymDatabase.MIGRATION_8_9,
             GymDatabase.MIGRATION_9_10,
+            GymDatabase.MIGRATION_10_11,
+            GymDatabase.MIGRATION_11_12,
+            GymDatabase.MIGRATION_12_13,
+            GymDatabase.MIGRATION_13_14,
         )
         .build()
 
@@ -34,7 +38,13 @@ class AppContainer(context: Context) {
     val workoutFeedbackRepository = com.example.myapplication.data.RoomWorkoutFeedbackRepository(database)
     val settingsRepository = DataStoreSettingsRepository(applicationContext)
     val reminderScheduler = AlarmReminderScheduler(applicationContext)
-    val nutritionRepository = com.example.myapplication.data.RoomNutritionRepository(database.personalizationDao(), com.example.myapplication.data.DataStoreNutritionPreferences(applicationContext), { java.time.LocalDate.now().toEpochDay() })
+    val nutritionRepository = com.example.myapplication.data.RoomNutritionRepository(
+        personalizationDao = database.personalizationDao(),
+        foodCatalogDao = database.foodCatalogDao(),
+        loggedFoodDao = database.loggedFoodDao(),
+        legacyPreferences = com.example.myapplication.data.DataStoreNutritionPreferences(applicationContext),
+        todayEpochDay = { java.time.LocalDate.now().toEpochDay() }
+    )
     val adaptationRepository = com.example.myapplication.data.RoomAdaptationRepository(
         database = database,
         personalizationDao = database.personalizationDao(),

@@ -298,6 +298,56 @@ class GymDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration_10_11_preservesDailyNutritionAndGoalsWithNewWaterFields() {
+        helper.createDatabase(TEST_DATABASE, 10).apply {
+            execSQL(
+                """
+                INSERT INTO daily_nutrition (
+                    epochDay, consumedCalories, consumedProteinGrams, consumedCarbsGrams,
+                    consumedFatGrams, updatedAtEpochMillis
+                ) VALUES (20640, 500, 30, 60, 15, 1000)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            11,
+            true,
+            GymDatabase.MIGRATION_10_11,
+        ).use { migrated ->
+            assertEquals(500, migrated.singleInt("SELECT consumedCalories FROM daily_nutrition WHERE epochDay = 20640"))
+            assertEquals(0, migrated.singleInt("SELECT waterIntakeMl FROM daily_nutrition WHERE epochDay = 20640"))
+        }
+    }
+
+    @Test
+    fun migration_11_12_preservesMealTemplatesAndCreatesEmptyFoodCatalog() {
+        helper.createDatabase(TEST_DATABASE, 11).apply {
+            execSQL(
+                """
+                INSERT INTO meal_templates (
+                    id, nameVi, calories, proteinGrams, carbsGrams, fatGrams, updatedAtEpochMillis
+                ) VALUES (7, 'Bữa quen', 400, 25, 45, 10, 1)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            12,
+            true,
+            GymDatabase.MIGRATION_11_12,
+        ).use { migrated ->
+            assertEquals(1, migrated.singleInt("SELECT COUNT(*) FROM meal_templates"))
+            assertEquals(400, migrated.singleInt("SELECT calories FROM meal_templates WHERE id = 7"))
+            assertEquals(0, migrated.singleInt("SELECT COUNT(*) FROM food_catalog"))
+        }
+    }
+
     private fun SupportSQLiteDatabase.singleInt(sql: String): Int = query(sql).use { cursor ->
         check(cursor.moveToFirst())
         cursor.getInt(0)

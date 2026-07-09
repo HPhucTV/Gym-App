@@ -27,7 +27,7 @@ class ProfileScreenTest {
             currentWeightKgStr = "75",
             targetWeightKgStr = "70",
             activityLevel = ActivityLevel.MODERATE,
-            goalPace = GoalPace.GRADUAL,
+            goalPace = GoalPace.STANDARD,
             personalizationConsent = true,
             cloudAiConsent = false,
             validationErrors = listOf("Độ tuổi phải từ 18 đến 100.")
@@ -70,7 +70,7 @@ class ProfileScreenTest {
             currentWeightKgStr = "75",
             targetWeightKgStr = "70",
             activityLevel = ActivityLevel.MODERATE,
-            goalPace = GoalPace.GRADUAL,
+            goalPace = GoalPace.STANDARD,
             personalizationConsent = true,
             cloudAiConsent = false
         )

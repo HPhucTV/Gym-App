@@ -11,10 +11,15 @@ import com.example.myapplication.data.local.PersonalizationDao
 import com.example.myapplication.data.local.WeeklyCheckInEntity
 import com.example.myapplication.data.local.WeightMeasurementEntity
 import com.example.myapplication.data.local.MealTemplateEntity
+import com.example.myapplication.data.local.FoodCatalogDao
+import com.example.myapplication.data.local.FoodCatalogEntity
+import com.example.myapplication.data.local.LoggedFoodDao
+import com.example.myapplication.data.local.LoggedFoodEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,12 +30,7 @@ class NutritionRepositoryTest {
     @Test
     fun `adding food changes only selected day`() = runTest {
         val dao = FakePersonalizationDao()
-        val repository = RoomNutritionRepository(
-            personalizationDao = dao,
-            legacyPreferences = FakeLegacyNutritionPreferences(),
-            todayEpochDay = { 20636L },
-            nowEpochMillis = { 1000L },
-        )
+        val repository = repository(dao)
 
         repository.addNutrients(
             epochDay = 20636L,
@@ -44,12 +44,7 @@ class NutritionRepositoryTest {
 
     @Test
     fun `setting target preserves consumed nutrients for that day`() = runTest {
-        val repository = RoomNutritionRepository(
-            personalizationDao = FakePersonalizationDao(),
-            legacyPreferences = FakeLegacyNutritionPreferences(),
-            todayEpochDay = { 20636L },
-            nowEpochMillis = { 1000L },
-        )
+        val repository = repository(FakePersonalizationDao())
         repository.addNutrients(
             epochDay = 20636L,
             nutrients = Nutrients(calories = 400, proteinGrams = 20, carbsGrams = 45, fatGrams = 12),
@@ -79,12 +74,7 @@ class NutritionRepositoryTest {
                 aiCoachReview = "On dinh",
             ),
         )
-        val repository = RoomNutritionRepository(
-            personalizationDao = FakePersonalizationDao(),
-            legacyPreferences = legacy,
-            todayEpochDay = { 20636L },
-            nowEpochMillis = { 1000L },
-        )
+        val repository = repository(FakePersonalizationDao(), legacy)
 
         val today = repository.observeDay(20636L).first()
         repository.observeDay(20636L).first()
@@ -97,12 +87,7 @@ class NutritionRepositoryTest {
 
     @Test
     fun `range observes stored days in date order`() = runTest {
-        val repository = RoomNutritionRepository(
-            personalizationDao = FakePersonalizationDao(),
-            legacyPreferences = FakeLegacyNutritionPreferences(migrated = true),
-            todayEpochDay = { 20636L },
-            nowEpochMillis = { 1000L },
-        )
+        val repository = repository(FakePersonalizationDao())
         repository.addNutrients(20638L, Nutrients(calories = 300), EntrySource.MANUAL)
         repository.addNutrients(20636L, Nutrients(calories = 100), EntrySource.MANUAL)
 
@@ -113,12 +98,7 @@ class NutritionRepositoryTest {
 
     @Test
     fun `resetting today leaves stored target intact`() = runTest {
-        val repository = RoomNutritionRepository(
-            personalizationDao = FakePersonalizationDao(),
-            legacyPreferences = FakeLegacyNutritionPreferences(migrated = true),
-            todayEpochDay = { 20636L },
-            nowEpochMillis = { 1000L },
-        )
+        val repository = repository(FakePersonalizationDao())
         repository.setTarget(20636L, target())
         repository.addNutrients(20636L, Nutrients(calories = 250), EntrySource.MANUAL)
 
@@ -173,9 +153,16 @@ class NutritionRepositoryTest {
         assertEquals(Nutrients(350, 25, 40, 9), repository.observeDay(20636L).first().consumed)
     }
 
-    private fun repository(dao: FakePersonalizationDao) = RoomNutritionRepository(
+    private fun repository(
+        dao: FakePersonalizationDao,
+        legacy: LegacyNutritionPreferences = FakeLegacyNutritionPreferences(),
+        foodCatalogDao: FoodCatalogDao = FakeFoodCatalogDao(),
+        loggedFoodDao: LoggedFoodDao = FakeLoggedFoodDao(),
+    ) = RoomNutritionRepository(
         personalizationDao = dao,
-        legacyPreferences = FakeLegacyNutritionPreferences(),
+        foodCatalogDao = foodCatalogDao,
+        loggedFoodDao = loggedFoodDao,
+        legacyPreferences = legacy,
         todayEpochDay = { 20636L },
         nowEpochMillis = { 1000L },
     )
@@ -324,4 +311,65 @@ private class FakeLegacyNutritionPreferences(
         sweatActive = sweatActive,
         aiCoachReview = aiCoachReview,
     )
+}
+
+private class FakeFoodCatalogDao : FoodCatalogDao {
+    private val items = MutableStateFlow<List<FoodCatalogEntity>>(emptyList())
+    override suspend fun insertAll(foods: List<FoodCatalogEntity>) {
+        items.value = foods
+    }
+    override fun observeAll(): Flow<List<FoodCatalogEntity>> = items
+    override fun searchByName(query: String): Flow<List<FoodCatalogEntity>> =
+        items.map { list -> list.filter { it.name.contains(query, ignoreCase = true) } }
+    override suspend fun getAllNow(): List<FoodCatalogEntity> = items.value
+    override suspend fun deleteByBatch(batchId: String) {
+        items.value = items.value.filter { it.importBatchId != batchId }
+    }
+    override suspend fun deleteAll() {
+        items.value = emptyList()
+    }
+    override suspend fun countAll(): Int = items.value.size
+    override fun observeCount(): Flow<Int> = items.map { it.size }
+    override suspend fun toggleFavorite(id: Long, isFavorite: Boolean): Int {
+        items.value = items.value.map {
+            if (it.id == id) it.copy(isFavorite = isFavorite) else it
+        }
+        return 1
+    }
+    override fun observeFavorites(): Flow<List<FoodCatalogEntity>> =
+        items.map { list -> list.filter { it.isFavorite } }
+    override fun searchFavorites(query: String): Flow<List<FoodCatalogEntity>> =
+        items.map { list -> list.filter { it.isFavorite && it.name.contains(query, ignoreCase = true) } }
+}
+
+private class FakeLoggedFoodDao : LoggedFoodDao {
+    private val logs = MutableStateFlow<List<LoggedFoodEntity>>(emptyList())
+    private var nextId = 1L
+    override suspend fun insert(loggedFood: LoggedFoodEntity): Long {
+        val id = if (loggedFood.id == 0L) nextId++ else loggedFood.id
+        val newLog = loggedFood.copy(id = id)
+        logs.value = logs.value + newLog
+        return id
+    }
+    override suspend fun insertAll(loggedFoods: List<LoggedFoodEntity>) {
+        val mapped = loggedFoods.map { if (it.id == 0L) it.copy(id = nextId++) else it }
+        logs.value = logs.value + mapped
+    }
+    override suspend fun getById(id: Long): LoggedFoodEntity? = logs.value.firstOrNull { it.id == id }
+    override suspend fun delete(id: Long): Int {
+        val existed = logs.value.any { it.id == id }
+        logs.value = logs.value.filter { it.id != id }
+        return if (existed) 1 else 0
+    }
+    override fun observeDay(epochDay: Long): Flow<List<LoggedFoodEntity>> =
+        logs.map { list -> list.filter { it.epochDay == epochDay }.sortedBy { it.timestamp } }
+    override suspend fun dayNow(epochDay: Long): List<LoggedFoodEntity> =
+        logs.value.filter { it.epochDay == epochDay }.sortedBy { it.timestamp }
+    override fun observeRecentFoods(limit: Int): Flow<List<LoggedFoodEntity>> =
+        logs.map { list -> list.sortedByDescending { it.timestamp }.take(limit) }
+    override suspend fun recentFoodsNow(limit: Int): List<LoggedFoodEntity> =
+        logs.value.sortedByDescending { it.timestamp }.take(limit)
+    override suspend fun deleteAll() {
+        logs.value = emptyList()
+    }
 }

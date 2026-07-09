@@ -47,14 +47,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import java.util.concurrent.Executors
-import android.annotation.SuppressLint
 import com.example.myapplication.core.nutrition.MealTemplate
+import com.example.myapplication.data.local.LoggedFoodEntity
+import com.example.myapplication.data.local.FoodCatalogEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,18 +57,19 @@ fun NutritionScreen(
     state: NutritionUiState,
     onBack: () -> Unit,
     onScan: (Bitmap) -> Unit,
-    onScanBarcode: (String) -> Unit = {},
     onAccept: () -> Unit,
     onDiscard: () -> Unit,
     onUpdateResult: (String, Int, Int, Int, Int) -> Unit,
     onClearSweat: () -> Unit,
     onReset: () -> Unit,
+    onAddWater: (Int) -> Unit = {},
     onStartManual: () -> Unit = {},
     onDraftName: (String) -> Unit = {},
     onDraftCalories: (String) -> Unit = {},
     onDraftProtein: (String) -> Unit = {},
     onDraftCarbs: (String) -> Unit = {},
     onDraftFat: (String) -> Unit = {},
+    onDraftFiber: (String) -> Unit = {},
     onDraftSaveAsTemplate: (Boolean) -> Unit = {},
     onApplyTemplate: (Long) -> Unit = {},
     onRequestDeleteTemplate: (Long) -> Unit = {},
@@ -83,10 +79,38 @@ fun NutritionScreen(
     onUpdateTemplateName: (String) -> Unit = {},
     onCancelRenameTemplate: () -> Unit = {},
     onConfirmRenameTemplate: () -> Unit = {},
+    onImportCsv: (String) -> Unit = {},
+    onSearchCatalog: (String) -> Unit = {},
+    onClearCatalog: () -> Unit = {},
+    onAddFoodFromCatalog: (FoodCatalogEntity, Double) -> Unit = { _, _ -> },
+    onAddToCart: (FoodCatalogEntity, Double, String) -> Unit = { _, _, _ -> },
+    onRemoveFromCart: (Long, String) -> Unit = { _, _ -> },
+    onUpdateCartGrams: (Long, String, Double) -> Unit = { _, _, _ -> },
+    onClearCart: () -> Unit = {},
+    onConfirmEatCart: () -> Unit = {},
+    onToggleFavoriteCatalog: (Long, Boolean) -> Unit = { _, _ -> },
+    onDeleteLoggedFood: (Long) -> Unit = {},
+    onCopyYesterdayMeals: () -> Unit = {},
+    onSelectScanRecommendation: (ScanRecommendation) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    val csvImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val csvText = stream.bufferedReader().use { it.readText() }
+                    onImportCsv(csvText)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NutritionScreen", "Failed to read CSV file", e)
+            }
+        }
+    }
 
     var photoFile by remember { mutableStateOf<File?>(null) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
@@ -126,23 +150,28 @@ fun NutritionScreen(
         }
     }
 
-    var showBarcodeDialog by remember { mutableStateOf(false) }
-
-    val barcodePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            showBarcodeDialog = true
-        }
-    }
-
-    if (showBarcodeDialog) {
-        BarcodeScannerDialog(
-            onDismiss = { showBarcodeDialog = false },
-            onBarcodeScanned = { barcode ->
-                onScanBarcode(barcode)
+    androidx.compose.runtime.LaunchedEffect(state, (state as? NutritionUiState.Content)?.importSuccess) {
+        if (state is NutritionUiState.Content) {
+            if (state.importSuccess == true) {
+                if (state.importWarnings.isNotEmpty()) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Nhập thành công nhưng có ${state.importWarnings.size} cảnh báo:\n" +
+                                state.importWarnings.take(3).joinToString("\n") +
+                                (if (state.importWarnings.size > 3) "\n..." else ""),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    android.widget.Toast.makeText(context, "Nhập danh mục thực phẩm thành công!", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else if (state.importSuccess == false) {
+                android.widget.Toast.makeText(
+                    context,
+                    state.importErrorMessage ?: "Lỗi nhập danh mục thực phẩm.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
             }
-        )
+        }
     }
 
     Scaffold(
@@ -188,6 +217,9 @@ fun NutritionScreen(
                         // 1. Calorie progress ring
                         CalorieCard(state)
 
+                        // 1.2 Water progress
+                        WaterCard(state, onAddWater)
+
                         // 2. Sweat Payment status card
                         if (state.sweatActive) {
                             SweatPaymentStatusCard(state, onClearSweat)
@@ -197,7 +229,7 @@ fun NutritionScreen(
                         if (state.scanning) {
                             ScanningCard()
                         } else {
-                            // Dual scan actions: Food photo, Barcode scan, or Manual entry
+                            // Food photo or Manual entry
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -215,19 +247,6 @@ fun NutritionScreen(
                                     Text("📸 Chụp đĩa ăn", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
                                 }
                                 OutlinedButton(
-                                    onClick = { barcodePermissionLauncher.launch(android.Manifest.permission.CAMERA) },
-                                    enabled = !state.savingDraft,
-                                    shape = RoundedCornerShape(16.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, EnergyOrange),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = EnergyOrange),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(56.dp)
-                                ) {
-                                    Text("🔍 Mã vạch", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                                OutlinedButton(
                                     onClick = onStartManual,
                                     enabled = !state.savingDraft,
                                     shape = RoundedCornerShape(16.dp),
@@ -243,6 +262,470 @@ fun NutritionScreen(
 
                         state.scanError?.let { error ->
                             Text(error, color = colors.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Grouped eaten foods list
+                        Text(
+                            "Bữa ăn hôm nay 🍽️",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.primaryText,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Copy yesterday meals button
+                        OutlinedButton(
+                            onClick = onCopyYesterdayMeals,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("🕒 Sao chép tất cả bữa ăn từ hôm qua", fontWeight = FontWeight.Bold, color = EnergyOrange)
+                        }
+
+                        if (state.loggedFoods.isEmpty()) {
+                            Surface(
+                                color = colors.surfaceVariant,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "Chưa ghi nhận món ăn nào hôm nay.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = customColors.mutedText,
+                                    modifier = Modifier.padding(16.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            val mealNames = mapOf(
+                                "BREAKFAST" to "Bữa sáng 🍳",
+                                "LUNCH" to "Bữa trưa ☀️",
+                                "DINNER" to "Bữa tối 🌙",
+                                "SNACK" to "Bữa phụ 🍎"
+                            )
+                            val mealTimes = listOf("BREAKFAST", "LUNCH", "DINNER", "SNACK")
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                mealTimes.forEach { time ->
+                                    val foodsInMeal = state.loggedFoods.filter { it.mealTime.uppercase() == time }
+                                    if (foodsInMeal.isNotEmpty()) {
+                                        val totalCal = foodsInMeal.sumOf { it.calories }
+                                        val totalP = foodsInMeal.sumOf { it.proteinGrams }
+                                        val totalC = foodsInMeal.sumOf { it.carbsGrams }
+                                        val totalF = foodsInMeal.sumOf { it.fatGrams }
+                                        
+                                        Surface(
+                                            color = colors.surfaceVariant,
+                                            shape = RoundedCornerShape(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = mealNames[time] ?: time,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = customColors.primaryText,
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                    Text(
+                                                        text = "$totalCal kcal  |  P: ${totalP}g  C: ${totalC}g  F: ${totalF}g",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = customColors.mutedText,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                                Spacer(Modifier.height(8.dp))
+                                                foodsInMeal.forEach { logged ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 4.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                logged.name,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = customColors.primaryText,
+                                                                fontWeight = FontWeight.SemiBold
+                                                            )
+                                                            Text(
+                                                                "${logged.grams.toInt()}g  •  ${logged.calories} kcal  |  P: ${logged.proteinGrams}g  C: ${logged.carbsGrams}g  F: ${logged.fatGrams}g",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = customColors.mutedText
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = { onDeleteLoggedFood(logged.id) },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Text("❌", fontSize = 12.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Cart / Giỏ chọn món Section
+                        if (state.cart.isNotEmpty()) {
+                            Surface(
+                                color = colors.primaryContainer,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "Giỏ món ăn (${state.cart.size} món) 🛒",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = colors.onPrimaryContainer
+                                        )
+                                        TextButton(onClick = onClearCart) {
+                                            Text("Xóa giỏ", color = colors.error, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    state.cart.forEach { cartItem ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val mealNameVi = when(cartItem.mealTime.uppercase()) {
+                                                "BREAKFAST" -> "Sáng"
+                                                "LUNCH" -> "Trưa"
+                                                "DINNER" -> "Tối"
+                                                else -> "Phụ"
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    cartItem.food.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.onPrimaryContainer
+                                                )
+                                                Text(
+                                                    "Bữa: $mealNameVi  •  ${cartItem.grams.toInt()}g",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onPrimaryContainer.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(onClick = { onRemoveFromCart(cartItem.food.id, cartItem.mealTime) }) {
+                                                    Text("🗑️", fontSize = 16.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    Button(
+                                        onClick = onConfirmEatCart,
+                                        colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Xác nhận đã ăn ✔️", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Tra cứu & Nhập thực phẩm section
+                        Text(
+                            "Tra cứu & Nhập thực phẩm 📁",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.primaryText,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        var selectedTab by remember { mutableStateOf(0) }
+                        var expandedFoodId by remember { mutableStateOf<Long?>(null) }
+                        var inputGrams by remember { mutableStateOf(100f) }
+                        var inputMealTime by remember { mutableStateOf("BREAKFAST") }
+
+                        if (state.foodCatalogCount == 0) {
+                            Surface(
+                                color = colors.surfaceVariant,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "Chưa có danh mục thực phẩm tra cứu. Hãy nhập tệp CSV chứa danh sách thực phẩm (ví dụ: Calorie Tracker.xlsx) để tra cứu nhanh.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = customColors.mutedText,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Button(
+                                        onClick = { csvImportLauncher.launch("text/*") },
+                                        colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Nhập thực phẩm từ CSV", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Đã nhập ${state.foodCatalogCount} món thực phẩm",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = customColors.mutedText
+                                    )
+                                    Text(
+                                        "Đặt lại danh mục",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.error,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { onClearCatalog() }
+                                    )
+                                }
+
+                                // Custom Tab Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(colors.surfaceVariant),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    val tabs = listOf("Danh mục 📁", "Yêu thích ⭐", "Gần đây 🕒")
+                                    tabs.forEachIndexed { index, title ->
+                                        val isSelected = selectedTab == index
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    selectedTab = index
+                                                    expandedFoodId = null
+                                                }
+                                                .background(if (isSelected) EnergyOrange else Color.Transparent)
+                                                .padding(vertical = 12.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = title,
+                                                color = if (isSelected) Color.White else customColors.primaryText,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = state.searchQuery,
+                                    onValueChange = onSearchCatalog,
+                                    label = { Text("Tìm kiếm thực phẩm...") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+
+                                val displayedFoods = when(selectedTab) {
+                                    0 -> state.foodCatalogItems
+                                    1 -> state.favorites.filter { it.name.contains(state.searchQuery, ignoreCase = true) }
+                                    else -> state.recentFoods.filter { it.name.contains(state.searchQuery, ignoreCase = true) }
+                                }
+
+                                if (displayedFoods.isEmpty()) {
+                                    Text(
+                                        "Không có thực phẩm nào.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = customColors.mutedText,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                } else {
+                                    displayedFoods.take(10).forEach { food ->
+                                        Surface(
+                                            color = colors.surfaceVariant,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            food.name,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = customColors.primaryText
+                                                        )
+                                                        Text(
+                                                            "${food.caloriesPerServing.toInt()} kcal / ${food.gramsPerServing.toInt()}g  |  P: ${food.proteinPerServing.toInt()}g  C: ${food.carbsPerServing.toInt()}g  F: ${food.fatPerServing.toInt()}g",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = customColors.mutedText
+                                                        )
+                                                    }
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        IconButton(onClick = { onToggleFavoriteCatalog(food.id, !food.isFavorite) }) {
+                                                            Text(if (food.isFavorite) "⭐" else "☆", fontSize = 18.sp, color = EnergyOrange)
+                                                        }
+                                                        Spacer(Modifier.width(4.dp))
+                                                        Button(
+                                                            onClick = {
+                                                                if (expandedFoodId == food.id) {
+                                                                    expandedFoodId = null
+                                                                } else {
+                                                                    expandedFoodId = food.id
+                                                                    inputGrams = food.gramsPerServing.toFloat()
+                                                                    inputMealTime = "BREAKFAST"
+                                                                }
+                                                            },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                                        ) {
+                                                            Text(if (expandedFoodId == food.id) "Đóng" else "+ Chọn", fontSize = 12.sp, color = Color.White)
+                                                        }
+                                                    }
+                                                }
+
+                                                if (expandedFoodId == food.id) {
+                                                    Spacer(Modifier.height(8.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(1.dp)
+                                                            .background(colors.outline.copy(alpha = 0.3f))
+                                                    )
+                                                    Spacer(Modifier.height(8.dp))
+
+                                                    Text("Chọn bữa ăn:", style = MaterialTheme.typography.labelSmall, color = customColors.mutedText)
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        val times = listOf("BREAKFAST" to "Sáng", "LUNCH" to "Trưa", "DINNER" to "Tối", "SNACK" to "Phụ")
+                                                        times.forEach { (timeVal, timeLabel) ->
+                                                            val isSelected = inputMealTime == timeVal
+                                                            if (isSelected) {
+                                                                Button(
+                                                                    onClick = { inputMealTime = timeVal },
+                                                                    colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                                                    shape = RoundedCornerShape(8.dp),
+                                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                                    modifier = Modifier.height(32.dp)
+                                                                ) {
+                                                                    Text(timeLabel, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                                }
+                                                            } else {
+                                                                OutlinedButton(
+                                                                    onClick = { inputMealTime = timeVal },
+                                                                    shape = RoundedCornerShape(8.dp),
+                                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                                    modifier = Modifier.height(32.dp)
+                                                                ) {
+                                                                    Text(timeLabel, fontSize = 11.sp, color = customColors.primaryText)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(Modifier.height(8.dp))
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text("Khối lượng:", style = MaterialTheme.typography.labelSmall, color = customColors.mutedText)
+                                                        Text("${inputGrams.toInt()}g", fontWeight = FontWeight.Bold, color = EnergyOrange, fontSize = 14.sp)
+                                                    }
+                                                    Slider(
+                                                        value = inputGrams,
+                                                        onValueChange = { inputGrams = it },
+                                                        valueRange = 10f..1000f,
+                                                        steps = 99,
+                                                        colors = SliderDefaults.colors(
+                                                            activeTrackColor = EnergyOrange,
+                                                            thumbColor = EnergyOrange
+                                                        )
+                                                    )
+
+                                                    Spacer(Modifier.height(8.dp))
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        OutlinedButton(
+                                                            onClick = {
+                                                                onAddToCart(food, inputGrams.toDouble(), inputMealTime)
+                                                                expandedFoodId = null
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Text("+ Giỏ hàng 🛒", fontSize = 12.sp)
+                                                        }
+
+                                                        Button(
+                                                            onClick = {
+                                                                onAddFoodFromCatalog(food, inputGrams.toDouble())
+                                                                expandedFoodId = null
+                                                            },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Text("Ăn ngay ✔️", fontSize = 12.sp, color = Color.White)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Button(
+                                    onClick = { csvImportLauncher.launch("text/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.secondaryContainer),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) {
+                                    Text("Cập nhật / Nhập thêm CSV", color = colors.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
 
                         Spacer(Modifier.height(16.dp))
@@ -316,6 +799,88 @@ fun NutritionScreen(
                             }
                         }
                     }
+                    if (state.scanResult != null && state.draft == null) {
+                        val scanRes = state.scanResult!!
+                        AlertDialog(
+                            onDismissRequest = onDiscard,
+                            title = { Text("Gợi ý từ AI 📸", fontWeight = FontWeight.Bold) },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text(
+                                        "AI phát hiện đĩa ăn của bạn có thể là một trong các món sau. Vui lòng chọn món đúng:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = customColors.primaryText
+                                    )
+                                    
+                                    val recommendations = scanRes.recommendations.take(3)
+                                    recommendations.forEach { recommendation ->
+                                        val confidencePercentage = (recommendation.confidence * 100).toInt()
+                                        val isLowConfidence = recommendation.confidence < 0.70
+                                        
+                                        Surface(
+                                            color = if (isLowConfidence) colors.errorContainer else colors.surfaceVariant,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        recommendation.dishName,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isLowConfidence) colors.onErrorContainer else customColors.primaryText,
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                    Text(
+                                                        "$confidencePercentage% tin cậy",
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (isLowConfidence) colors.error else SuccessGreen,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    "${recommendation.calories} kcal | P: ${recommendation.proteinGrams}g C: ${recommendation.carbsGrams}g F: ${recommendation.fatGrams}g",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (isLowConfidence) colors.onErrorContainer.copy(alpha = 0.8f) else customColors.mutedText
+                                                )
+                                                if (isLowConfidence) {
+                                                    Spacer(Modifier.height(4.dp))
+                                                    Text(
+                                                        "⚠️ Độ tin cậy thấp (< 70%). Vui lòng kiểm tra kỹ.",
+                                                        color = colors.error,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                                Spacer(Modifier.height(8.dp))
+                                                Button(
+                                                    onClick = { onSelectScanRecommendation(recommendation) },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (isLowConfidence) colors.error else EnergyOrange
+                                                    ),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    contentPadding = PaddingValues(vertical = 4.dp)
+                                                ) {
+                                                    Text("Chọn món này", color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = onDiscard) {
+                                    Text("Hủy")
+                                }
+                            },
+                            confirmButton = {}
+                        )
+                    }
                     state.draft?.let { draft ->
                         NutritionDraftDialog(
                             draft = draft,
@@ -325,6 +890,7 @@ fun NutritionScreen(
                             onProtein = onDraftProtein,
                             onCarbs = onDraftCarbs,
                             onFat = onDraftFat,
+                            onFiber = onDraftFiber,
                             onSaveAsTemplate = onDraftSaveAsTemplate,
                             onAccept = onAccept,
                             onDiscard = onDiscard,
@@ -373,6 +939,7 @@ private fun NutritionDraftDialog(
     onProtein: (String) -> Unit,
     onCarbs: (String) -> Unit,
     onFat: (String) -> Unit,
+    onFiber: (String) -> Unit,
     onSaveAsTemplate: (Boolean) -> Unit,
     onAccept: () -> Unit,
     onDiscard: () -> Unit,
@@ -387,6 +954,7 @@ private fun NutritionDraftDialog(
                 DraftField("Đạm (g)", draft.proteinText, onProtein, draft.errors["protein"], true, saving)
                 DraftField("Tinh bột (g)", draft.carbsText, onCarbs, draft.errors["carbs"], true, saving)
                 DraftField("Chất béo (g)", draft.fatText, onFat, draft.errors["fat"], true, saving)
+                DraftField("Chất xơ (g)", draft.fiberText, onFiber, draft.errors["fiber"], true, saving)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = draft.saveAsTemplate,
@@ -477,7 +1045,44 @@ private fun CalorieCard(state: NutritionUiState.Content) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("Ngân sách calo hôm nay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = customColors.primaryText)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Ngân sách calo hôm nay",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.primaryText,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Surface(
+                    color = colors.primaryContainer.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(state.nutritionScoreEmoji, fontSize = 12.sp)
+                        Text(
+                            text = "Score: ${state.nutritionScore}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary
+                        )
+                        Text(
+                            text = "(${state.nutritionScoreLabel})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.primary.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(16.dp))
 
             Row(
@@ -520,12 +1125,84 @@ private fun CalorieCard(state: NutritionUiState.Content) {
 
             Spacer(Modifier.height(16.dp))
             // Macronutrients linear bars
-            MacroRow("Đạm (Protein)", state.proteinEaten, (state.calorieLimit * 0.3 / 4).toInt(), "g", SuccessGreen)
-            MacroRow("Tinh bột (Carbs)", state.carbsEaten, (state.calorieLimit * 0.5 / 4).toInt(), "g", EnergyOrange)
-            MacroRow("Chất béo (Fat)", state.fatEaten, (state.calorieLimit * 0.2 / 9).toInt(), "g", customColors.recoveryBlue)
+            MacroRow("Đạm (Protein)", state.proteinEaten, state.proteinLimit, "g", SuccessGreen)
+            MacroRow("Tinh bột (Carbs)", state.carbsEaten, state.carbsLimit, "g", EnergyOrange)
+            MacroRow("Chất béo (Fat)", state.fatEaten, state.fatLimit, "g", customColors.recoveryBlue)
+            MacroRow("Chất xơ (Fiber)", state.fiberEaten, state.fiberLimit, "g", colors.tertiary)
         }
     }
 }
+
+@Composable
+private fun WaterCard(state: NutritionUiState.Content, onAddWater: (Int) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val customColors = colors.customColors
+    val targetWater = 2000 // 2L target
+    val progress = (state.waterIntakeMl.toFloat() / targetWater).coerceAtMost(1f)
+
+    Surface(
+        color = colors.surfaceVariant,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                "Theo dõi Nước uống 💧",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = customColors.primaryText
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    Text("Đã nạp", style = MaterialTheme.typography.bodyMedium, color = customColors.mutedText)
+                    Text(
+                        "${state.waterIntakeMl} / $targetWater ml",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.recoveryBlue ?: EnergyOrange
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { onAddWater(-250) },
+                        enabled = state.waterIntakeMl >= 250,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("-250ml", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = { onAddWater(250) },
+                        colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("+250ml", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                color = customColors.recoveryBlue ?: EnergyOrange,
+                trackColor = colors.outline,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun MacroRow(label: String, eaten: Int, limit: Int, unit: String, color: Color) {
@@ -909,16 +1586,48 @@ private fun HistoryItemCard(day: NutritionDay) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val targetForScore = day.target ?: com.example.myapplication.core.nutrition.NutritionTarget(
+                    basalCalories = 2000,
+                    maintenanceCalories = 2000,
+                    calories = 2000,
+                    proteinGrams = 125,
+                    carbsGrams = 250,
+                    fatGrams = 55,
+                    audit = com.example.myapplication.core.nutrition.NutritionTargetAudit(2000.0, 2000.0, 2000.0, 125.0, 250.0, 55.0)
+                )
+                val scoreResult = com.example.myapplication.core.nutrition.NutritionScoreCalculator.calculateScore(
+                    consumed = day.consumed,
+                    target = targetForScore,
+                    waterIntakeMl = day.waterIntakeMl
+                )
+
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = dateText,
-                        fontWeight = FontWeight.Bold,
-                        color = customColors.primaryText,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = dateText,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.primaryText,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Surface(
+                            color = colors.primaryContainer.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "${scoreResult.emoji} ${scoreResult.score}đ",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Đạm: ${day.consumed.proteinGrams}g  •  Tinh bột: ${day.consumed.carbsGrams}g  •  Béo: ${day.consumed.fatGrams}g",
+                        text = "Đạm: ${day.consumed.proteinGrams}g  •  Tinh bột: ${day.consumed.carbsGrams}g  •  Béo: ${day.consumed.fatGrams}g  •  Xơ: ${day.consumed.fiberGrams}g",
                         style = MaterialTheme.typography.bodySmall,
                         color = customColors.mutedText
                     )
@@ -950,251 +1659,6 @@ private fun HistoryItemCard(day: NutritionDay) {
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp))
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun BarcodeScannerDialog(
-    onDismiss: () -> Unit,
-    onBarcodeScanned: (String) -> Unit
-) {
-    val colors = MaterialTheme.colorScheme
-    val customColors = colors.customColors
-    var manualBarcode by remember { mutableStateOf("") }
-    
-    val infiniteTransition = rememberInfiniteTransition()
-    val laserYPercent by infiniteTransition.animateFloat(
-        initialValue = 0.05f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Đóng", color = colors.error)
-            }
-        },
-        title = {
-            Text("Quét mã vạch sản phẩm 🔍", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = EnergyOrange)
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    "Đang quét bằng Camera (Chạy Offline)...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = customColors.mutedText
-                )
-                
-                Box(
-                    modifier = Modifier
-                        .size(width = 240.dp, height = 120.dp)
-                        .background(Color.Black.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                        .border(2.dp, EnergyOrange, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    BarcodeCameraPreview(
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
-                        onBarcodeScanned = { barcode ->
-                            onBarcodeScanned(barcode)
-                            onDismiss()
-                        }
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(Color.Red)
-                            .align(Alignment.TopCenter)
-                            .offset(y = (140 * laserYPercent).dp)
-                    )
-                }
-
-                Text(
-                    "Chọn nhanh sản phẩm mẫu hoặc tự nhập số mã vạch:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = customColors.primaryText,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                val mocks = listOf(
-                    "8934563138073" to "Snack Toonies Chef 57g",
-                    "8936011773005" to "Sữa TH True Milk 180ml",
-                    "8934563128906" to "Mì Hảo Hảo Chua Cay"
-                )
-                
-                mocks.forEach { (code, name) ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onBarcodeScanned(code)
-                                onDismiss()
-                            },
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
-                        colors = CardDefaults.cardColors(containerColor = colors.surface)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = customColors.primaryText, maxLines = 1)
-                                Text(code, style = MaterialTheme.typography.bodySmall, color = customColors.mutedText)
-                            }
-                            Text("Quét ✓", color = EnergyOrange, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = colors.outlineVariant)
-
-                OutlinedTextField(
-                    value = manualBarcode,
-                    onValueChange = { manualBarcode = it },
-                    label = { Text("Tự nhập mã vạch thủ công") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EnergyOrange,
-                        focusedLabelColor = EnergyOrange
-                    ),
-                    trailingIcon = {
-                        if (manualBarcode.isNotEmpty()) {
-                            TextButton(
-                                onClick = {
-                                    onBarcodeScanned(manualBarcode)
-                                    onDismiss()
-                                }
-                            ) {
-                                Text("Nhập", color = EnergyOrange, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                )
-            }
-        }
-    )
-}
-
-@Composable
-fun BarcodeCameraPreview(
-    modifier: Modifier = Modifier,
-    onBarcodeScanned: (String) -> Unit
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val executor = remember { java.util.concurrent.Executors.newSingleThreadExecutor() }
-
-    AndroidView(
-        factory = { ctx ->
-            val previewView = PreviewView(ctx).apply {
-                scaleType = PreviewView.ScaleType.FILL_CENTER
-            }
-
-            try {
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                cameraProviderFuture.addListener({
-                    try {
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = previewView.surfaceProvider
-                        }
-
-                        val imageAnalysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build()
-                            .also {
-                                it.setAnalyzer(executor, BarcodeAnalyzer { barcode ->
-                                    previewView.post {
-                                        onBarcodeScanned(barcode)
-                                    }
-                                })
-                            }
-
-                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            imageAnalysis
-                        )
-                    } catch (e: Exception) {
-                        android.util.Log.e("BarcodeCameraPreview", "Camera initialization or binding failed", e)
-                    }
-                }, ContextCompat.getMainExecutor(ctx))
-            } catch (e: Exception) {
-                android.util.Log.e("BarcodeCameraPreview", "Failed to get ProcessCameraProvider", e)
-            }
-
-            previewView
-        },
-        modifier = modifier
-    )
-}
-
-@SuppressLint("UnsafeOptInUsageError")
-private class BarcodeAnalyzer(
-    private val onBarcodeScanned: (String) -> Unit
-) : ImageAnalysis.Analyzer {
-    private val scanner = BarcodeScanning.getClient(
-        BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-            .build()
-    )
-
-    private var isCooldown = false
-    private var lastScanTime = 0L
-
-    override fun analyze(imageProxy: ImageProxy) {
-        try {
-            val mediaImage = imageProxy.image
-            if (mediaImage != null) {
-                val now = System.currentTimeMillis()
-                if (isCooldown && now - lastScanTime < 3000) {
-                    imageProxy.close()
-                    return
-                }
-                
-                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                scanner.process(image)
-                    .addOnSuccessListener { barcodes ->
-                        val barcode = barcodes.firstOrNull()?.rawValue
-                        if (barcode != null) {
-                            isCooldown = true
-                            lastScanTime = now
-                            onBarcodeScanned(barcode)
-                        }
-                    }
-                    .addOnFailureListener {
-                        // Ignore errors
-                    }
-                    .addOnCompleteListener {
-                        imageProxy.close()
-                    }
-            } else {
-                imageProxy.close()
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("BarcodeAnalyzer", "Failed to analyze image", e)
-            imageProxy.close()
         }
     }
 }

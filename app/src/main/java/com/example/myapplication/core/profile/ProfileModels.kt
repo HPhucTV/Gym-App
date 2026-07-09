@@ -17,8 +17,9 @@ enum class ActivityLevel(val multiplier: Double) {
 }
 
 enum class GoalPace {
-    GRADUAL,
+    MILD,
     STANDARD,
+    AGGRESSIVE,
 }
 
 data class PersonalProfile(

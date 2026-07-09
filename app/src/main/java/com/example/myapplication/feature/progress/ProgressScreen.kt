@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.*
@@ -26,6 +27,8 @@ fun ProgressScreen(
     onNextMonth: () -> Unit,
     modifier: Modifier = Modifier,
     onNavigateToCatalog: () -> Unit = {},
+    onNavigateToRoadmap: () -> Unit = {},
+    onWeightFilterSelected: (WeightFilter) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -34,8 +37,8 @@ fun ProgressScreen(
             ProgressUiState.Loading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = EnergyOrange, modifier = Modifier.semantics { contentDescription = "Đang tải tiến độ" })
             }
-            is ProgressUiState.Content -> ProgressContent(state, onPreviousMonth, onNextMonth, onNavigateToCatalog)
-            is ProgressUiState.NoActiveGoal -> ProgressWithoutGoal(state, onPreviousMonth, onNextMonth, onNavigateToCatalog)
+            is ProgressUiState.Content -> ProgressContent(state, onPreviousMonth, onNextMonth, onNavigateToCatalog, onNavigateToRoadmap, onWeightFilterSelected)
+            is ProgressUiState.NoActiveGoal -> ProgressWithoutGoal(state, onPreviousMonth, onNextMonth, onNavigateToCatalog, onWeightFilterSelected)
         }
     }
 }
@@ -46,6 +49,8 @@ private fun ProgressContent(
     previous: () -> Unit,
     next: () -> Unit,
     onNavigateToCatalog: () -> Unit,
+    onNavigateToRoadmap: () -> Unit,
+    onWeightFilterSelected: (WeightFilter) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -57,13 +62,22 @@ private fun ProgressContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Tiến độ tập luyện", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = customColors.primaryText)
-            Text(
-                "📚 Tra cứu",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = EnergyOrange,
-                modifier = Modifier.clickable { onNavigateToCatalog() }.padding(4.dp)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "🗺️ Lộ trình",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EnergyOrange,
+                    modifier = Modifier.clickable { onNavigateToRoadmap() }.padding(4.dp).testTag("progress-to-roadmap")
+                )
+                Text(
+                    "📚 Tra cứu",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EnergyOrange,
+                    modifier = Modifier.clickable { onNavigateToCatalog() }.padding(4.dp)
+                )
+            }
         }
 
         SummaryCard(state)
@@ -73,6 +87,12 @@ private fun ProgressContent(
         }
 
         GoalForecastCard(state)
+
+        WeightHistoryChartCard(
+            weightHistory = state.weightHistory,
+            currentFilter = state.weightFilter,
+            onFilterSelected = onWeightFilterSelected
+        )
 
         // Progress Charts (Weekly frequency & MuscleFocus)
         ProgressChartsSection(
@@ -162,6 +182,7 @@ private fun ProgressWithoutGoal(
     previous: () -> Unit,
     next: () -> Unit,
     onNavigateToCatalog: () -> Unit,
+    onWeightFilterSelected: (WeightFilter) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -188,6 +209,12 @@ private fun ProgressWithoutGoal(
                 Text("Lịch vẫn lưu các buổi bạn đã hoàn thành.", color = customColors.mutedText)
             }
         }
+
+        WeightHistoryChartCard(
+            weightHistory = state.weightHistory,
+            currentFilter = state.weightFilter,
+            onFilterSelected = onWeightFilterSelected
+        )
 
         // Show weekly completed stats even without active goal
         if (state.weeklyStats.isNotEmpty()) {

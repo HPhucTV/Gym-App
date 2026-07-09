@@ -384,7 +384,6 @@ private fun ProfileContent(
                     }
                 }
 
-                // Goal Pace
                 Column {
                     Text(
                         "Tốc độ điều chỉnh cân nặng mong muốn",
@@ -392,19 +391,37 @@ private fun ProfileContent(
                         color = customColors.mutedText
                     )
                     Spacer(modifier = Modifier.height(6.dp))
+
+                    val currentWeight = state.currentWeightKgStr.toDoubleOrNull() ?: 0.0
+                    val targetWeight = state.targetWeightKgStr.toDoubleOrNull() ?: 0.0
+                    val paceOptions = when {
+                        targetWeight < currentWeight -> listOf(
+                            GoalPace.MILD to "Thong thả\n(-10% Calo)",
+                            GoalPace.STANDARD to "Tiêu chuẩn\n(-15% Calo)",
+                            GoalPace.AGGRESSIVE to "Mạnh mẽ\n(-20% Calo)"
+                        )
+                        targetWeight > currentWeight -> listOf(
+                            GoalPace.MILD to "Tăng cơ nạc\n(+5% Calo)",
+                            GoalPace.STANDARD to "Tiêu chuẩn\n(+10% Calo)",
+                            GoalPace.AGGRESSIVE to "Mạnh mẽ\n(+15% Calo)"
+                        )
+                        else -> listOf(
+                            GoalPace.MILD to "Thong thả\n(Giữ cân)",
+                            GoalPace.STANDARD to "Tiêu chuẩn\n(Giữ cân)",
+                            GoalPace.AGGRESSIVE to "Mạnh mẽ\n(Giữ cân)"
+                        )
+                    }
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        listOf(
-                            GoalPace.GRADUAL to "Từ từ (Bền vững)",
-                            GoalPace.STANDARD to "Tiêu chuẩn (Khuyến nghị)"
-                        ).forEach { (pace, label) ->
+                        paceOptions.forEach { (pace, label) ->
                             val selected = state.goalPace == pace
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(48.dp)
+                                    .height(56.dp)
                                     .selectable(
                                         selected = selected,
                                         role = Role.RadioButton,
@@ -420,7 +437,7 @@ private fun ProfileContent(
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                         color = if (selected) EnergyOrange else customColors.primaryText,
                                         textAlign = TextAlign.Center,
-                                        fontSize = 13.sp
+                                        fontSize = 11.sp
                                     )
                                 }
                             }

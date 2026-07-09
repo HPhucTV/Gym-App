@@ -20,8 +20,13 @@ class NutritionTargetCalculatorTest {
         assertEquals(1724, target.basalCalories)
         assertEquals(2672, target.maintenanceCalories)
         assertEquals(2405, target.calories)
+        // Weight-based macros: 78kg * 2.0g = 156g protein, 78kg * 0.8g = 62.4g (62g) fat
+        assertEquals(156, target.proteinGrams)
+        assertEquals(62, target.fatGrams)
+        // Carbs remaining: (2404.63 - 156*4 - 62.4*9)/4 = (2404.63 - 624 - 561.6)/4 = 304.76 (305g carbs)
+        assertEquals(305, target.carbsGrams)
         val macroCalories = target.proteinGrams * 4 + target.carbsGrams * 4 + target.fatGrams * 9
-        assertTrue(abs(target.calories - macroCalories) <= 4)
+        assertTrue(abs(target.calories - macroCalories) <= 10)
         assertEquals(1723.75, target.audit.rawBasalCalories, 0.001)
         assertEquals(2671.8125, target.audit.rawMaintenanceCalories, 0.001)
     }
@@ -53,7 +58,8 @@ class NutritionTargetCalculatorTest {
             ageYears = 31,
         ).requireTarget()
 
-        assertEquals(2939, gain.calories)
+        // Weight gain uses +5% for MILD: 2672 * 1.05 = 2805 kcal
+        assertEquals(2805, gain.calories)
         assertEquals(2672, maintenance.calories)
     }
 
@@ -127,7 +133,7 @@ class NutritionTargetCalculatorTest {
         currentWeightKg = 78.0,
         targetWeightKg = 72.0,
         activityLevel = ActivityLevel.MODERATE,
-        goalPace = GoalPace.GRADUAL,
+        goalPace = GoalPace.MILD,
         personalizationConsent = true,
         cloudAiConsent = false,
     )

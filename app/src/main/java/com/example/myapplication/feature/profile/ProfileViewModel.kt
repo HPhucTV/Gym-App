@@ -71,7 +71,7 @@ class ProfileViewModel(
                 currentWeightState.value = "70"
                 targetWeightState.value = "65"
                 activityLevelState.value = ActivityLevel.MODERATE
-                goalPaceState.value = GoalPace.GRADUAL
+                goalPaceState.value = GoalPace.STANDARD
                 personalizationConsentState.value = false
                 cloudAiConsentState.value = false
             }
@@ -200,7 +200,7 @@ class ProfileViewModel(
             currentWeightKg = currentWeight!!,
             targetWeightKg = targetWeight!!,
             activityLevel = activityLevelState.value ?: ActivityLevel.MODERATE,
-            goalPace = goalPaceState.value ?: GoalPace.GRADUAL,
+            goalPace = goalPaceState.value ?: GoalPace.STANDARD,
             personalizationConsent = personalizationConsentState.value,
             cloudAiConsent = cloudAiConsentState.value
         )

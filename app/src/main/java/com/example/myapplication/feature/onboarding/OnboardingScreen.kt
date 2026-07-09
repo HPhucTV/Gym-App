@@ -53,7 +53,9 @@ fun OnboardingRoute(
     OnboardingScreen(
         state = state,
         replacementMode = replacementMode,
-        onGoalSelected = vm::selectGoal,
+        onGenderSelected = vm::selectGender,
+        onBodyTypeSelected = vm::selectBodyType,
+        onGoalSelected = vm::toggleGoal,
         onLevelSelected = vm::selectLevel,
         onEquipmentSelected = vm::selectEquipment,
         onTrainingDayToggle = vm::toggleTrainingDay,
@@ -62,7 +64,7 @@ fun OnboardingRoute(
         onNext = vm::next,
         onBack = {
             val currentState = state
-            if (currentState is OnboardingUiState.Editing && currentState.step == OnboardingStep.GOAL) {
+            if (currentState is OnboardingUiState.Editing && currentState.step == OnboardingStep.PERSONAL_INFO) {
                 onCancel()
             } else {
                 vm.back()
@@ -76,6 +78,8 @@ fun OnboardingRoute(
 fun OnboardingScreen(
     state: OnboardingUiState,
     replacementMode: Boolean = false,
+    onGenderSelected: (Gender) -> Unit = {},
+    onBodyTypeSelected: (BodyType) -> Unit = {},
     onGoalSelected: (FitnessGoal) -> Unit = {},
     onLevelSelected: (ExperienceLevel) -> Unit = {},
     onEquipmentSelected: (EquipmentProfile) -> Unit = {},
@@ -97,6 +101,8 @@ fun OnboardingScreen(
             is OnboardingUiState.Editing -> EditingContent(
                 state,
                 replacementMode,
+                onGenderSelected,
+                onBodyTypeSelected,
                 onGoalSelected,
                 onLevelSelected,
                 onEquipmentSelected,
@@ -117,6 +123,8 @@ fun OnboardingScreen(
 private fun EditingContent(
     state: OnboardingUiState.Editing,
     replacementMode: Boolean,
+    onGender: (Gender) -> Unit,
+    onBodyType: (BodyType) -> Unit,
     onGoal: (FitnessGoal) -> Unit,
     onLevel: (ExperienceLevel) -> Unit,
     onEquipment: (EquipmentProfile) -> Unit,
@@ -138,10 +146,10 @@ private fun EditingContent(
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (replacementMode) "Đổi mục tiêu" else "Tạo mục tiêu", color = EnergyOrange, style = MaterialTheme.typography.labelLarge)
-                Text("Bước $stepNumber/7", color = customColors.mutedText, style = MaterialTheme.typography.labelLarge)
+                Text("Bước $stepNumber/8", color = customColors.mutedText, style = MaterialTheme.typography.labelLarge)
             }
             LinearProgressIndicator(
-                progress = { stepNumber / 7f },
+                progress = { stepNumber / 8f },
                 modifier = Modifier.fillMaxWidth().height(6.dp),
                 color = EnergyOrange,
                 trackColor = customColors.orangeLight,
@@ -157,8 +165,37 @@ private fun EditingContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             when (state.step) {
+                OnboardingStep.PERSONAL_INFO -> {
+                    item {
+                        Text("Giới tính", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.customColors.primaryText)
+                    }
+                    items(Gender.entries) { value ->
+                        Choice(
+                            title = value.labelVi(),
+                            subtitle = if (value == Gender.MALE) "Phù hợp cho cơ thể nam giới" else "Phù hợp cho cơ thể nữ giới",
+                            selected = state.draft.gender == value,
+                            testTag = "onboarding-gender-${value.name}"
+                        ) { onGender(value) }
+                    }
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Tạng người", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.customColors.primaryText)
+                    }
+                    items(BodyType.entries) { value ->
+                        Choice(
+                            title = value.labelVi(),
+                            subtitle = when (value) {
+                                BodyType.ECTOMORPH -> "Gầy, khó tăng cơ/tăng mỡ, trao đổi chất nhanh."
+                                BodyType.MESOMORPH -> "Cân đối, dễ phát triển cơ bắp và duy trì cân nặng."
+                                BodyType.ENDOMORPH -> "Dễ tích mỡ, khung xương to, trao đổi chất chậm."
+                            },
+                            selected = state.draft.bodyType == value,
+                            testTag = "onboarding-bodytype-${value.name}"
+                        ) { onBodyType(value) }
+                    }
+                }
                 OnboardingStep.GOAL -> items(state.options.goals.toList()) { value ->
-                    Choice(value.labelVi(), goalExplanation(value), state.draft.goal == value, "onboarding-goal-${value.name}") { onGoal(value) }
+                    Choice(value.labelVi(), goalExplanation(value), value in state.draft.goals, "onboarding-goal-${value.name}", isMultiSelect = true) { onGoal(value) }
                 }
                 OnboardingStep.LEVEL -> items(state.options.levels.toList()) { value ->
                     Choice(value.labelVi(), levelExplanation(value), state.draft.level == value, "onboarding-level-${value.name}") { onLevel(value) }
@@ -185,7 +222,7 @@ private fun EditingContent(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (state.step != OnboardingStep.GOAL || replacementMode) {
+                if (state.step != OnboardingStep.PERSONAL_INFO || replacementMode) {
                     OutlinedButton(
                         onClick = onBack,
                         enabled = !state.isSaving,
@@ -194,7 +231,7 @@ private fun EditingContent(
                         border = BorderStroke(1.dp, EnergyOrange),
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                     ) {
-                        Text(if (state.step == OnboardingStep.GOAL) "Hủy" else "Quay lại")
+                        Text(if (state.step == OnboardingStep.PERSONAL_INFO) "Hủy" else "Quay lại")
                     }
                 }
                 Button(
@@ -214,7 +251,9 @@ private fun EditingContent(
 @Composable
 private fun SelectionSummary(draft: OnboardingDraft) {
     val values = listOfNotNull(
-        draft.goal?.labelVi(),
+        draft.gender?.labelVi(),
+        draft.bodyType?.labelVi(),
+        draft.goals.takeIf { it.isNotEmpty() }?.let { draft.goals.joinToString("+") { it.labelVi() } },
         draft.level?.labelVi(),
         draft.equipment?.labelVi(),
         draft.trainingDays.takeIf { it.isNotEmpty() }?.let { "${it.size} buổi/tuần" },
@@ -232,7 +271,14 @@ private fun SelectionSummary(draft: OnboardingDraft) {
 }
 
 @Composable
-private fun Choice(title: String, subtitle: String, selected: Boolean, testTag: String, onClick: () -> Unit) {
+private fun Choice(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    testTag: String,
+    isMultiSelect: Boolean = false,
+    onClick: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
     Surface(
@@ -241,7 +287,7 @@ private fun Choice(title: String, subtitle: String, selected: Boolean, testTag: 
         contentColor = customColors.primaryText,
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).testTag(testTag)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+            .selectable(selected = selected, role = if (isMultiSelect) Role.Checkbox else Role.RadioButton, onClick = onClick),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
@@ -251,11 +297,19 @@ private fun Choice(title: String, subtitle: String, selected: Boolean, testTag: 
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, color = customColors.primaryText)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = customColors.mutedText)
             }
-            RadioButton(
-                selected = selected,
-                onClick = null,
-                colors = RadioButtonDefaults.colors(selectedColor = EnergyOrange, unselectedColor = colors.outline),
-            )
+            if (isMultiSelect) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = null,
+                    colors = CheckboxDefaults.colors(checkedColor = EnergyOrange, uncheckedColor = colors.outline),
+                )
+            } else {
+                RadioButton(
+                    selected = selected,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(selectedColor = EnergyOrange, unselectedColor = colors.outline),
+                )
+            }
         }
     }
 }
@@ -273,7 +327,10 @@ private fun ReviewCard(draft: OnboardingDraft) {
             Text("Kế hoạch của bạn", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = colors.customColors.primaryText)
             Text("Chương trình được chọn từ preset đã kiểm duyệt, không tạo bài ngẫu nhiên.", color = colors.customColors.mutedText)
             HorizontalDivider(color = colors.outline)
-            ReviewItem("Mục tiêu", draft.goal?.labelVi().orEmpty())
+            ReviewItem("Giới tính", draft.gender?.labelVi().orEmpty())
+            ReviewItem("Tạng người", draft.bodyType?.labelVi().orEmpty())
+            ReviewItem("Mục tiêu chính", draft.goal?.labelVi().orEmpty())
+            ReviewItem("Tất cả mục tiêu", draft.goals.joinToString(", ") { it.labelVi() })
             ReviewItem("Trình độ", draft.level?.labelVi().orEmpty())
             ReviewItem("Dụng cụ", draft.equipment?.labelVi().orEmpty())
             ReviewItem("Ngày tập", draft.trainingDays.sortedBy { it.value }.joinToString(", ") { it.shortLabelVi() })
@@ -307,7 +364,8 @@ private fun UnsupportedContent(state: OnboardingUiState.Unsupported, onBack: () 
 }
 
 private fun canAdvance(state: OnboardingUiState.Editing) = when (state.step) {
-    OnboardingStep.GOAL -> state.draft.goal != null
+    OnboardingStep.PERSONAL_INFO -> state.draft.gender != null && state.draft.bodyType != null
+    OnboardingStep.GOAL -> state.draft.goals.isNotEmpty()
     OnboardingStep.LEVEL -> state.draft.level != null
     OnboardingStep.EQUIPMENT -> state.draft.equipment != null
     OnboardingStep.TRAINING_DAYS -> state.draft.trainingDays.size in 1..6
@@ -317,6 +375,7 @@ private fun canAdvance(state: OnboardingUiState.Editing) = when (state.step) {
 }
 
 private fun stepTitle(step: OnboardingStep) = when (step) {
+    OnboardingStep.PERSONAL_INFO -> "Thông tin cá nhân"
     OnboardingStep.GOAL -> "Bạn muốn đạt điều gì?"
     OnboardingStep.LEVEL -> "Kinh nghiệm tập luyện"
     OnboardingStep.EQUIPMENT -> "Bạn có dụng cụ gì?"
@@ -327,7 +386,8 @@ private fun stepTitle(step: OnboardingStep) = when (step) {
 }
 
 private fun stepExplanation(step: OnboardingStep, replacementMode: Boolean) = when (step) {
-    OnboardingStep.GOAL -> if (replacementMode) "Lịch sử hoàn thành vẫn được giữ lại." else "Mục tiêu quyết định trọng tâm của chương trình."
+    OnboardingStep.PERSONAL_INFO -> "Giới tính và tạng người giúp hệ thống cá nhân hóa lịch trình tập luyện."
+    OnboardingStep.GOAL -> if (replacementMode) "Lịch sử hoàn thành vẫn được giữ lại." else "Mục tiêu quyết định trọng tâm của chương trình (chọn tối đa 3)."
     OnboardingStep.LEVEL -> "Chọn đúng mức để khối lượng tập không quá nhẹ hoặc quá sức."
     OnboardingStep.EQUIPMENT -> "App chỉ phát những bài bạn có thể thực hiện với dụng cụ này."
     OnboardingStep.TRAINING_DAYS -> "Chọn ngày bạn thực sự có thể duy trì."

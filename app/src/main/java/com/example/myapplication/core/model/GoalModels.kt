@@ -31,6 +31,19 @@ enum class RestDayMode {
     LIGHT_RECOVERY,
 }
 
+@Serializable
+enum class Gender {
+    MALE,
+    FEMALE,
+}
+
+@Serializable
+enum class BodyType {
+    ECTOMORPH,
+    MESOMORPH,
+    ENDOMORPH,
+}
+
 data class GoalConfig(
     val goal: FitnessGoal,
     val level: ExperienceLevel,
@@ -40,6 +53,9 @@ data class GoalConfig(
     val restDayMode: RestDayMode,
     val trainingDays: Set<DayOfWeek> = legacyTrainingDays(sessionsPerWeek),
     val sessionDurationMinutes: Int = 45,
+    val goals: List<FitnessGoal> = listOf(goal),
+    val gender: Gender = Gender.MALE,
+    val bodyType: BodyType = BodyType.MESOMORPH,
 )
 
 fun legacyTrainingDays(sessionsPerWeek: Int): Set<DayOfWeek> = when (sessionsPerWeek) {

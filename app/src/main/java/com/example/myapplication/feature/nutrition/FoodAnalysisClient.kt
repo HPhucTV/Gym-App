@@ -20,7 +20,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 interface FoodAnalysisClient {
     suspend fun analyze(bitmap: Bitmap?): ScanResult?
-    suspend fun lookupBarcode(barcode: String): ScanResult?
 }
 
 class OkHttpFoodAnalysisClient(
@@ -87,45 +86,44 @@ class OkHttpFoodAnalysisClient(
             )
         } ?: emptyList()
 
+        val rawConfidence = element["confidence"]?.jsonPrimitive?.doubleOrNull ?: 1.0
+        val dishName = element["dishName"]?.jsonPrimitive?.content ?: "Mon an"
+        val totalCalories = element["totalCalories"]?.jsonPrimitive?.int ?: 0
+        val proteinGrams = element["proteinGrams"]?.jsonPrimitive?.int ?: 0
+        val carbsGrams = element["carbsGrams"]?.jsonPrimitive?.int ?: 0
+        val fatGrams = element["fatGrams"]?.jsonPrimitive?.int ?: 0
+
+        val recommendations = element["recommendations"]?.jsonArray?.map { item ->
+            val obj = item.jsonObject
+            ScanRecommendation(
+                dishName = obj["dishName"]?.jsonPrimitive?.content ?: "",
+                confidence = obj["confidence"]?.jsonPrimitive?.doubleOrNull ?: 1.0,
+                calories = obj["calories"]?.jsonPrimitive?.int ?: 0,
+                proteinGrams = obj["proteinGrams"]?.jsonPrimitive?.int ?: 0,
+                carbsGrams = obj["carbsGrams"]?.jsonPrimitive?.int ?: 0,
+                fatGrams = obj["fatGrams"]?.jsonPrimitive?.int ?: 0
+            )
+        } ?: listOf(
+            ScanRecommendation(dishName, rawConfidence, totalCalories, proteinGrams, carbsGrams, fatGrams),
+            ScanRecommendation("$dishName (Tùy chọn 2)", (rawConfidence * 0.75).coerceAtLeast(0.1), (totalCalories * 1.1).toInt(), (proteinGrams * 1.1).toInt(), (carbsGrams * 1.1).toInt(), (fatGrams * 1.1).toInt()),
+            ScanRecommendation("$dishName (Tùy chọn 3)", (rawConfidence * 0.50).coerceAtLeast(0.05), (totalCalories * 0.9).toInt(), (proteinGrams * 0.9).toInt(), (carbsGrams * 0.9).toInt(), (fatGrams * 0.9).toInt())
+        )
+
         return ScanResult(
-            dishName = element["dishName"]?.jsonPrimitive?.content ?: "Mon an",
-            totalCalories = element["totalCalories"]?.jsonPrimitive?.int ?: 0,
-            proteinGrams = element["proteinGrams"]?.jsonPrimitive?.int ?: 0,
-            carbsGrams = element["carbsGrams"]?.jsonPrimitive?.int ?: 0,
-            fatGrams = element["fatGrams"]?.jsonPrimitive?.int ?: 0,
+            dishName = dishName,
+            totalCalories = totalCalories,
+            proteinGrams = proteinGrams,
+            carbsGrams = carbsGrams,
+            fatGrams = fatGrams,
             fitnessScore = element["fitnessScore"]?.jsonPrimitive?.int ?: 5,
             advice = element["advice"]?.jsonPrimitive?.content ?: "",
             constituents = constituents,
             sweatPayment = sweatProposal,
             calculationProcess = element["calculationProcess"]?.jsonPrimitive?.content,
-            confidence = element["confidence"]?.jsonPrimitive?.doubleOrNull ?: 1.0,
+            confidence = rawConfidence,
             needsUserConfirmation = element["needsUserConfirmation"]?.jsonPrimitive?.booleanOrNull ?: false,
+            recommendations = recommendations,
         )
     }
 
-    private val barcodeEndpointProvider: () -> String? = {
-        com.example.myapplication.app.BackendConfig.baseUrl?.let { "$it/api/barcode" }
-    }
-
-    override suspend fun lookupBarcode(barcode: String): ScanResult? = withContext(Dispatchers.IO) {
-        val baseUrl = barcodeEndpointProvider() ?: return@withContext null
-        val endpointUrl = "$baseUrl/$barcode"
-
-        val request = Request.Builder()
-            .url(endpointUrl)
-            .get()
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string()
-                val serverErrorMessage = runCatching {
-                    Json.parseToJsonElement(errorBody ?: "").jsonObject["error"]?.jsonPrimitive?.content
-                }.getOrNull()
-                throw java.io.IOException(serverErrorMessage ?: "Lỗi HTTP ${response.code}")
-            }
-            val bodyString = response.body?.string() ?: throw java.io.IOException("Phản hồi trống từ máy chủ")
-            parseScanResult(bodyString)
-        }
-    }
 }

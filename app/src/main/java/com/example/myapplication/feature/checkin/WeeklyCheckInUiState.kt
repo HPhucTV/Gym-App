@@ -5,6 +5,11 @@ data class CheckInHistorySummary(
     val averageRecovery: Double = 0.0,
     val averageSleep: Double = 0.0,
     val totalCheckIns: Int = 0,
+    val averageWeeklyCalories: Double = 0.0,
+    val averageWeeklyScore: Double = 0.0,
+    val averageWeeklyProtein: Double = 0.0,
+    val averageWeeklyCarbs: Double = 0.0,
+    val averageWeeklyFat: Double = 0.0,
 )
 
 sealed interface WeeklyCheckInUiState {

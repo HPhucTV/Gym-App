@@ -76,16 +76,78 @@ class WeeklyCheckInViewModel(
         formState,
         submissionState,
         personalizationDao.observeAllCheckIns(),
-    ) { loaded, form, submission, checkIns ->
-        val historySummary = if (checkIns.isEmpty()) {
+        personalizationDao.observeAllNutrition(),
+    ) { loaded, form, submission, checkIns, allNutrition ->
+        val today = currentEpochDay()
+        val pastWeekNutrition = allNutrition.filter { it.epochDay in (today - 7)..<today && it.consumedCalories > 0 }
+
+        val nutritionStats = if (pastWeekNutrition.isNotEmpty()) {
+            val totalCal = pastWeekNutrition.sumOf { it.consumedCalories }
+            val totalProt = pastWeekNutrition.sumOf { it.consumedProteinGrams }
+            val totalCarbs = pastWeekNutrition.sumOf { it.consumedCarbsGrams }
+            val totalFat = pastWeekNutrition.sumOf { it.consumedFatGrams }
+            val scores = pastWeekNutrition.map { day ->
+                val targetForScore = if (day.targetCalories != null && day.targetCalories > 0) {
+                    com.example.myapplication.core.nutrition.NutritionTarget(
+                        basalCalories = day.targetBasalCalories ?: 0,
+                        maintenanceCalories = day.targetMaintenanceCalories ?: 0,
+                        calories = day.targetCalories,
+                        proteinGrams = day.targetProteinGrams ?: 0,
+                        carbsGrams = day.targetCarbsGrams ?: 0,
+                        fatGrams = day.targetFatGrams ?: 0,
+                        audit = com.example.myapplication.core.nutrition.NutritionTargetAudit(
+                            (day.targetBasalCalories ?: 0).toDouble(),
+                            (day.targetMaintenanceCalories ?: 0).toDouble(),
+                            (day.targetCalories).toDouble(),
+                            (day.targetProteinGrams ?: 0).toDouble(),
+                            (day.targetCarbsGrams ?: 0).toDouble(),
+                            (day.targetFatGrams ?: 0).toDouble()
+                        )
+                    )
+                } else {
+                    com.example.myapplication.core.nutrition.NutritionTarget(
+                        basalCalories = 2000,
+                        maintenanceCalories = 2000,
+                        calories = 2000,
+                        proteinGrams = 125,
+                        carbsGrams = 250,
+                        fatGrams = 55,
+                        audit = com.example.myapplication.core.nutrition.NutritionTargetAudit(2000.0, 2000.0, 2000.0, 125.0, 250.0, 55.0)
+                    )
+                }
+                val consumed = com.example.myapplication.core.nutrition.Nutrients(
+                    calories = day.consumedCalories,
+                    proteinGrams = day.consumedProteinGrams,
+                    carbsGrams = day.consumedCarbsGrams,
+                    fatGrams = day.consumedFatGrams,
+                    fiberGrams = day.consumedFiberGrams
+                )
+                com.example.myapplication.core.nutrition.NutritionScoreCalculator.calculateScore(
+                    consumed = consumed,
+                    target = targetForScore,
+                    waterIntakeMl = day.waterIntakeMl
+                ).score
+            }
+            CheckInHistorySummary(
+                averageWeeklyCalories = totalCal.toDouble() / pastWeekNutrition.size,
+                averageWeeklyScore = scores.average(),
+                averageWeeklyProtein = totalProt.toDouble() / pastWeekNutrition.size,
+                averageWeeklyCarbs = totalCarbs.toDouble() / pastWeekNutrition.size,
+                averageWeeklyFat = totalFat.toDouble() / pastWeekNutrition.size
+            )
+        } else {
             CheckInHistorySummary()
+        }
+
+        val historySummary = if (checkIns.isEmpty()) {
+            nutritionStats
         } else {
             val weightChange = if (checkIns.size >= 2) {
                 checkIns[0].weightKg - checkIns[1].weightKg
             } else null
             val avgRecovery = checkIns.map { it.recovery }.average()
             val avgSleep = checkIns.map { it.sleepQuality }.average()
-            CheckInHistorySummary(
+            nutritionStats.copy(
                 weightChangeKg = weightChange,
                 averageRecovery = if (avgRecovery.isNaN()) 0.0 else avgRecovery,
                 averageSleep = if (avgSleep.isNaN()) 0.0 else avgSleep,

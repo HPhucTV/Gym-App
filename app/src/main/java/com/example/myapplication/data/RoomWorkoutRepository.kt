@@ -5,6 +5,7 @@ import com.example.myapplication.core.model.ActiveGoal
 import com.example.myapplication.core.model.CompletedWorkout
 import com.example.myapplication.core.model.ExercisePrescription
 import com.example.myapplication.core.model.GoalConfig
+import com.example.myapplication.core.model.FitnessGoal
 import com.example.myapplication.core.model.ProgramTemplate
 import com.example.myapplication.core.model.WorkoutExercise
 import com.example.myapplication.core.model.WorkoutSession
@@ -26,23 +27,46 @@ import com.example.myapplication.data.local.SessionExerciseEntity
 import com.example.myapplication.data.local.SessionWithExercises
 import com.example.myapplication.data.local.WorkoutSessionEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 class RoomWorkoutRepository(
     private val database: GymDatabase,
-    exercises: List<ExerciseDefinition> = emptyList(),
+    private val exercisesProvider: () -> List<ExerciseDefinition>,
+    private val settingsRepository: SettingsRepository? = null,
     private val currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : WorkoutRepository {
+
+    constructor(
+        database: GymDatabase,
+        exercises: List<ExerciseDefinition> = emptyList(),
+        settingsRepository: SettingsRepository? = null,
+        currentEpochDay: () -> Long = { java.time.LocalDate.now().toEpochDay() },
+    ) : this(
+        database = database,
+        exercisesProvider = { exercises },
+        settingsRepository = settingsRepository,
+        currentEpochDay = currentEpochDay
+    )
+
     private val dao = database.workoutDao()
-    private val substitutionEngine = ExerciseSubstitutionEngine(exercises)
 
     override fun observeActiveGoal(): Flow<ActiveGoal?> = dao.observeActiveGoal().map { row ->
         row?.let {
+            val goalsList = if (it.goal.goalsCsv.isEmpty()) {
+                listOf(it.goal.goal)
+            } else {
+                it.goal.goalsCsv.split(",").map { FitnessGoal.valueOf(it) }
+            }
             ActiveGoal(
                 id = it.goal.id,
                 config = GoalConfig(
                     goal = it.goal.goal,
+                    goals = goalsList,
+                    gender = it.goal.gender,
+                    bodyType = it.goal.bodyType,
                     level = it.goal.level,
                     equipmentProfile = it.goal.equipmentProfile,
                     sessionsPerWeek = it.goal.sessionsPerWeek,
@@ -56,8 +80,12 @@ class RoomWorkoutRepository(
         }
     }
 
-    override fun observeCurrentWorkout(): Flow<WorkoutSession?> = dao.observeCurrentSession().map { row ->
-        row?.toDomain()
+    override fun observeCurrentWorkout(): Flow<WorkoutSession?> {
+        val sessionFlow = dao.observeCurrentSession()
+        val settingsFlow = settingsRepository?.settings ?: kotlinx.coroutines.flow.flowOf(Settings())
+        return sessionFlow.combine(settingsFlow) { session, settings ->
+            session?.toDomain(settings.soreMuscles)
+        }
     }
 
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> =
@@ -99,6 +127,9 @@ class RoomWorkoutRepository(
                 GoalEntity(
                     programId = program.id,
                     goal = config.goal,
+                    goalsCsv = config.goals.joinToString(",") { it.name },
+                    gender = config.gender,
+                    bodyType = config.bodyType,
                     level = config.level,
                     equipmentProfile = config.equipmentProfile,
                     sessionsPerWeek = config.sessionsPerWeek,
@@ -161,7 +192,7 @@ class RoomWorkoutRepository(
         val profile = dao.getGoal(session.goalId)?.equipmentProfile
             ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
         val originalId = row.originalExerciseId ?: row.exerciseId
-        val validIds = substitutionEngine.candidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
+        val validIds = ExerciseSubstitutionEngine(exercisesProvider()).candidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
         if (row.originalExerciseId != null) validIds += originalId
         if (replacementExerciseId !in validIds) {
             return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
@@ -318,37 +349,51 @@ class RoomWorkoutRepository(
         }
     }
 
-    private fun SessionWithExercises.toDomain(): WorkoutSession = WorkoutSession(
-        id = session.id,
-        goalId = session.goalId,
-        sequenceIndex = session.sequenceIndex,
-        titleVi = session.titleVi,
-        focusVi = session.focusVi,
-        estimatedMinutes = session.estimatedMinutes,
-        dueEpochDay = session.dueEpochDay,
-        exercises = exercises.filterNot { it.omittedByTimeBudget }.sortedBy { it.orderIndex }.map { exercise ->
-            WorkoutExercise(
-                orderIndex = exercise.orderIndex,
-                exerciseId = exercise.exerciseId,
-                originalExerciseId = exercise.originalExerciseId,
-                prescription = ExercisePrescription(
+    private fun SessionWithExercises.toDomain(soreMuscles: Set<String> = emptySet()): WorkoutSession {
+        val exercisesMap = exercisesProvider().associateBy { it.id }
+        return WorkoutSession(
+            id = session.id,
+            goalId = session.goalId,
+            sequenceIndex = session.sequenceIndex,
+            titleVi = session.titleVi,
+            focusVi = session.focusVi,
+            estimatedMinutes = session.estimatedMinutes,
+            dueEpochDay = session.dueEpochDay,
+            exercises = exercises.filterNot { it.omittedByTimeBudget }.sortedBy { it.orderIndex }.map { exercise ->
+                val definition = exercisesMap[exercise.exerciseId]
+                val isSore = definition?.primaryMuscle?.name?.let { muscleName ->
+                    soreMuscles.contains(muscleName)
+                } ?: false
+
+                WorkoutExercise(
+                    orderIndex = exercise.orderIndex,
                     exerciseId = exercise.exerciseId,
-                    sets = if (session.completedEpochDay == null) {
-                        scaledSets(exercise.sets, session.volumeScalePercent)
-                    } else {
-                        exercise.sets
-                    },
-                    repsMin = exercise.repsMin,
-                    repsMax = exercise.repsMax,
-                    durationSeconds = exercise.durationSeconds,
-                    restSeconds = exercise.restSeconds,
-                ),
-                checked = exercise.checked,
-            )
-        },
-        selectedTimeBudgetMinutes = session.selectedTimeBudgetMinutes,
-        omittedExerciseCount = exercises.count { it.omittedByTimeBudget },
-    )
+                    originalExerciseId = exercise.originalExerciseId,
+                    prescription = ExercisePrescription(
+                        exerciseId = exercise.exerciseId,
+                        sets = if (session.completedEpochDay == null) {
+                            val baseSets = scaledSets(exercise.sets, session.volumeScalePercent)
+                            if (isSore) {
+                                maxOf(1, (baseSets * 0.5f).roundToInt())
+                            } else {
+                                baseSets
+                            }
+                        } else {
+                            exercise.sets
+                        },
+                        repsMin = exercise.repsMin,
+                        repsMax = exercise.repsMax,
+                        durationSeconds = exercise.durationSeconds,
+                        restSeconds = exercise.restSeconds,
+                    ),
+                    checked = exercise.checked,
+                    isLightWorkout = isSore && session.completedEpochDay == null,
+                )
+            },
+            selectedTimeBudgetMinutes = session.selectedTimeBudgetMinutes,
+            omittedExerciseCount = exercises.count { it.omittedByTimeBudget },
+        )
+    }
 }
 
 internal fun scaledSets(sets: Int, percent: Int): Int =

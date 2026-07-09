@@ -16,5 +16,6 @@ data class MealTemplateEntity(
     val proteinGrams: Int,
     val carbsGrams: Int,
     val fatGrams: Int,
+    val fiberGrams: Int = 0,
     val updatedAtEpochMillis: Long,
 )

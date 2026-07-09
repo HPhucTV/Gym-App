@@ -45,7 +45,8 @@ class OnboardingViewModelTest {
 
     @Test fun `progresses through one decision at a time and can go back`() = runTest(dispatcher) {
             val vm = viewModel()
-            assertStep(vm, OnboardingStep.GOAL)
+            assertStep(vm, OnboardingStep.PERSONAL_INFO)
+            vm.selectGender(Gender.MALE); vm.selectBodyType(BodyType.MESOMORPH); vm.next(); assertStep(vm, OnboardingStep.GOAL)
             vm.selectGoal(FitnessGoal.GENERAL_FITNESS); vm.next(); assertStep(vm, OnboardingStep.LEVEL)
             vm.selectLevel(ExperienceLevel.BEGINNER); vm.next(); assertStep(vm, OnboardingStep.EQUIPMENT)
             vm.selectEquipment(EquipmentProfile.BODYWEIGHT_ONLY); vm.next(); assertStep(vm, OnboardingStep.TRAINING_DAYS)
@@ -66,8 +67,9 @@ class OnboardingViewModelTest {
             assertEquals(setOf(EquipmentProfile.BODYWEIGHT_ONLY), editing.options.equipment)
             assertFalse(editing.options.equipment.contains(EquipmentProfile.FULL_GYM))
             vm.selectEquipment(EquipmentProfile.BODYWEIGHT_ONLY); vm.selectCommitment(3, 4)
+            vm.selectGoal(FitnessGoal.GENERAL_FITNESS) // Untoggle previous goal
             vm.selectGoal(FitnessGoal.MUSCLE_GAIN)
-            assertEquals(OnboardingDraft(goal = FitnessGoal.MUSCLE_GAIN), (vm.uiState.value as OnboardingUiState.Editing).draft)
+            assertEquals(OnboardingDraft(goal = FitnessGoal.MUSCLE_GAIN, goals = listOf(FitnessGoal.MUSCLE_GAIN)), (vm.uiState.value as OnboardingUiState.Editing).draft)
     }
 
     @Test fun `supported selection creates exact goal once`() = runTest(dispatcher) {
@@ -99,7 +101,7 @@ class OnboardingViewModelTest {
         val repository = FakeWorkoutRepository(gate = gate)
         val vm = viewModel(repository)
         completeGeneral(vm)
-        repeat(6) { vm.next() }
+        repeat(7) { vm.next() }
         assertStep(vm, OnboardingStep.REVIEW)
 
         vm.createGoal()
@@ -161,6 +163,8 @@ class OnboardingViewModelTest {
         OnboardingViewModel(programs, repository) { 1234L }
 
     private fun completeGeneral(vm: OnboardingViewModel) {
+        vm.selectGender(Gender.MALE)
+        vm.selectBodyType(BodyType.MESOMORPH)
         vm.selectGoal(FitnessGoal.GENERAL_FITNESS); vm.selectLevel(ExperienceLevel.BEGINNER)
         vm.selectEquipment(EquipmentProfile.BODYWEIGHT_ONLY)
         listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY).forEach(vm::toggleTrainingDay)

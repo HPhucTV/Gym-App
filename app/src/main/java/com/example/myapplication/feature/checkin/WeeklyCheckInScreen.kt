@@ -234,6 +234,41 @@ private fun CheckInContent(
                             Text("${"%.1f".format(state.historySummary.averageSleep)} / 5", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = customColors.primaryText)
                         }
                     }
+
+                    HorizontalDivider(color = colors.outline.copy(alpha = 0.2f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Dinh dưỡng TB tuần", style = MaterialTheme.typography.bodySmall, color = customColors.mutedText)
+                            Text(
+                                text = "${state.historySummary.averageWeeklyCalories.toInt()} kcal  •  ${state.historySummary.averageWeeklyProtein.toInt()}g P  •  ${state.historySummary.averageWeeklyCarbs.toInt()}g C  •  ${state.historySummary.averageWeeklyFat.toInt()}g F",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = customColors.primaryText
+                            )
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Điểm Dinh dưỡng TB", style = MaterialTheme.typography.bodySmall, color = customColors.mutedText)
+                            val score = state.historySummary.averageWeeklyScore
+                            val scoreLabel = when {
+                                score >= 90 -> "🌟 Xuất sắc"
+                                score >= 70 -> "✅ Tốt"
+                                score >= 50 -> "⚠️ Khá"
+                                score > 0 -> "🔴 Chưa đạt"
+                                else -> "—"
+                            }
+                            Text(
+                                text = "${score.toInt()} đ ($scoreLabel)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (score >= 70) com.example.myapplication.ui.theme.SuccessGreen else if (score >= 50) EnergyOrange else colors.error
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -11,9 +11,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -25,6 +27,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -82,13 +89,31 @@ fun ExerciseCard(
             Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
-                Text(
-                    row.nameVi,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = customColors.primaryText,
-                    fontWeight = FontWeight.SemiBold,
-                    textDecoration = if (row.checked) TextDecoration.LineThrough else TextDecoration.None,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        row.nameVi,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = customColors.primaryText,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = if (row.checked) TextDecoration.LineThrough else TextDecoration.None,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (row.isLightWorkout) {
+                        Spacer(Modifier.width(6.dp))
+                        Surface(
+                            color = EnergyOrange.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                "Tập nhẹ",
+                                color = EnergyOrange,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -145,6 +170,16 @@ fun ExerciseCard(
                     .testTag("exercise-instructions-${row.orderIndex}"),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                row.gif3dPath?.let { path ->
+                    AssetImage(
+                        path = path,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
                 row.instructionsVi.forEachIndexed { index, instruction ->
                     Row {
                         Text(
@@ -170,6 +205,26 @@ fun ExerciseCard(
                 Text("Thay bài", color = EnergyOrange, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+}
+
+@Composable
+private fun AssetImage(path: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap = remember(path) {
+        runCatching {
+            context.assets.open(path).use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        }.getOrNull()
+    }
+    bitmap?.let {
+        Image(
+            bitmap = it.asImageBitmap(),
+            contentDescription = "Hình minh họa 3D",
+            modifier = modifier,
+            contentScale = ContentScale.Fit
+        )
     }
 }
 

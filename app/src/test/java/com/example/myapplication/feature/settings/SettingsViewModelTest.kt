@@ -218,6 +218,7 @@ private class FakeSettingsRepository(initial: Settings = Settings(), private val
     override suspend fun setRestDayMode(mode: RestDayMode?) { fail(); value.value = value.value.copy(restDayMode = mode) }
     override suspend fun setCustomServerUrl(url: String?) { fail(); value.value = value.value.copy(customServerUrl = url) }
     override suspend fun setDarkModeEnabled(enabled: Boolean?) { fail(); value.value = value.value.copy(darkModeEnabled = enabled) }
+    override suspend fun setSoreMuscles(muscles: Set<String>) = Unit
 }
 
 private class FakeScheduler(private var failOnceOn: String? = null) : ReminderScheduler {

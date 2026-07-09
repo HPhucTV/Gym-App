@@ -16,6 +16,7 @@ private val MINUTE = intPreferencesKey("reminder_minute")
 private val REST = stringPreferencesKey("rest_day_mode")
 private val CUSTOM_SERVER_URL = stringPreferencesKey("custom_server_url")
 private val DARK_MODE_ENABLED = booleanPreferencesKey("dark_mode_enabled")
+private val SORE_MUSCLES = stringPreferencesKey("sore_muscles")
 
 val Context.dataStore by preferencesDataStore(
     name = "gym_settings",
@@ -29,6 +30,7 @@ data class Settings(
     val restDayMode: RestDayMode? = null,
     val customServerUrl: String? = null,
     val darkModeEnabled: Boolean? = null,
+    val soreMuscles: Set<String> = emptySet(),
 )
 
 internal fun preferencesToSettings(preferences: Preferences) = Settings(
@@ -38,6 +40,7 @@ internal fun preferencesToSettings(preferences: Preferences) = Settings(
     restDayMode = preferences[REST]?.let { stored -> RestDayMode.entries.firstOrNull { it.name == stored } },
     customServerUrl = preferences[CUSTOM_SERVER_URL],
     darkModeEnabled = preferences[DARK_MODE_ENABLED],
+    soreMuscles = preferences[SORE_MUSCLES]?.split(",")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet(),
 )
 
 internal fun settingsFromPreferences(data: Flow<Preferences>): Flow<Settings> = data
@@ -51,6 +54,7 @@ interface SettingsRepository {
     suspend fun setRestDayMode(mode: RestDayMode?)
     suspend fun setCustomServerUrl(url: String?)
     suspend fun setDarkModeEnabled(enabled: Boolean?)
+    suspend fun setSoreMuscles(muscles: Set<String>)
 }
 
 class DataStoreSettingsRepository(context: Context) : SettingsRepository {
@@ -69,5 +73,8 @@ class DataStoreSettingsRepository(context: Context) : SettingsRepository {
     }
     override suspend fun setDarkModeEnabled(enabled: Boolean?) {
         store.edit { if (enabled == null) it.remove(DARK_MODE_ENABLED) else it[DARK_MODE_ENABLED] = enabled }
+    }
+    override suspend fun setSoreMuscles(muscles: Set<String>) {
+        store.edit { it[SORE_MUSCLES] = muscles.joinToString(",") }
     }
 }

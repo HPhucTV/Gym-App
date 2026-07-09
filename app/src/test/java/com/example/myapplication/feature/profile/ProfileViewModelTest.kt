@@ -70,7 +70,7 @@ class ProfileViewModelTest {
         assertEquals("65", state.targetWeightKgStr)
         assertEquals(MetabolicSex.MALE, state.metabolicSex)
         assertEquals(ActivityLevel.MODERATE, state.activityLevel)
-        assertEquals(GoalPace.GRADUAL, state.goalPace)
+        assertEquals(GoalPace.STANDARD, state.goalPace)
         assertFalse(state.personalizationConsent)
         assertFalse(state.cloudAiConsent)
     }
@@ -158,7 +158,7 @@ class ProfileViewModelTest {
             currentWeightKg = 78.0,
             targetWeightKg = 72.0,
             activityLevel = ActivityLevel.MODERATE,
-            goalPace = GoalPace.GRADUAL,
+            goalPace = GoalPace.STANDARD,
             personalizationConsent = true,
             cloudAiConsent = false,
             updatedAtEpochMillis = 1000L
@@ -266,6 +266,7 @@ private class FakeNutritionRepository : NutritionRepository {
     override fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<NutritionDay>> = flowOf(emptyList())
     override fun observeAllNutrition(): Flow<List<NutritionDay>> = flowOf(emptyList())
     override suspend fun addNutrients(epochDay: Long, nutrients: Nutrients, source: EntrySource) = Unit
+    override suspend fun addWater(epochDay: Long, waterMl: Int) = Unit
     
     override suspend fun setTarget(epochDay: Long, target: NutritionTarget) {
         targets.add(epochDay to target)

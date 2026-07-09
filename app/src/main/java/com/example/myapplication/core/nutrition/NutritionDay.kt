@@ -5,6 +5,7 @@ data class Nutrients(
     val proteinGrams: Int = 0,
     val carbsGrams: Int = 0,
     val fatGrams: Int = 0,
+    val fiberGrams: Int = 0,
 )
 
 enum class EntrySource {
@@ -17,4 +18,5 @@ data class NutritionDay(
     val epochDay: Long,
     val consumed: Nutrients,
     val target: NutritionTarget?,
+    val waterIntakeMl: Int = 0,
 )

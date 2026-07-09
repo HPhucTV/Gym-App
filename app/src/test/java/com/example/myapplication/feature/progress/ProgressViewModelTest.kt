@@ -14,6 +14,17 @@ import org.junit.Test
 import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.feedback.WorkoutFeedback
 import com.example.myapplication.core.progress.GoalForecast
+import com.example.myapplication.data.local.WeightMeasurementEntity
+import com.example.myapplication.feature.progress.WeightFilter
+import com.example.myapplication.core.adaptation.AdaptationKind
+import com.example.myapplication.core.adaptation.AdaptationStatus
+import com.example.myapplication.data.local.PersonalProfileEntity
+import com.example.myapplication.data.local.DailyNutritionEntity
+import com.example.myapplication.data.local.MealTemplateEntity
+import com.example.myapplication.data.local.WeeklyCheckInEntity
+import com.example.myapplication.data.local.AdaptationDecisionEntity
+import com.example.myapplication.data.local.UserFoodOverrideEntity
+import com.example.myapplication.data.local.PersonalizationDao
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProgressViewModelTest {
@@ -138,6 +149,48 @@ class ProgressViewModelTest {
         assertEquals(4, state.forecastElapsedWeeks)
     }
 
+    @Test fun `weight history is filtered and sorted by epoch day`() = runTest(dispatcher) {
+        val todayVal = day("2026-06-14")
+        val dao = FakePersonalizationDao()
+        // measurements: 5 days ago, 15 days ago, 45 days ago
+        val m1 = WeightMeasurementEntity(todayVal - 5, 80.0, (todayVal - 5) * 86400000L)
+        val m2 = WeightMeasurementEntity(todayVal - 15, 81.0, (todayVal - 15) * 86400000L)
+        val m3 = WeightMeasurementEntity(todayVal - 45, 82.0, (todayVal - 45) * 86400000L)
+        dao.upsertWeight(m1)
+        dao.upsertWeight(m2)
+        dao.upsertWeight(m3)
+
+        val vm = ProgressViewModel(
+            repository = FakeProgressRepository(goal(), emptyList()),
+            personalizationDao = dao,
+            currentEpochDay = { todayVal }
+        )
+        runCurrent()
+
+        // By default, filter should be LAST_30_DAYS
+        var state = vm.uiState.value as ProgressUiState.Content
+        assertEquals(WeightFilter.LAST_30_DAYS, state.weightFilter)
+        // Should contain m1 and m2, but not m3 (which is 45 days ago)
+        assertEquals(2, state.weightHistory.size)
+        assertEquals(81.0, state.weightHistory[0].weightKg, 0.01) // chronological sort: 15 days ago, then 5 days ago
+        assertEquals(80.0, state.weightHistory[1].weightKg, 0.01)
+
+        // Select LAST_7_DAYS
+        vm.changeWeightFilter(WeightFilter.LAST_7_DAYS)
+        runCurrent()
+        state = vm.uiState.value as ProgressUiState.Content
+        assertEquals(WeightFilter.LAST_7_DAYS, state.weightFilter)
+        assertEquals(1, state.weightHistory.size)
+        assertEquals(80.0, state.weightHistory[0].weightKg, 0.01)
+
+        // Select LAST_90_DAYS
+        vm.changeWeightFilter(WeightFilter.LAST_90_DAYS)
+        runCurrent()
+        state = vm.uiState.value as ProgressUiState.Content
+        assertEquals(WeightFilter.LAST_90_DAYS, state.weightFilter)
+        assertEquals(3, state.weightHistory.size)
+    }
+
     private fun goal(sessions: Int = 3) = ActiveGoal(1, GoalConfig(FitnessGoal.GENERAL_FITNESS, ExperienceLevel.BEGINNER,
         EquipmentProfile.BODYWEIGHT_ONLY, sessions, 4, RestDayMode.FULL_REST), 12)
     private fun day(value: String) = LocalDate.parse(value).toEpochDay()
@@ -163,4 +216,41 @@ private class FakeProgressRepository(
     override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) = Unit
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long) = CompleteWorkoutResult.Completed
     override suspend fun archiveActiveGoal() = Unit
+}
+
+private class FakePersonalizationDao : PersonalizationDao {
+    val weights = MutableStateFlow<List<WeightMeasurementEntity>>(emptyList())
+    override suspend fun upsertProfile(profile: PersonalProfileEntity) {}
+    override fun observeProfile(): Flow<PersonalProfileEntity?> = flowOf(null)
+    override suspend fun profileNow(): PersonalProfileEntity? = null
+    override suspend fun upsertWeight(measurement: WeightMeasurementEntity) {
+        weights.value = weights.value + measurement
+    }
+    override suspend fun latestWeightNow(): WeightMeasurementEntity? = weights.value.lastOrNull()
+    override fun observeWeightHistory(): Flow<List<WeightMeasurementEntity>> = weights
+    override suspend fun weightHistoryNow(): List<WeightMeasurementEntity> = weights.value
+    override suspend fun upsertDailyNutrition(day: DailyNutritionEntity) {}
+    override fun observeNutritionDay(epochDay: Long): Flow<DailyNutritionEntity?> = flowOf(null)
+    override fun observeNutritionRange(startEpochDay: Long, endEpochDay: Long): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
+    override suspend fun nutritionRangeNow(startEpochDay: Long, endEpochDay: Long): List<DailyNutritionEntity> = emptyList()
+    override fun observeAllNutrition(): Flow<List<DailyNutritionEntity>> = flowOf(emptyList())
+    override fun observeMealTemplates(): Flow<List<MealTemplateEntity>> = flowOf(emptyList())
+    override suspend fun mealTemplateNow(id: Long): MealTemplateEntity? = null
+    override suspend fun mealTemplateByNameNow(nameVi: String): MealTemplateEntity? = null
+    override suspend fun insertMealTemplate(template: MealTemplateEntity): Long = 0
+    override suspend fun updateMealTemplate(template: MealTemplateEntity): Int = 0
+    override suspend fun deleteMealTemplate(id: Long): Int = 0
+    override suspend fun upsertWeeklyCheckIn(checkIn: WeeklyCheckInEntity) {}
+    override fun observeLatestCheckIn(): Flow<WeeklyCheckInEntity?> = flowOf(null)
+    override fun observeAllCheckIns(): Flow<List<WeeklyCheckInEntity>> = flowOf(emptyList())
+    override suspend fun latestCheckInNow(): WeeklyCheckInEntity? = null
+    override suspend fun insertDecision(decision: AdaptationDecisionEntity): Long = 0
+    override suspend fun updateDecisionStatus(id: Long, status: AdaptationStatus, resolvedAt: Long) {}
+    override suspend fun updateDecisionPayloads(id: Long, afterJson: String, undoJson: String) {}
+    override suspend fun decisionByIdNow(id: Long): AdaptationDecisionEntity? = null
+    override suspend fun latestDecisionByKindAndStatus(kind: AdaptationKind, status: AdaptationStatus): AdaptationDecisionEntity? = null
+    override fun observeDecisionHistory(): Flow<List<AdaptationDecisionEntity>> = flowOf(emptyList())
+    override suspend fun decisionHistoryNow(): List<AdaptationDecisionEntity> = emptyList()
+    override suspend fun upsertFoodOverride(override: UserFoodOverrideEntity) {}
+    override suspend fun foodOverrideNow(dishName: String): UserFoodOverrideEntity? = null
 }

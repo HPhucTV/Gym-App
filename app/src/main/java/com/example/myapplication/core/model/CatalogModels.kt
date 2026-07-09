@@ -58,6 +58,7 @@ data class ExerciseDefinition(
     val secondaryMuscles: List<MuscleGroup> = emptyList(),
     val instructionsVi: List<String>,
     val substituteIds: List<String> = emptyList(),
+    val gif3dPath: String? = null,
 )
 
 @Serializable
@@ -91,3 +92,20 @@ data class ProgramTemplate(
     val durationWeeks: Int,
     val workouts: List<WorkoutTemplate>,
 )
+
+fun MuscleGroup.labelVi(): String = when (this) {
+    MuscleGroup.CHEST -> "Ngực"
+    MuscleGroup.BACK -> "Lưng"
+    MuscleGroup.SHOULDERS -> "Vai"
+    MuscleGroup.BICEPS -> "Tay trước"
+    MuscleGroup.TRICEPS -> "Tay sau"
+    MuscleGroup.CORE -> "Bụng"
+    MuscleGroup.QUADS -> "Đùi trước"
+    MuscleGroup.HAMSTRINGS -> "Đùi sau"
+    MuscleGroup.GLUTES -> "Mông"
+    MuscleGroup.CALVES -> "Bắp chân"
+    MuscleGroup.FULL_BODY -> "Toàn thân"
+    MuscleGroup.CARDIO -> "Tim mạch"
+    MuscleGroup.MOBILITY -> "Khớp/Giãn cơ"
+}
+

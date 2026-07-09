@@ -31,10 +31,12 @@ class ProgressViewModel(
     private val programs: List<ProgramTemplate> = emptyList(),
     private val exercises: List<ExerciseDefinition> = emptyList(),
     private val feedbackRepository: WorkoutFeedbackRepository? = null,
+    private val personalizationDao: com.example.myapplication.data.local.PersonalizationDao? = null,
     private val currentEpochDay: () -> Long,
 ) : ViewModel() {
     private val today = MutableStateFlow(currentEpochDay())
     private val selectedMonth = MutableStateFlow(YearMonth.from(LocalDate.ofEpochDay(today.value)))
+    private val weightFilter = MutableStateFlow(WeightFilter.LAST_30_DAYS)
     private val _uiState = MutableStateFlow<ProgressUiState>(ProgressUiState.Loading)
     val uiState: StateFlow<ProgressUiState> = _uiState.asStateFlow()
 
@@ -45,6 +47,7 @@ class ProgressViewModel(
         val completed: List<CompletedWorkout>,
         val history: List<WorkoutHistoryEntry>,
         val feedback: List<WorkoutFeedback>,
+        val weights: List<com.example.myapplication.data.local.WeightMeasurementEntity>,
     )
 
     init {
@@ -53,20 +56,23 @@ class ProgressViewModel(
                 if (goal == null || feedbackRepository == null) flowOf(emptyList())
                 else feedbackRepository.observeForGoal(goal.id)
             }
+            val weightFlow = personalizationDao?.observeWeightHistory() ?: flowOf(emptyList())
             val inputs = combine(
                 repository.observeActiveGoal(),
                 repository.observeCompletedWorkouts(),
                 repository.observeWorkoutHistory(),
                 feedbackFlow,
-            ) { goal, completed, history, feedback ->
-                ProgressInputs(goal, completed, history, feedback)
+                weightFlow,
+            ) { goal, completed, history, feedback, weights ->
+                ProgressInputs(goal, completed, history, feedback, weights)
             }
             combine(
                 inputs,
                 today,
                 selectedMonth,
-            ) { data, currentDay, month ->
-                resolve(data.goal, data.completed, data.history, data.feedback, currentDay, month)
+                weightFilter,
+            ) { data, currentDay, month, filter ->
+                resolve(data.goal, data.completed, data.history, data.feedback, data.weights, currentDay, month, filter)
             }
                 .collect { _uiState.value = it }
         }
@@ -74,6 +80,10 @@ class ProgressViewModel(
 
     fun refreshToday() {
         today.value = currentEpochDay()
+    }
+
+    fun changeWeightFilter(filter: WeightFilter) {
+        weightFilter.value = filter
     }
 
     fun previousMonth() = moveMonth(-1)
@@ -89,8 +99,10 @@ class ProgressViewModel(
         completedHistory: List<CompletedWorkout>,
         workoutHistory: List<WorkoutHistoryEntry>,
         feedback: List<WorkoutFeedback>,
+        weights: List<com.example.myapplication.data.local.WeightMeasurementEntity>,
         currentDay: Long,
         month: YearMonth,
+        filter: WeightFilter,
     ): ProgressUiState {
         val allDates = completedHistory.map { it.completedEpochDay }
         val marked = allDates.asSequence()
@@ -115,6 +127,9 @@ class ProgressViewModel(
             WeeklyCompletedStats(label, count)
         }
 
+        val filteredWeights = weights.filter { it.epochDay >= currentDay - filter.days }
+            .sortedBy { it.epochDay }
+
         if (goal == null) {
             return ProgressUiState.NoActiveGoal(
                 selectedMonth = month,
@@ -123,7 +138,9 @@ class ProgressViewModel(
                 canNavigatePrevious = canPrevious,
                 canNavigateNext = canNext,
                 weeklyStats = weeklyStats,
-                muscleStats = emptyList()
+                muscleStats = emptyList(),
+                weightHistory = filteredWeights,
+                weightFilter = filter
             )
         }
 
@@ -194,6 +211,8 @@ class ProgressViewModel(
             goalForecast = forecast,
             forecastCompletedSessions = activeDates.size,
             forecastElapsedWeeks = elapsedWeeks,
+            weightHistory = filteredWeights,
+            weightFilter = filter
         )
     }
 }

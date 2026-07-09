@@ -95,3 +95,10 @@ Persistence is Room schema version 9. Core workout selection, scheduling, substi
 Confirmation points: deload apply/undo, goal replacement/deletion, schedule application, and meal-template deletion. Known limits: no account/cloud sync, no random workouts, no load/rep logging, and no medical or physique prediction.
 
 Verification on 2026-07-04: focused JVM, full JVM, lint (0 errors), Android-test compilation and debug APK assembly passed. Connected tests were attempted but executed 0 tests because the detected emulator went offline; device validation remains pending.
+
+# Functional upgrade release — 2026-07-09: Nutrition CSV Import & Onboarding Fixes
+
+1. **Nutrition CSV Import from Calorie Tracker sample:** Added a parser (`NutritionCsvParser`) and database storage for importing a local food catalog from a user-uploaded CSV file (e.g. exported from the `Calorie Tracker.xlsx` template). It correctly handles both standard comma-separated and European semicolon-separated values with comma decimal marks (e.g. `3,2`).
+2. **Catalog-based Nutrition entry:** Integrated a search interface on the Nutrition Screen allowing users to search the imported catalog and add foods to their daily intake based on customized serving size in grams.
+3. **Onboarding multi-select goal & personal info alignment:** Resolved test failures in `OnboardingViewModelTest` by updating test scenarios to reflect the new step progression (`PERSONAL_INFO` containing gender and body type, followed by multi-goal selection).
+4. **Verification:** Executed full local unit test suite (`.\gradlew.bat test`) successfully, confirming all 248 tests passed (including new CSV parsing and catalog import flow).

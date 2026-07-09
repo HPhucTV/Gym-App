@@ -15,6 +15,12 @@ data class MuscleCompletedStats(
     val count: Int,
 )
 
+enum class WeightFilter(val days: Int) {
+    LAST_7_DAYS(7),
+    LAST_30_DAYS(30),
+    LAST_90_DAYS(90),
+}
+
 sealed interface ProgressUiState {
     data object Loading : ProgressUiState
 
@@ -35,6 +41,8 @@ sealed interface ProgressUiState {
         val goalForecast: GoalForecast = GoalForecast.InsufficientData,
         val forecastCompletedSessions: Int = 0,
         val forecastElapsedWeeks: Long = 0,
+        val weightHistory: List<com.example.myapplication.data.local.WeightMeasurementEntity> = emptyList(),
+        val weightFilter: WeightFilter = WeightFilter.LAST_30_DAYS,
     ) : ProgressUiState
 
     data class NoActiveGoal(
@@ -45,5 +53,7 @@ sealed interface ProgressUiState {
         val canNavigateNext: Boolean,
         val weeklyStats: List<WeeklyCompletedStats> = emptyList(),
         val muscleStats: List<MuscleCompletedStats> = emptyList(),
+        val weightHistory: List<com.example.myapplication.data.local.WeightMeasurementEntity> = emptyList(),
+        val weightFilter: WeightFilter = WeightFilter.LAST_30_DAYS,
     ) : ProgressUiState
 }

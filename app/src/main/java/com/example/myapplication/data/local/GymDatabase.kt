@@ -60,8 +60,10 @@ class PersonalizationTypeConverters {
         WorkoutFeedbackEntity::class,
         MealTemplateEntity::class,
         UserFoodOverrideEntity::class,
+        FoodCatalogEntity::class,
+        LoggedFoodEntity::class,
     ],
-    version = 10,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(WorkoutTypeConverters::class, PersonalizationTypeConverters::class)
@@ -70,8 +72,84 @@ abstract class GymDatabase : RoomDatabase() {
     abstract fun personalizationDao(): PersonalizationDao
     abstract fun achievementDao(): AchievementDao
     abstract fun workoutFeedbackDao(): WorkoutFeedbackDao
+    abstract fun foodCatalogDao(): FoodCatalogDao
+    abstract fun loggedFoodDao(): LoggedFoodDao
 
     companion object {
+        val MIGRATION_13_14: Migration = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `food_catalog` ADD COLUMN `fiberPerServing` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE `logged_foods` ADD COLUMN `fiberGrams` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_nutrition` ADD COLUMN `consumedFiberGrams` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `meal_templates` ADD COLUMN `fiberGrams` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `food_catalog` ADD COLUMN `isFavorite` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `logged_foods` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `epochDay` INTEGER NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `mealTime` TEXT NOT NULL,
+                        `grams` REAL NOT NULL,
+                        `calories` INTEGER NOT NULL,
+                        `proteinGrams` INTEGER NOT NULL,
+                        `carbsGrams` INTEGER NOT NULL,
+                        `fatGrams` INTEGER NOT NULL,
+                        `foodCatalogId` INTEGER,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `food_catalog` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `gramsPerServing` REAL NOT NULL DEFAULT 100.0,
+                        `caloriesPerServing` REAL NOT NULL DEFAULT 0.0,
+                        `fatPerServing` REAL NOT NULL DEFAULT 0.0,
+                        `carbsPerServing` REAL NOT NULL DEFAULT 0.0,
+                        `proteinPerServing` REAL NOT NULL DEFAULT 0.0,
+                        `potassiumMg` REAL NOT NULL DEFAULT 0.0,
+                        `sodiumMg` REAL NOT NULL DEFAULT 0.0,
+                        `cholesterolMg` REAL NOT NULL DEFAULT 0.0,
+                        `importBatchId` TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `daily_nutrition` ADD COLUMN `waterIntakeMl` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `goals` ADD COLUMN `goalsCsv` TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE `goals` ADD COLUMN `gender` TEXT NOT NULL DEFAULT 'MALE'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `goals` ADD COLUMN `bodyType` TEXT NOT NULL DEFAULT 'MESOMORPH'"
+                )
+                db.execSQL(
+                    "UPDATE `goals` SET `goalsCsv` = `goal` WHERE `goalsCsv` = ''"
+                )
+            }
+        }
+
         val MIGRATION_9_10: Migration = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

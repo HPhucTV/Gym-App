@@ -56,6 +56,7 @@ fun HomeScreen(
     onNavigateToCheckIn: () -> Unit = {},
     onNavigateToRecommendations: () -> Unit = {},
     onNavigateToAchievements: () -> Unit = {},
+    onNavigateToRoadmap: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -81,6 +82,14 @@ fun HomeScreen(
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.2.sp,
+        )
+        DashboardActionCard(
+            tag = "home-roadmap-action",
+            eyebrow = "LỘ TRÌNH CHƯƠNG TRÌNH",
+            title = "Lộ trình tập luyện",
+            supporting = "Xem tổng quan các buổi tập và tiến trình của bạn",
+            accent = HomePalette.navy,
+            onClick = onNavigateToRoadmap,
         )
         DashboardActionCard(
             tag = "home-nutrition-action",

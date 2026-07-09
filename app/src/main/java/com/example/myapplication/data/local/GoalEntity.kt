@@ -8,11 +8,17 @@ import com.example.myapplication.core.model.ExperienceLevel
 import com.example.myapplication.core.model.FitnessGoal
 import com.example.myapplication.core.model.RestDayMode
 
+import com.example.myapplication.core.model.Gender
+import com.example.myapplication.core.model.BodyType
+
 @Entity(tableName = "goals")
 data class GoalEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val programId: String,
     val goal: FitnessGoal,
+    val goalsCsv: String = goal.name,
+    val gender: Gender = Gender.MALE,
+    val bodyType: BodyType = BodyType.MESOMORPH,
     val level: ExperienceLevel,
     val equipmentProfile: EquipmentProfile,
     val sessionsPerWeek: Int,

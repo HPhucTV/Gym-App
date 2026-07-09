@@ -84,7 +84,7 @@ class AdaptiveJourneyEndToEndTest {
             currentWeightKg = 78.0,
             targetWeightKg = 72.0,
             activityLevel = ActivityLevel.MODERATE,
-            goalPace = GoalPace.GRADUAL,
+            goalPace = GoalPace.STANDARD,
             personalizationConsent = true,
             cloudAiConsent = false
         )

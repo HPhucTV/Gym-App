@@ -26,18 +26,28 @@ class NutritionTargetCalculator {
                 5 * ageYears +
                 if (profile.metabolicSex == MetabolicSex.MALE) MALE_CONSTANT else FEMALE_CONSTANT
         val rawMaintenanceCalories = rawBasalCalories * profile.activityLevel.multiplier
-        val adjustmentRate = when (profile.goalPace) {
-            GoalPace.GRADUAL -> GRADUAL_ADJUSTMENT_RATE
-            GoalPace.STANDARD -> STANDARD_ADJUSTMENT_RATE
-        }
         val rawTargetCalories = when {
-            profile.targetWeightKg < profile.currentWeightKg -> rawMaintenanceCalories * (1 - adjustmentRate)
-            profile.targetWeightKg > profile.currentWeightKg -> rawMaintenanceCalories * (1 + adjustmentRate)
+            profile.targetWeightKg < profile.currentWeightKg -> {
+                val rate = when (profile.goalPace) {
+                    GoalPace.MILD -> 0.10
+                    GoalPace.STANDARD -> 0.15
+                    GoalPace.AGGRESSIVE -> 0.20
+                }
+                rawMaintenanceCalories * (1.0 - rate)
+            }
+            profile.targetWeightKg > profile.currentWeightKg -> {
+                val rate = when (profile.goalPace) {
+                    GoalPace.MILD -> 0.05
+                    GoalPace.STANDARD -> 0.10
+                    GoalPace.AGGRESSIVE -> 0.15
+                }
+                rawMaintenanceCalories * (1.0 + rate)
+            }
             else -> rawMaintenanceCalories
         }
 
         val rawProteinGrams = profile.currentWeightKg * PROTEIN_GRAMS_PER_KG
-        val rawFatGrams = rawTargetCalories * FAT_CALORIE_SHARE / CALORIES_PER_FAT_GRAM
+        val rawFatGrams = profile.currentWeightKg * FAT_GRAMS_PER_KG
         val rawCarbsGrams =
             (rawTargetCalories -
                 rawProteinGrams * CALORIES_PER_PROTEIN_GRAM -
@@ -112,10 +122,8 @@ class NutritionTargetCalculator {
     private companion object {
         const val MALE_CONSTANT = 5.0
         const val FEMALE_CONSTANT = -161.0
-        const val GRADUAL_ADJUSTMENT_RATE = 0.10
-        const val STANDARD_ADJUSTMENT_RATE = 0.15
-        const val PROTEIN_GRAMS_PER_KG = 1.6
-        const val FAT_CALORIE_SHARE = 0.25
+        const val PROTEIN_GRAMS_PER_KG = 2.0
+        const val FAT_GRAMS_PER_KG = 0.8
         const val CALORIES_PER_PROTEIN_GRAM = 4.0
         const val CALORIES_PER_CARB_GRAM = 4.0
         const val CALORIES_PER_FAT_GRAM = 9.0

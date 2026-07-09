@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.core.feedback.WorkoutDifficulty
 import com.example.myapplication.core.program.ProgramPhase
+import com.example.myapplication.core.model.labelVi
 import com.example.myapplication.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -50,6 +51,7 @@ fun TodayScreen(
     onApplySubstitution: (String) -> Unit = {},
     onDismissSubstitution: () -> Unit = {},
     onApplyTimeBudget: (Int?) -> Unit = {},
+    onToggleSoreMuscle: (String) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -73,6 +75,7 @@ fun TodayScreen(
                 onRefreshCoachTip = onRefreshCoachTip,
                 onRequestSubstitution = onRequestSubstitution,
                 onApplyTimeBudget = onApplyTimeBudget,
+                onToggleSoreMuscle = onToggleSoreMuscle,
             )
         }
 
@@ -486,12 +489,17 @@ private fun WorkoutContent(
     onRefreshCoachTip: () -> Unit,
     onRequestSubstitution: (Int) -> Unit,
     onApplyTimeBudget: (Int?) -> Unit,
+    onToggleSoreMuscle: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
 
     var timerInitialSeconds by remember { mutableIntStateOf(0) }
     var timerVisible by remember { mutableStateOf(false) }
+
+    val musclesInWorkout = remember(state.rows) {
+        state.rows.map { it.primaryMuscle }.distinct()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -532,6 +540,50 @@ private fun WorkoutContent(
                             color = customColors.mutedText,
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                }
+            }
+
+            if (musclesInWorkout.isNotEmpty()) {
+                item(key = "sore-muscles") {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Hôm nay bạn mỏi nhóm cơ nào? (Tập nhẹ giảm 50% hiệp 💡)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.primaryText,
+                        )
+                        val chunkedMuscles = musclesInWorkout.chunked(3)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            chunkedMuscles.forEach { rowList ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    rowList.forEach { muscle ->
+                                        val isSelected = state.soreMuscles.contains(muscle.name)
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { onToggleSoreMuscle(muscle.name) },
+                                            label = { Text(muscle.labelVi(), fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = EnergyOrange.copy(alpha = 0.15f),
+                                                selectedLabelColor = EnergyOrange,
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (rowList.size < 3) {
+                                        repeat(3 - rowList.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

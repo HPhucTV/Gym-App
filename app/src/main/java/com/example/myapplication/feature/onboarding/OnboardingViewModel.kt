@@ -19,10 +19,32 @@ class OnboardingViewModel(
     private val workoutRepository: WorkoutRepository,
     private val currentEpochDay: () -> Long,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow<OnboardingUiState>(editing(OnboardingStep.GOAL, OnboardingDraft()))
+    private val _uiState = MutableStateFlow<OnboardingUiState>(editing(OnboardingStep.PERSONAL_INFO, OnboardingDraft()))
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
 
-    fun selectGoal(value: FitnessGoal) = updateDraft { OnboardingDraft(goal = value) }
+    fun selectGender(value: Gender) = updateDraft { it.copy(gender = value) }
+    fun selectBodyType(value: BodyType) = updateDraft { it.copy(bodyType = value) }
+
+    fun toggleGoal(value: FitnessGoal) = updateDraft { draft ->
+        val goals = if (value in draft.goals) {
+            draft.goals - value
+        } else {
+            if (draft.goals.size < 3) draft.goals + value else draft.goals
+        }
+        draft.copy(
+            goals = goals,
+            goal = goals.firstOrNull(),
+            level = null,
+            equipment = null,
+            sessionsPerWeek = null,
+            durationWeeks = null,
+            restDayMode = null,
+            trainingDays = emptySet(),
+            sessionDurationMinutes = null,
+        )
+    }
+
+    fun selectGoal(value: FitnessGoal) = toggleGoal(value)
 
     fun selectLevel(value: ExperienceLevel) = updateDraft {
         it.copy(
@@ -86,7 +108,7 @@ class OnboardingViewModel(
 
     fun back() {
         when (val state = _uiState.value) {
-            is OnboardingUiState.Editing -> if (!state.isSaving && state.step != OnboardingStep.GOAL) {
+            is OnboardingUiState.Editing -> if (!state.isSaving && state.step != OnboardingStep.PERSONAL_INFO) {
                 _uiState.value = editing(OnboardingStep.entries[state.step.ordinal - 1], state.draft)
             }
             is OnboardingUiState.Unsupported -> _uiState.value = editing(OnboardingStep.REVIEW, state.draft)
@@ -112,6 +134,9 @@ class OnboardingViewModel(
         val baseProgram = matchingPrograms.single()
         val config = GoalConfig(
             goal = draft.goal ?: return,
+            goals = draft.goals.takeIf { it.isNotEmpty() } ?: listOf(draft.goal ?: return),
+            gender = draft.gender ?: Gender.MALE,
+            bodyType = draft.bodyType ?: BodyType.MESOMORPH,
             level = draft.level ?: return,
             equipmentProfile = draft.equipment ?: return,
             sessionsPerWeek = draft.trainingDays.size.takeIf { it in 1..6 } ?: return,
@@ -166,7 +191,8 @@ class OnboardingViewModel(
     )
 
     private fun canAdvance(state: OnboardingUiState.Editing): Boolean = when (state.step) {
-        OnboardingStep.GOAL -> state.draft.goal != null
+        OnboardingStep.PERSONAL_INFO -> state.draft.gender != null && state.draft.bodyType != null
+        OnboardingStep.GOAL -> state.draft.goals.isNotEmpty()
         OnboardingStep.LEVEL -> state.draft.level != null
         OnboardingStep.EQUIPMENT -> state.draft.equipment != null
         OnboardingStep.TRAINING_DAYS -> state.draft.trainingDays.size in 1..6
@@ -200,3 +226,14 @@ internal fun EquipmentProfile.labelVi() = when (this) {
 }
 
 internal fun RestDayMode.labelVi() = if (this == RestDayMode.FULL_REST) "Nghỉ hoàn toàn" else "Phục hồi nhẹ"
+
+internal fun Gender.labelVi() = when (this) {
+    Gender.MALE -> "Nam"
+    Gender.FEMALE -> "Nữ"
+}
+
+internal fun BodyType.labelVi() = when (this) {
+    BodyType.ECTOMORPH -> "Ectomorph"
+    BodyType.MESOMORPH -> "Mesomorph"
+    BodyType.ENDOMORPH -> "Endomorph"
+}
