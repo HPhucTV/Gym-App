@@ -102,3 +102,10 @@ Verification on 2026-07-04: focused JVM, full JVM, lint (0 errors), Android-test
 2. **Catalog-based Nutrition entry:** Integrated a search interface on the Nutrition Screen allowing users to search the imported catalog and add foods to their daily intake based on customized serving size in grams.
 3. **Onboarding multi-select goal & personal info alignment:** Resolved test failures in `OnboardingViewModelTest` by updating test scenarios to reflect the new step progression (`PERSONAL_INFO` containing gender and body type, followed by multi-goal selection).
 4. **Verification:** Executed full local unit test suite (`.\gradlew.bat test`) successfully, confirming all 248 tests passed (including new CSV parsing and catalog import flow).
+
+# Hotfix Release — 2026-07-10: Wiring Navigation & Click Callbacks
+
+1. **Wired "Lộ trình" (Roadmap) navigation:** Added the `"roadmap"` composable route in `GymApp.kt` and passed the `onNavigateToRoadmap` lambda from the bottom-level navigation controllers all the way to `HomeScreen`, so that clicking the "Lộ trình tập luyện" card successfully takes the user to the `WorkoutRoadmapScreen`.
+2. **Wired "Thêm nước" (Add water) callback:** Passed `onAddWater = nutritionViewModel::addWater` to `NutritionScreen` inside `GymApp.kt`, resolving the non-responsive water card clicks.
+3. **Verification:** Ran `.\gradlew.bat test` (all tests passed) and successfully built the final release APK (`app-release.apk`) in 12 seconds with these callbacks fully wired.
+
