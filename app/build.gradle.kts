@@ -66,6 +66,9 @@ android {
     sourceSets {
         getByName("androidTest").assets.directories.add("$projectDir/schemas")
     }
+    androidResources {
+        noCompress.add("glb")
+    }
 }
 
 ksp {
@@ -90,6 +93,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.androidx.webkit)
     
     // CameraX and ML Kit Barcode Scanning
     implementation(libs.androidx.camera.core)

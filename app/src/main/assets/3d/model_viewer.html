@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Exercise Viewer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            --poster-color: transparent;
+        }
+        .error-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+            color: #14213D;
+        }
+        .error-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .error-message {
+            font-size: 14px;
+            color: #6b7280;
+        }
+    </style>
+    <script>
+        // Hàm ghi lỗi Debug lên màn hình
+        function showError(msg) {
+            const logDiv = document.getElementById('debug-log');
+            const logContent = document.getElementById('debug-content');
+            if (logDiv && logContent) {
+                logDiv.style.display = 'block';
+                logContent.textContent += msg + '\n';
+            }
+            console.error("WebView3D Error: " + msg);
+        }
+
+        // Bẫy lỗi Javascript toàn cục
+        window.onerror = function(message, source, lineno, colno, error) {
+            showError(`Lỗi JS: ${message} tại dòng ${lineno} của ${source}`);
+            return false;
+        };
+
+        // Kiểm tra WebGL
+        window.addEventListener('DOMContentLoaded', () => {
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (!gl) {
+                    showError("Thiết bị không hỗ trợ WebGL (Không thể kết xuất đồ họa 3D).");
+                }
+            } catch (e) {
+                showError("Lỗi kiểm tra WebGL: " + e.message);
+            }
+        });
+    </script>
+    <!-- Load model-viewer locally using WebViewAssetLoader path mapping -->
+    <script type="module" src="model-viewer.min.js" onerror="showError('Không thể nạp tệp model-viewer.min.js (Kiểm tra lại assets)')"></script>
+</head>
+<body>
+    <model-viewer 
+        id="viewer"
+        alt="Mô hình bài tập 3D" 
+        auto-rotate 
+        camera-controls
+        ar-modes="webxr"
+        interaction-prompt="none"
+        shadow-intensity="1"
+        autoplay
+        animation-name="*">
+    </model-viewer>
+
+    <div id="error" class="error-container">
+        <div class="error-title">Không thể tải mô hình 3D</div>
+        <div class="error-message">Đang chuẩn bị mô hình cho bài tập này.</div>
+    </div>
+
+    <!-- Khung hiển thị thông tin lỗi debug trực tiếp trong WebView -->
+    <div id="debug-log" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(243, 244, 246, 0.95); color: #14213D; padding: 16px; box-sizing: border-box; font-family: monospace; font-size: 11px; overflow-y: auto; z-index: 9999;">
+        <h4 style="margin: 0 0 8px 0; color: #F97316; font-size: 13px;">Lỗi gỡ lỗi hệ thống (WebView Debug):</h4>
+        <pre id="debug-content" style="white-space: pre-wrap; margin: 0; font-family: monospace; font-size: 11px;"></pre>
+    </div>
+
+    <script>
+        // Phân tích tham số URL để tải đúng tệp mô hình .glb
+        const urlParams = new URLSearchParams(window.location.search);
+        const modelName = urlParams.get('model');
+        const viewer = document.getElementById('viewer');
+        const errorDiv = document.getElementById('error');
+
+        if (modelName) {
+            // Xử lý sự kiện khi tải thành công
+            viewer.addEventListener('load', () => {
+                console.log('Tải mô hình thành công:', modelName);
+            });
+
+            // Xử lý sự kiện nếu tải lỗi
+            viewer.addEventListener('error', (event) => {
+                showError(`Lỗi tải mô hình glb: ${modelName}. Chi tiết: ${JSON.stringify(event.detail || {})}`);
+                viewer.style.display = 'none';
+                errorDiv.style.display = 'flex';
+            });
+
+            // Thiết lập nguồn dữ liệu ảo thông qua WebViewAssetLoader
+            viewer.src = modelName;
+        } else {
+            viewer.style.display = 'none';
+            errorDiv.style.display = 'flex';
+            errorDiv.querySelector('.error-message').textContent = 'Chưa xác định được bài tập.';
+        }
+    </script>
+</body>
+</html>

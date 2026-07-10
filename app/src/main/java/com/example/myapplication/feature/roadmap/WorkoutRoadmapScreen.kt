@@ -46,9 +46,11 @@ fun WorkoutRoadmapScreen(
                     containerColor = colors.background,
                     titleContentColor = customColors.primaryText,
                     navigationIconContentColor = customColors.primaryText,
-                )
+                ),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
         Box(

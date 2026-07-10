@@ -322,6 +322,7 @@ class NutritionViewModelTest {
             nutritionRepository = FakeNutritionRepository(),
             foodCatalogDao = fakeDao,
             currentEpochDay = { 20636L },
+            ioDispatcher = dispatcher
         )
         collectUiState(viewModel)
         runCurrent()
@@ -462,6 +463,107 @@ class NutritionViewModelTest {
         assertEquals("450", state.draft?.caloriesText)
     }
 
+    @Test
+    fun `import nutrition file csv imports foods into database`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val dao = FakeFoodCatalogDao()
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = repo,
+            foodCatalogDao = dao,
+            currentEpochDay = { 20636L },
+            ioDispatcher = dispatcher
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        val csvText = "Tên,Calo,Protein,Carb,Béo\nỨc gà,165,31,0,3.6\nCơm trắng,130,2.7,28,0.3"
+        viewModel.importNutritionFile("foods.csv", csvText.toByteArray(Charsets.UTF_8))
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(true, state.importSuccess)
+        assertEquals(2, dao.inserted.size)
+        assertEquals("Ức gà", dao.inserted[0].name)
+        assertEquals(165.0, dao.inserted[0].caloriesPerServing, 0.01)
+        assertEquals(31.0, dao.inserted[0].proteinPerServing, 0.01)
+    }
+
+    @Test
+    fun `import nutrition file xlsx imports foods into database`() = runTest(dispatcher) {
+        val repo = FakeNutritionRepository()
+        val dao = FakeFoodCatalogDao()
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = repo,
+            foodCatalogDao = dao,
+            currentEpochDay = { 20636L },
+            ioDispatcher = dispatcher
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        val sharedStrings = listOf("Tên", "Calo", "Protein", "Carb", "Béo", "Ức gà", "Cơm trắng")
+        val rows = listOf(
+            listOf("A1" to 0, "B1" to 1, "C1" to 2, "D1" to 3, "E1" to 4),
+            listOf("A2" to 5, "B2" to 165.0, "C2" to 31.0, "D2" to 0.0, "E2" to 3.6),
+            listOf("A3" to 6, "B3" to 130.0, "C3" to 2.7, "D3" to 28.0, "E3" to 0.3)
+        )
+        val xlsxBytes = createFakeXlsxBytes(sharedStrings, rows)
+
+        viewModel.importNutritionFile("foods.xlsx", xlsxBytes)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertEquals(true, state.importSuccess)
+        assertEquals(2, dao.inserted.size)
+        assertEquals("Ức gà", dao.inserted[0].name)
+        assertEquals(165.0, dao.inserted[0].caloriesPerServing, 0.01)
+        assertEquals(31.0, dao.inserted[0].proteinPerServing, 0.01)
+    }
+
+    private fun createFakeXlsxBytes(sharedStrings: List<String>, rows: List<List<Pair<String, Any>>>): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bos).use { zos ->
+            val ssXml = java.lang.StringBuilder()
+            ssXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
+            ssXml.append("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"${sharedStrings.size}\" uniqueCount=\"${sharedStrings.size}\">")
+            for (s in sharedStrings) {
+                ssXml.append("<si><t>$s</t></si>")
+            }
+            ssXml.append("</sst>")
+            zos.putNextEntry(java.util.zip.ZipEntry("xl/sharedStrings.xml"))
+            zos.write(ssXml.toString().toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+
+            val sheetXml = java.lang.StringBuilder()
+            sheetXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
+            sheetXml.append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">")
+            sheetXml.append("<sheetData>")
+            for (row in rows) {
+                sheetXml.append("<row>")
+                for (cell in row) {
+                    val ref = cell.first
+                    val value = cell.second
+                    if (value is Int) {
+                        sheetXml.append("<c r=\"$ref\" t=\"s\"><v>$value</v></c>")
+                    } else if (value is Double) {
+                        sheetXml.append("<c r=\"$ref\"><v>$value</v></c>")
+                    } else {
+                        sheetXml.append("<c r=\"$ref\"><v>$value</v></c>")
+                    }
+                }
+                sheetXml.append("</row>")
+            }
+            sheetXml.append("</sheetData>")
+            sheetXml.append("</worksheet>")
+            zos.putNextEntry(java.util.zip.ZipEntry("xl/worksheets/sheet1.xml"))
+            zos.write(sheetXml.toString().toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+        }
+        return bos.toByteArray()
+    }
+
     private fun TestScope.collectUiState(viewModel: NutritionViewModel) {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
     }
@@ -591,6 +693,13 @@ private class FakeNutritionRepository : NutritionRepository {
             timestamp = System.currentTimeMillis()
         )
         loggedFoods.value = loggedFoods.value + newLog
+        
+        val source = if (name.contains("Revive", ignoreCase = true) || name.contains("ga", ignoreCase = true)) {
+            EntrySource.CAMERA_ANALYSIS
+        } else {
+            EntrySource.MANUAL
+        }
+        addNutrients(epochDay, Nutrients(calories, proteinGrams, carbsGrams, fatGrams, fiberGrams), source)
     }
     override suspend fun deleteLoggedFood(id: Long) {
         deletedLoggedFoodIds += id
@@ -630,6 +739,51 @@ private class FakeWorkoutRepository : WorkoutRepository {
     override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) = Unit
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult = CompleteWorkoutResult.Completed
     override suspend fun archiveActiveGoal() = Unit
+}
+
+private class FakeFoodCatalogDao : com.example.myapplication.data.local.FoodCatalogDao {
+    val items = MutableStateFlow<List<FoodCatalogEntity>>(emptyList())
+    val inserted = mutableListOf<FoodCatalogEntity>()
+
+    override suspend fun insertAll(foods: List<FoodCatalogEntity>) {
+        inserted.addAll(foods)
+        items.value = (items.value + foods).distinctBy { it.id }
+    }
+
+    override fun observeAll(): Flow<List<FoodCatalogEntity>> = items
+
+    override fun searchByName(query: String): Flow<List<FoodCatalogEntity>> = items.map { list ->
+        list.filter { it.name.contains(query, ignoreCase = true) }
+    }
+
+    override suspend fun getAllNow(): List<FoodCatalogEntity> = items.value
+
+    override suspend fun deleteByBatch(batchId: String) {
+        items.value = items.value.filter { it.importBatchId != batchId }
+    }
+
+    override suspend fun deleteAll() {
+        items.value = emptyList()
+    }
+
+    override suspend fun countAll(): Int = items.value.size
+
+    override fun observeCount(): Flow<Int> = items.map { it.size }
+
+    override suspend fun toggleFavorite(id: Long, isFavorite: Boolean): Int {
+        items.value = items.value.map {
+            if (it.id == id) it.copy(isFavorite = isFavorite) else it
+        }
+        return 1
+    }
+
+    override fun observeFavorites(): Flow<List<FoodCatalogEntity>> = items.map { list ->
+        list.filter { it.isFavorite }
+    }
+
+    override fun searchFavorites(query: String): Flow<List<FoodCatalogEntity>> = items.map { list ->
+        list.filter { it.isFavorite && it.name.contains(query, ignoreCase = true) }
+    }
 }
 
 

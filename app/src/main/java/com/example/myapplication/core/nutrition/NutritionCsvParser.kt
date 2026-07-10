@@ -16,7 +16,14 @@ object NutritionCsvParser {
         val firstLine = lines.first()
         val separator = if (firstLine.count { it == ';' } > firstLine.count { it == ',' }) ';' else ','
 
-        val headers = parseCsvLine(firstLine, separator).map { it.lowercase().trim() }
+        val rows = lines.map { parseCsvLine(it, separator) }
+        return parseTable(rows, batchId)
+    }
+
+    fun parseTable(rows: List<List<String>>, batchId: String = ""): CsvParseResult {
+        if (rows.isEmpty()) return CsvParseResult(emptyList(), emptyList())
+
+        val headers = rows.first().map { it.lowercase().trim() }
 
         // Find column indices
         val nameIdx = headers.indexOfFirst { 
@@ -58,9 +65,8 @@ object NutritionCsvParser {
         val foodList = mutableListOf<FoodCatalogEntity>()
         val warnings = mutableListOf<String>()
 
-        for (i in 1 until lines.size) {
-            val line = lines[i]
-            val tokens = parseCsvLine(line, separator)
+        for (i in 1 until rows.size) {
+            val tokens = rows[i]
             if (tokens.isEmpty()) continue
 
             val rowNum = i + 1

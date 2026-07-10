@@ -1,6 +1,7 @@
 package com.example.myapplication.feature.progress
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.theme.*
 import com.example.myapplication.core.progress.GoalForecast
 import java.time.LocalDate
@@ -58,25 +60,61 @@ private fun ProgressContent(
     ProgressLayout {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Tiến độ tập luyện", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = customColors.primaryText)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "🗺️ Lộ trình",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = EnergyOrange,
-                    modifier = Modifier.clickable { onNavigateToRoadmap() }.padding(4.dp).testTag("progress-to-roadmap")
-                )
-                Text(
-                    "📚 Tra cứu",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = EnergyOrange,
-                    modifier = Modifier.clickable { onNavigateToCatalog() }.padding(4.dp)
-                )
+            Text(
+                text = "Tiến độ tập luyện",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = customColors.primaryText,
+                modifier = Modifier.weight(1f)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clickable { onNavigateToRoadmap() }
+                        .background(EnergyOrange.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .border(1.dp, EnergyOrange.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .testTag("progress-to-roadmap")
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("🗺️", fontSize = 12.sp)
+                        Text(
+                            text = "Lộ trình",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = EnergyOrange
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .clickable { onNavigateToCatalog() }
+                        .background(EnergyOrange.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .border(1.dp, EnergyOrange.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("📚", fontSize = 12.sp)
+                        Text(
+                            text = "Tra cứu",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = EnergyOrange
+                        )
+                    }
+                }
             }
         }
 
@@ -190,17 +228,36 @@ private fun ProgressWithoutGoal(
     ProgressLayout {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Tiến độ tập luyện", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = customColors.primaryText)
             Text(
-                "📚 Tra cứu",
-                style = MaterialTheme.typography.titleMedium,
+                text = "Tiến độ tập luyện",
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = EnergyOrange,
-                modifier = Modifier.clickable { onNavigateToCatalog() }.padding(4.dp)
+                color = customColors.primaryText,
+                modifier = Modifier.weight(1f)
             )
+            Box(
+                modifier = Modifier
+                    .clickable { onNavigateToCatalog() }
+                    .background(EnergyOrange.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    .border(1.dp, EnergyOrange.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("📚", fontSize = 12.sp)
+                    Text(
+                        text = "Tra cứu",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = EnergyOrange
+                    )
+                }
+            }
         }
 
         Surface(color = colors.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {

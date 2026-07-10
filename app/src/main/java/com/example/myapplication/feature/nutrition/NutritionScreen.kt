@@ -79,7 +79,7 @@ fun NutritionScreen(
     onUpdateTemplateName: (String) -> Unit = {},
     onCancelRenameTemplate: () -> Unit = {},
     onConfirmRenameTemplate: () -> Unit = {},
-    onImportCsv: (String) -> Unit = {},
+    onImportFile: (String, ByteArray) -> Unit = { _, _ -> },
     onSearchCatalog: (String) -> Unit = {},
     onClearCatalog: () -> Unit = {},
     onAddFoodFromCatalog: (FoodCatalogEntity, Double) -> Unit = { _, _ -> },
@@ -102,12 +102,13 @@ fun NutritionScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             try {
+                val fileName = getFileName(context, uri) ?: "file.csv"
                 context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val csvText = stream.bufferedReader().use { it.readText() }
-                    onImportCsv(csvText)
+                    val bytes = stream.readBytes()
+                    onImportFile(fileName, bytes)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NutritionScreen", "Failed to read CSV file", e)
+                android.util.Log.e("NutritionScreen", "Failed to read file", e)
             }
         }
     }
@@ -179,15 +180,16 @@ fun NutritionScreen(
             TopAppBar(
                 title = { Text("Theo dõi Dinh dưỡng 🥗", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("◀", color = EnergyOrange, fontSize = 20.sp)
+                    IconButton(onClick = onBack) {
+                        Text("◀", color = EnergyOrange, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.background,
                     titleContentColor = customColors.primaryText,
                     navigationIconContentColor = customColors.primaryText
-                )
+                ),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -510,18 +512,18 @@ fun NutritionScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        "Chưa có danh mục thực phẩm tra cứu. Hãy nhập tệp CSV chứa danh sách thực phẩm (ví dụ: Calorie Tracker.xlsx) để tra cứu nhanh.",
+                                        "Chưa có danh mục thực phẩm tra cứu. Hãy nhập tệp CSV/Excel chứa danh sách thực phẩm (ví dụ: Calorie Tracker.xlsx) để tra cứu nhanh.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = customColors.mutedText,
                                         textAlign = TextAlign.Center
                                     )
                                     Spacer(Modifier.height(12.dp))
                                     Button(
-                                        onClick = { csvImportLauncher.launch("text/*") },
+                                        onClick = { csvImportLauncher.launch("*/*") },
                                         colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("Nhập thực phẩm từ CSV", color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text("Nhập thực phẩm từ CSV/Excel", color = Color.White, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -796,12 +798,12 @@ fun NutritionScreen(
                                 }
 
                                 Button(
-                                    onClick = { csvImportLauncher.launch("text/*") },
+                                    onClick = { csvImportLauncher.launch("*/*") },
                                     colors = ButtonDefaults.buttonColors(containerColor = colors.secondaryContainer),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.align(Alignment.CenterHorizontally)
                                 ) {
-                                    Text("Cập nhật / Nhập thêm CSV", color = colors.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                    Text("Cập nhật / Nhập thêm CSV/Excel", color = colors.onSecondaryContainer, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -903,20 +905,22 @@ fun NutritionScreen(
                                             Column(modifier = Modifier.padding(12.dp)) {
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Text(
-                                                        recommendation.dishName,
+                                                        text = recommendation.dishName,
                                                         fontWeight = FontWeight.Bold,
                                                         color = if (isLowConfidence) colors.onErrorContainer else customColors.primaryText,
-                                                        style = MaterialTheme.typography.bodyLarge
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        modifier = Modifier.weight(1f)
                                                     )
                                                     Text(
-                                                        "$confidencePercentage% tin cậy",
+                                                        text = "$confidencePercentage% tin cậy",
                                                         fontWeight = FontWeight.SemiBold,
                                                         color = if (isLowConfidence) colors.error else SuccessGreen,
-                                                        style = MaterialTheme.typography.bodySmall
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        textAlign = TextAlign.End
                                                     )
                                                 }
                                                 Spacer(Modifier.height(4.dp))
@@ -1855,6 +1859,31 @@ private fun defaultMealTime(): String {
         hour < 17 -> "SNACK"
         else -> "DINNER"
     }
+}
+
+private fun getFileName(context: android.content.Context, uri: Uri): String? {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1) {
+                    result = cursor.getString(nameIndex)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/')
+        if (cut != null && cut != -1) {
+            result = result.substring(cut + 1)
+        }
+    }
+    return result
 }
 
 

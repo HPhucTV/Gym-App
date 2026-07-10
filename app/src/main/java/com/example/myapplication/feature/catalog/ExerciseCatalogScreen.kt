@@ -26,6 +26,7 @@ import com.example.myapplication.core.model.MuscleGroup
 import com.example.myapplication.ui.theme.EnergyOrange
 import com.example.myapplication.ui.theme.SuccessGreen
 import com.example.myapplication.ui.theme.customColors
+import com.example.myapplication.core.ui.Exercise3DDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,9 +66,11 @@ fun ExerciseCatalogScreen(
                     containerColor = colors.background,
                     titleContentColor = customColors.primaryText,
                     navigationIconContentColor = customColors.primaryText
-                )
+                ),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = colors.background
     ) { paddingValues ->
         Column(
@@ -179,6 +182,7 @@ private fun CatalogExerciseCard(exercise: ExerciseDefinition) {
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
     var expanded by remember { mutableStateOf(false) }
+    var show3DDialog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -250,8 +254,28 @@ private fun CatalogExerciseCard(exercise: ExerciseDefinition) {
                         Text(instruction, color = customColors.primaryText, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = { show3DDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("exercise-3d-btn-${exercise.id}")
+                ) {
+                    Text("Xem 3D trực quan 🔄", color = Color.White, fontWeight = FontWeight.Bold)
+                }
             }
         }
+    }
+
+    if (show3DDialog) {
+        Exercise3DDialog(
+            exerciseId = exercise.id,
+            exerciseName = exercise.nameVi,
+            instructions = exercise.instructionsVi,
+            onDismiss = { show3DDialog = false }
+        )
     }
 }
 

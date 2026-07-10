@@ -53,9 +53,11 @@ fun RecommendationScreen(
                         Text("←", fontSize = 24.sp, color = Navy, fontWeight = FontWeight.Bold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = White),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = White
     ) { innerPadding ->
         Box(

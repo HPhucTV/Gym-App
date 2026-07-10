@@ -38,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.core.model.MuscleGroup
 import com.example.myapplication.ui.theme.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import com.example.myapplication.core.ui.Exercise3DDialog
 
 @Composable
 fun ExerciseCard(
@@ -48,6 +51,7 @@ fun ExerciseCard(
     onSubstitute: () -> Unit = {},
 ) {
     var expanded by rememberSaveable(sessionId, row.orderIndex, row.exerciseId) { mutableStateOf(false) }
+    var show3DDialog by remember { mutableStateOf(false) }
 
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
@@ -191,6 +195,17 @@ fun ExerciseCard(
                         Text(instruction, color = customColors.primaryText, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = { show3DDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("exercise-3d-btn-${row.orderIndex}")
+                ) {
+                    Text("Xem 3D trực quan 🔄", color = Color.White, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -205,6 +220,15 @@ fun ExerciseCard(
                 Text("Thay bài", color = EnergyOrange, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+
+    if (show3DDialog) {
+        Exercise3DDialog(
+            exerciseId = row.exerciseId,
+            exerciseName = row.nameVi,
+            instructions = row.instructionsVi,
+            onDismiss = { show3DDialog = false }
+        )
     }
 }
 

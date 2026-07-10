@@ -12,6 +12,7 @@ import com.example.myapplication.core.nutrition.MealTemplate
 import com.example.myapplication.data.NutritionData
 import com.example.myapplication.data.NutritionRepository
 import com.example.myapplication.core.nutrition.NutritionCsvParser
+import com.example.myapplication.core.nutrition.NutritionXlsxParser
 import com.example.myapplication.core.nutrition.NutritionTarget
 import com.example.myapplication.core.nutrition.NutritionTargetAudit
 import com.example.myapplication.core.nutrition.NutritionScoreCalculator
@@ -142,6 +143,7 @@ class NutritionViewModel(
     private val foodAnalysisClient: FoodAnalysisClient = OkHttpFoodAnalysisClient(),
     private val cloudAiConsent: Flow<Boolean> = flowOf(false),
     private val currentEpochDay: () -> Long = { LocalDate.now().toEpochDay() },
+    private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
 ) : ViewModel() {
     private val scanningState = MutableStateFlow(false)
     private val scanResultState = MutableStateFlow<ScanResult?>(null)
@@ -437,7 +439,25 @@ class NutritionViewModel(
         viewModelScope.launch {
             try {
                 if (!draftNutrientsRecorded) {
-                    nutritionRepository.addNutrients(currentEpochDay(), nutrients, source)
+                    val hour = java.time.LocalTime.now().hour
+                    val mealTime = when {
+                        hour < 10 -> "BREAKFAST"
+                        hour < 14 -> "LUNCH"
+                        hour < 17 -> "SNACK"
+                        else -> "DINNER"
+                    }
+                    nutritionRepository.logFood(
+                        epochDay = currentEpochDay(),
+                        name = normalizedName,
+                        mealTime = mealTime,
+                        grams = 100.0,
+                        calories = nutrients.calories,
+                        proteinGrams = nutrients.proteinGrams,
+                        carbsGrams = nutrients.carbsGrams,
+                        fatGrams = nutrients.fatGrams,
+                        fiberGrams = nutrients.fiberGrams,
+                        foodCatalogId = null
+                    )
                     sweatPayment?.let { proposal ->
                         nutritionRepository.setSweatPayment(
                             proposal.exerciseId,
@@ -587,6 +607,10 @@ class NutritionViewModel(
     }
 
     fun importNutritionFromCsv(csvText: String) {
+        importNutritionFile("import.csv", csvText.toByteArray(Charsets.UTF_8))
+    }
+
+    fun importNutritionFile(fileName: String, fileData: ByteArray) {
         val dao = foodCatalogDao ?: return
         importSuccessState.value = null
         importErrorMessageState.value = null
@@ -594,12 +618,22 @@ class NutritionViewModel(
         viewModelScope.launch {
             try {
                 val batchId = System.currentTimeMillis().toString()
-                val parseResult = NutritionCsvParser.parse(csvText, batchId)
+                val parseResult = kotlinx.coroutines.withContext(ioDispatcher) {
+                    if (fileName.endsWith(".xlsx", ignoreCase = true)) {
+                        NutritionXlsxParser.parse(fileData, batchId)
+                    } else {
+                        val csvText = String(fileData, Charsets.UTF_8)
+                        NutritionCsvParser.parse(csvText, batchId)
+                    }
+                }
+                
                 if (parseResult.items.isEmpty()) {
                     importSuccessState.value = false
-                    importErrorMessageState.value = parseResult.warnings.firstOrNull() ?: "Tệp CSV trống hoặc không đúng cấu trúc."
+                    importErrorMessageState.value = parseResult.warnings.firstOrNull() ?: "Tệp trống hoặc không đúng cấu trúc."
                 } else {
-                    dao.insertAll(parseResult.items)
+                    kotlinx.coroutines.withContext(ioDispatcher) {
+                        dao.insertAll(parseResult.items)
+                    }
                     importWarningsState.value = parseResult.warnings
                     importSuccessState.value = true
                 }
@@ -633,13 +667,30 @@ class NutritionViewModel(
         viewModelScope.launch {
             try {
                 val factor = servingGrams / food.gramsPerServing
-                val nutrients = Nutrients(
-                    calories = (food.caloriesPerServing * factor).roundToInt(),
-                    proteinGrams = (food.proteinPerServing * factor).roundToInt(),
-                    carbsGrams = (food.carbsPerServing * factor).roundToInt(),
-                    fatGrams = (food.fatPerServing * factor).roundToInt()
+                val calories = (food.caloriesPerServing * factor).roundToInt()
+                val protein = (food.proteinPerServing * factor).roundToInt()
+                val carbs = (food.carbsPerServing * factor).roundToInt()
+                val fat = (food.fatPerServing * factor).roundToInt()
+
+                val hour = java.time.LocalTime.now().hour
+                val mealTime = when {
+                    hour < 10 -> "BREAKFAST"
+                    hour < 14 -> "LUNCH"
+                    hour < 17 -> "SNACK"
+                    else -> "DINNER"
+                }
+
+                nutritionRepository.logFood(
+                    epochDay = todayEpochDay,
+                    name = food.name,
+                    mealTime = mealTime,
+                    grams = servingGrams,
+                    calories = calories,
+                    proteinGrams = protein,
+                    carbsGrams = carbs,
+                    fatGrams = fat,
+                    foodCatalogId = food.id
                 )
-                nutritionRepository.addNutrients(currentEpochDay(), nutrients, EntrySource.MANUAL)
             } catch (_: Exception) {}
         }
     }

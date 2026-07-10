@@ -274,7 +274,7 @@ fun GymApp(container: AppContainer) {
                 onUpdateTemplateName = nutritionViewModel::updateTemplateName,
                 onCancelRenameTemplate = nutritionViewModel::cancelRenameTemplate,
                 onConfirmRenameTemplate = nutritionViewModel::confirmRenameTemplate,
-                onImportCsv = nutritionViewModel::importNutritionFromCsv,
+                onImportFile = nutritionViewModel::importNutritionFile,
                 onSearchCatalog = nutritionViewModel::searchFoodCatalog,
                 onClearCatalog = nutritionViewModel::clearFoodCatalog,
                 onAddFoodFromCatalog = nutritionViewModel::addFoodFromCatalog,
