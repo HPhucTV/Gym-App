@@ -41,25 +41,15 @@ fun Exercise3DDialog(
     val backgroundColor = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFFFF)
     val cardColor = if (isDark) Color(0xFF334155) else Color(0xFFF3F4F6)
 
-    // Ánh xạ thủ công chính xác 100% toàn bộ 65 ID bài tập sang tệp mô hình .glb tương ứng
-    val modelName = remember(exerciseId) { get3DModelName(exerciseId) }
+    // Dùng trực tiếp ID bài tập để làm tham số nạp hoạt cảnh stick-figure tương ứng
+    val modelName = exerciseId
 
-    // Kiểm tra xem tệp mô hình 3D thực tế có tồn tại trong thư mục assets/3d hay không
-    val assetExists = remember(exerciseId, modelName) {
-        if (modelName != null) {
-            runCatching {
-                context.assets.open("3d/$modelName").use { }
-                true
-            }.getOrDefault(false)
-        } else {
-            false
-        }
-    }
-
-    val assetLoader = remember(context) {
-        WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
-            .build()
+    // Kiểm tra xem trình hiển thị HTML có tồn tại trong assets hay không (luôn có)
+    val assetExists = remember(context) {
+        runCatching {
+            context.assets.open("3d/model_viewer.html").use { }
+            true
+        }.getOrDefault(false)
     }
 
     Dialog(
@@ -118,52 +108,60 @@ fun Exercise3DDialog(
                         .background(cardColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (modelName != null && assetExists) {
+                    if (assetExists) {
                         AndroidView(
                             factory = { ctx ->
                                 WebView(ctx).apply {
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.allowFileAccess = true
                                     settings.allowContentAccess = true
+                                    @Suppress("DEPRECATION")
+                                    settings.allowFileAccessFromFileURLs = true
+                                    @Suppress("DEPRECATION")
+                                    settings.allowUniversalAccessFromFileURLs = true
                                     
-                                    // Bật nền trong suốt và chế độ dựng hình phần cứng (Hardware Acceleration) cho WebGL
+                                    // Bật nền trong suốt và chuyển sang chế độ dựng hình phần mềm (Software Layer Type)
+                                    // Chế độ SOFTWARE giải quyết triệt để lỗi không hiển thị/không compositing WebView trong hộp thoại Dialog phụ trên một số thiết bị
                                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                                    setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                                     
                                     // Bật gỡ lỗi WebView qua Chrome DevTools trên máy tính
                                     WebView.setWebContentsDebuggingEnabled(true)
                                     
+                                    // Sử dụng WebViewClient tùy biến để inject ID bài tập sau khi trang tải xong
+                                    // Tránh việc truyền tham số qua URL (?model=...) vì giao thức file:/// của một số thiết bị có thể chặn hoặc làm sai lệch đường dẫn
                                     webViewClient = object : android.webkit.WebViewClient() {
-                                        override fun shouldInterceptRequest(
-                                            view: WebView,
-                                            request: android.webkit.WebResourceRequest
-                                        ): android.webkit.WebResourceResponse? {
-                                            val response = assetLoader.shouldInterceptRequest(request.url)
-                                            if (response != null) {
-                                                val path = request.url.path
-                                                if (path != null) {
-                                                    if (path.endsWith(".glb")) {
-                                                        response.mimeType = "model/gltf-binary"
-                                                    } else if (path.endsWith(".js")) {
-                                                        response.mimeType = "application/javascript"
-                                                    } else if (path.endsWith(".html")) {
-                                                        response.mimeType = "text/html"
-                                                    }
-                                                }
-                                                
-                                                // Thêm các CORS header để chắc chắn Fetch API trong WebView không bị chặn
-                                                val headers = response.responseHeaders?.toMutableMap() ?: mutableMapOf()
-                                                headers["Access-Control-Allow-Origin"] = "*"
-                                                headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-                                                headers["Access-Control-Allow-Headers"] = "*"
-                                                response.responseHeaders = headers
-                                                
-                                                android.util.Log.d("GymApp3D", "Intercepted asset: ${request.url} as ${response.mimeType}")
-                                            } else {
-                                                android.util.Log.d("GymApp3D", "Failed to intercept request: ${request.url}")
-                                            }
-                                            return response
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            android.util.Log.d("GymApp3D", "onPageFinished: $url")
+                                            view?.evaluateJavascript(
+                                                "if (window.initExercise) { window.initExercise('$modelName'); } else { console.error('initExercise function not found'); }", 
+                                                null
+                                            )
+                                        }
+
+                                        override fun onReceivedError(
+                                            view: WebView?,
+                                            errorCode: Int,
+                                            description: String?,
+                                            failingUrl: String?
+                                        ) {
+                                            android.util.Log.e("GymApp3D", "Error ($errorCode): $description for $failingUrl")
+                                        }
+
+                                        @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.M)
+                                        override fun onReceivedError(
+                                            view: WebView?,
+                                            request: android.webkit.WebResourceRequest?,
+                                            error: android.webkit.WebResourceError?
+                                        ) {
+                                            android.util.Log.e("GymApp3D", "Error: ${error?.description} for ${request?.url}")
                                         }
                                     }
                                     
@@ -180,8 +178,8 @@ fun Exercise3DDialog(
                                         }
                                     }
                                     
-                                    // Tải thông qua domain ảo để thỏa mãn chính sách Same-Origin cho Fetch API của model-viewer
-                                    loadUrl("https://appassets.androidplatform.net/assets/3d/model_viewer.html?model=$modelName")
+                                    // Tải tệp HTML sạch không kèm query params
+                                    loadUrl("file:///android_asset/3d/model_viewer.html")
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
@@ -288,14 +286,5 @@ private fun ColorScheme.isLight(): Boolean {
     return luminance > 0.5f
 }
 
-// Ánh xạ thủ công chính xác 100% tất cả 65 ID bài tập sang tệp mô hình 3D tương ứng.
-// Chỉ trả về tên tệp nếu ta đã có mô hình chuyển động thực tế khớp 100% với bài tập.
-// Nếu chưa có, trả về null để hiển thị màn hình fallback "Đang cập nhật" sang trọng,
-// tránh hiển thị sai động tác gây bối rối cho người dùng (ví dụ: hiển thị người chạy bộ cho Squat/Pushup).
-private fun get3DModelName(exerciseId: String): String? = when (exerciseId) {
-    // TIM MẠCH / CARDIO (Khớp 100% với tệp hoạt cảnh đi bộ/chạy bộ thực tế)
-    "brisk_walk", "treadmill_walk" -> "walk_3d.glb"
-    "treadmill_run", "high_knees" -> "run_3d.glb"
-    
-    else -> null
-}
+// Ánh xạ ID bài tập sang tên để đồng bộ cấu trúc code cũ. Vì dùng Canvas 2D, ta trả về trực tiếp exerciseId.
+private fun get3DModelName(exerciseId: String): String = exerciseId

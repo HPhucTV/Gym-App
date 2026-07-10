@@ -113,6 +113,24 @@ fun NutritionScreen(
         }
     }
 
+    val createTemplateLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    context.assets.open("catalog/thuc_pham_mau.xlsx").use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                android.widget.Toast.makeText(context, "Đã tải tệp thuc_pham_mau.xlsx thành công!", android.widget.Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                android.util.Log.e("NutritionScreen", "Failed to save template file", e)
+                android.widget.Toast.makeText(context, "Lỗi khi tải tệp mẫu: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     var photoFile by remember { mutableStateOf<File?>(null) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -512,18 +530,45 @@ fun NutritionScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        "Chưa có danh mục thực phẩm tra cứu. Hãy nhập tệp CSV/Excel chứa danh sách thực phẩm (ví dụ: Calorie Tracker.xlsx) để tra cứu nhanh.",
+                                        text = "Hướng dẫn tự thêm thực phẩm 📝",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.primaryText,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    Text(
+                                        text = "1. Nhấp \"Tải file mẫu Excel\" bên dưới để lưu tệp thuc_pham_mau.xlsx về điện thoại.\n" +
+                                                "2. Mở tệp vừa tải và điền tên món ăn, calo, đạm, tinh bột, béo theo cấu trúc.\n" +
+                                                "3. Nhấp \"Nhập thực phẩm\" và chọn tệp Excel vừa điền để tra cứu nhanh.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = customColors.mutedText,
-                                        textAlign = TextAlign.Center
+                                        textAlign = TextAlign.Start,
+                                        modifier = Modifier.fillMaxWidth()
                                     )
-                                    Spacer(Modifier.height(12.dp))
-                                    Button(
-                                        onClick = { csvImportLauncher.launch("*/*") },
-                                        colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
-                                        shape = RoundedCornerShape(12.dp)
+                                    Spacer(Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text("Nhập thực phẩm từ CSV/Excel", color = Color.White, fontWeight = FontWeight.Bold)
+                                        OutlinedButton(
+                                            onClick = { createTemplateLauncher.launch("thuc_pham_mau.xlsx") },
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f).height(42.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = EnergyOrange),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, EnergyOrange),
+                                            contentPadding = PaddingValues(horizontal = 4.dp)
+                                        ) {
+                                            Text("Tải file mẫu Excel", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
+                                        Button(
+                                            onClick = { csvImportLauncher.launch("*/*") },
+                                            colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f).height(42.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp)
+                                        ) {
+                                            Text("Nhập thực phẩm", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
                                     }
                                 }
                             }
