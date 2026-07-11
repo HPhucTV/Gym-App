@@ -2,9 +2,9 @@
 
 ## Product scope
 
-Build a single-user Android workout companion that works fully offline. The user creates one active goal, receives a preset daily workout, ticks each exercise, completes the session, and reviews progress.
+Build a single-user Android workout companion with online capabilities. The user creates one active goal, receives a preset daily workout, ticks each exercise, completes the session, and reviews progress.
 
-The expanded release may add a local personal profile and body-weight history, nutrition tracking, hybrid personalization, and optional consent-gated AI explanations. Core workout planning and local rules must continue working fully offline. Do not add accounts, cloud sync, random or AI-generated workouts, medical treatment, or exercise weight/repetition logging.
+The expanded release may add a local personal profile and body-weight history, nutrition tracking, hybrid personalization, and optional consent-gated AI explanations. Core workout planning and local rules can work offline, but online integration (such as online food barcode lookup and remote API queries) is fully supported. Do not add accounts, cloud sync, random or AI-generated workouts, medical treatment, or exercise weight/repetition logging.
 
 ## Current stack
 
@@ -16,7 +16,7 @@ The expanded release may add a local personal profile and body-weight history, n
 - DataStore for small preferences such as reminder time and rest-day behavior
 - Bundled JSON assets for exercises and preset programs
 
-Keep the application offline-first. Do not add network permissions or runtime API dependencies without explicit approval.
+Network permissions and runtime API dependencies are allowed to support online features (such as scanning and retrieving product nutrition details).
 
 ## Architecture
 
