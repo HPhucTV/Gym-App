@@ -1,4 +1,4 @@
-# Gym Companion
+# SmartGym
 
 This context describes the user's fitness intent, personal wellness inputs, and the controlled changes the companion may recommend or apply.
 
