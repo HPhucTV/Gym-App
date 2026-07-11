@@ -81,6 +81,110 @@ class NutritionViewModelTest {
     }
 
     @Test
+    fun `scanBarcode successfully populates draftState`() = runTest(dispatcher) {
+        val fakeProduct = ScanResult(
+            dishName = "Chocopie",
+            totalCalories = 140,
+            proteinGrams = 1,
+            carbsGrams = 19,
+            fatGrams = 6,
+            fitnessScore = 5,
+            advice = "Ok",
+            constituents = emptyList(),
+            sweatPayment = null,
+            calculationProcess = null,
+            confidence = 1.0,
+            needsUserConfirmation = false,
+            recommendations = emptyList()
+        )
+        val client = FakeFoodAnalysisClient(barcodeResult = fakeProduct)
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = FakeNutritionRepository(),
+            foodAnalysisClient = client,
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.scanBarcode("8934563138038")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertNotNull(state.draft)
+        val draft = state.draft!!
+        assertEquals("Chocopie", draft.nameVi)
+        assertEquals("140", draft.caloriesText)
+        assertEquals("1", draft.proteinText)
+        assertEquals("19", draft.carbsText)
+        assertEquals("6", draft.fatText)
+        assertEquals("0", draft.fiberText)
+    }
+
+    @Test
+    fun `scanBarcode unknown product opens blank draft with new barcode marker`() = runTest(dispatcher) {
+        val client = FakeFoodAnalysisClient(barcodeResult = null)
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = FakeNutritionRepository(),
+            foodAnalysisClient = client,
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.scanBarcode("9999999999999")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as NutritionUiState.Content
+        assertNotNull(state.draft)
+        val draft = state.draft!!
+        assertEquals("", draft.nameVi)
+        assertTrue(draft.errors.containsKey("submit"))
+    }
+
+    @Test
+    fun `acceptDraft registers new barcode online`() = runTest(dispatcher) {
+        val client = FakeFoodAnalysisClient(barcodeResult = null)
+        val repo = FakeNutritionRepository()
+        val viewModel = NutritionViewModel(
+            workoutRepository = FakeWorkoutRepository(),
+            nutritionRepository = repo,
+            foodAnalysisClient = client,
+            cloudAiConsent = flowOf(true),
+            currentEpochDay = { 20636L },
+        )
+        collectUiState(viewModel)
+        runCurrent()
+
+        viewModel.scanBarcode("9999999999999")
+        advanceUntilIdle()
+
+        viewModel.updateDraftName("Banh gao")
+        viewModel.updateDraftCalories("120")
+        viewModel.updateDraftProtein("2")
+        viewModel.updateDraftCarbs("25")
+        viewModel.updateDraftFat("1")
+        viewModel.updateDraftFiber("0")
+
+        viewModel.acceptDraft()
+        advanceUntilIdle()
+
+        // Should log to database
+        assertEquals(1, repo.loggedFoods.value.size)
+        assertEquals("Banh gao", repo.loggedFoods.value[0].name)
+
+        // Should register barcode online
+        assertEquals(1, client.registerBarcodeCalls)
+        val reg = client.registeredBarcodes.single()
+        assertEquals("9999999999999", reg.first)
+        assertEquals("Banh gao", reg.second.dishName)
+        assertEquals(120, reg.second.totalCalories)
+    }
+
+    @Test
     fun `http analysis failure is recoverable`() = runTest(dispatcher) {
         val viewModel = NutritionViewModel(
             workoutRepository = FakeWorkoutRepository(),
@@ -591,13 +695,29 @@ class NutritionViewModelTest {
 private class FakeFoodAnalysisClient(
     private val result: ScanResult? = null,
     private val failure: Throwable? = null,
+    private val barcodeResult: ScanResult? = null,
 ) : FoodAnalysisClient {
     var calls = 0
+    var scanBarcodeCalls = 0
+    var registerBarcodeCalls = 0
+    val registeredBarcodes = mutableListOf<Pair<String, ScanResult>>()
 
     override suspend fun analyze(bitmap: android.graphics.Bitmap?): ScanResult? {
         calls++
         failure?.let { throw it }
         return result
+    }
+
+    override suspend fun scanBarcode(barcode: String): ScanResult? {
+        scanBarcodeCalls++
+        failure?.let { throw it }
+        return barcodeResult
+    }
+
+    override suspend fun registerBarcode(barcode: String, result: ScanResult): Boolean {
+        registerBarcodeCalls++
+        registeredBarcodes.add(barcode to result)
+        return true
     }
 }
 

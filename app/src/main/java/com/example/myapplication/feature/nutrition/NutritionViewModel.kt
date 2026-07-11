@@ -153,6 +153,7 @@ class NutritionViewModel(
     private val pendingDeleteTemplateId = MutableStateFlow<Long?>(null)
     private val templateNameEdit = MutableStateFlow<TemplateNameEdit?>(null)
     private var draftEntrySource = EntrySource.MANUAL
+    private var scannedBarcode: String? = null
     private var draftSweatPayment: SweatPaymentProposal? = null
     private var draftNutrientsRecorded = false
     private val todayEpochDay = currentEpochDay()
@@ -385,6 +386,48 @@ class NutritionViewModel(
         }
     }
 
+    fun scanBarcode(barcode: String) {
+        viewModelScope.launch {
+            scannedBarcode = barcode
+            scanningState.value = true
+            scanErrorState.value = null
+            scanResultState.value = null
+            draftState.value = null
+
+            try {
+                val result = foodAnalysisClient.scanBarcode(barcode)
+                if (result != null) {
+                    scanResultState.value = result
+                    draftEntrySource = EntrySource.CAMERA_ANALYSIS
+                    draftSweatPayment = result.sweatPayment
+                    draftNutrientsRecorded = false
+                    draftState.value = result.toEditableDraft()
+                } else {
+                    draftEntrySource = EntrySource.MANUAL
+                    draftSweatPayment = null
+                    draftNutrientsRecorded = false
+                    draftState.value = EditableNutritionDraft(
+                        nameVi = "",
+                        caloriesText = "",
+                        proteinText = "",
+                        carbsText = "",
+                        fatText = "",
+                        fiberText = "0",
+                        saveAsTemplate = false,
+                        errors = mapOf("submit" to "Không tìm thấy sản phẩm. Vui lòng nhập thông tin để đăng ký mã vạch này.")
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                scanErrorState.value = null
+                throw cancelled
+            } catch (error: Exception) {
+                scanErrorState.value = "Lỗi kết nối tới server: ${error.message}"
+            } finally {
+                scanningState.value = false
+            }
+        }
+    }
+
     fun acceptScanResult() {
         acceptDraft()
     }
@@ -438,6 +481,31 @@ class NutritionViewModel(
         savingDraftState.value = true
         viewModelScope.launch {
             try {
+                val currentBarcode = scannedBarcode
+                if (currentBarcode != null) {
+                    val result = ScanResult(
+                        dishName = normalizedName,
+                        totalCalories = nutrients.calories,
+                        proteinGrams = nutrients.proteinGrams,
+                        carbsGrams = nutrients.carbsGrams,
+                        fatGrams = nutrients.fatGrams,
+                        fitnessScore = 5,
+                        advice = "Sản phẩm đóng gói dạng quét mã vạch.",
+                        constituents = emptyList(),
+                        sweatPayment = sweatPayment,
+                        calculationProcess = "Đăng ký từ thiết bị người dùng.",
+                        confidence = 1.0,
+                        needsUserConfirmation = false,
+                        recommendations = emptyList()
+                    )
+                    try {
+                        foodAnalysisClient.registerBarcode(currentBarcode, result)
+                    } catch (e: Exception) {
+                        android.util.Log.e("NutritionViewModel", "Lỗi đăng ký mã vạch lên server: ${e.message}")
+                    }
+                    scannedBarcode = null
+                }
+
                 if (!draftNutrientsRecorded) {
                     val hour = java.time.LocalTime.now().hour
                     val mealTime = when {
@@ -491,6 +559,7 @@ class NutritionViewModel(
         draftState.value = null
         draftSweatPayment = null
         draftNutrientsRecorded = false
+        scannedBarcode = null
     }
 
     fun applyTemplate(id: Long) {

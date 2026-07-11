@@ -257,6 +257,7 @@ fun GymApp(container: AppContainer) {
                 state = state,
                 onBack = onBack,
                 onScan = nutritionViewModel::scanFood,
+                onScanBarcode = nutritionViewModel::scanBarcode,
                 onAccept = nutritionViewModel::acceptDraft,
                 onDiscard = nutritionViewModel::discardScanResult,
                 onUpdateResult = nutritionViewModel::updateScanResult,

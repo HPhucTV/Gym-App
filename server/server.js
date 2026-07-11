@@ -47,6 +47,20 @@ app.use(generalLimiter);
 app.use(cors());
 app.use(express.json());
 
+const productsPath = path.join(__dirname, 'vietnam_products.json');
+let vietnamProducts = {};
+function loadVietnamProducts() {
+  try {
+    if (fs.existsSync(productsPath)) {
+      vietnamProducts = JSON.parse(fs.readFileSync(productsPath, 'utf8'));
+      console.log(`Loaded ${Object.keys(vietnamProducts).length} barcode products into memory.`);
+    }
+  } catch (e) {
+    console.error('Error loading vietnam_products.json:', e);
+  }
+}
+loadVietnamProducts();
+
 function sanitizeInput(val, maxLength = 200) {
   if (typeof val !== 'string') return '';
   let sanitized = val.substring(0, maxLength);
@@ -324,6 +338,235 @@ Hãy phân tích và tính toán các chỉ số dinh dưỡng chính xác nhấ
 
   } catch (error) {
     console.error('Server error during food analysis:', error);
+    return res.status(500).json({ error: 'Đã có lỗi hệ thống xảy ra trên server.' });
+  }
+});
+
+app.get('/api/scan-barcode', barcodeLimiter, async (req, res) => {
+  try {
+    const { barcode } = req.query;
+    if (!barcode) {
+      return res.status(400).json({ error: 'Thiếu mã vạch (barcode).' });
+    }
+
+    const sBarcode = sanitizeInput(barcode, 50);
+
+    // 1. Kiểm tra cache cục bộ trong bộ nhớ
+    if (vietnamProducts[sBarcode]) {
+      console.log(`[Barcode Cache Hit] Found: ${sBarcode}`);
+      return res.json(vietnamProducts[sBarcode]);
+    }
+
+    // 2. Nếu chưa có, gọi Open Food Facts API trực tuyến
+    console.log(`[Barcode Cache Miss] Fetching Open Food Facts for: ${sBarcode}`);
+    const url = `https://world.openfoodfacts.org/api/v0/product/${sBarcode}.json`;
+    
+    let productData = null;
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'GymAppCalorieCalculator - Android - Version 1.0'
+        }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 1 && result.product) {
+          productData = result.product;
+        }
+      }
+    } catch (apiErr) {
+      console.error('Open Food Facts API error:', apiErr);
+    }
+
+    if (productData) {
+      const name = productData.product_name_vi || productData.product_name || 'Sản phẩm mới';
+      const brand = productData.brands ? ` [${productData.brands}]` : '';
+      const dishName = `${name}${brand}`.trim();
+      
+      const nutriments = productData.nutriments || {};
+      const caloriesPer100g = parseFloat(nutriments['energy-kcal_100g']) || parseFloat(nutriments['energy-kcal']) || 0;
+      const proteinPer100g = parseFloat(nutriments['proteins_100g']) || 0;
+      const carbsPer100g = parseFloat(nutriments['carbohydrates_100g']) || 0;
+      const fatPer100g = parseFloat(nutriments['fat_100g']) || 0;
+      
+      const servingQuantity = parseFloat(productData.serving_quantity) || 100;
+      const factor = servingQuantity / 100;
+      
+      const totalCalories = Math.round(caloriesPer100g * factor);
+      const proteinGrams = Math.round(proteinPer100g * factor);
+      const carbsGrams = Math.round(carbsPer100g * factor);
+      const fatGrams = Math.round(fatPer100g * factor);
+
+      const isWater = dishName.toLowerCase().includes('nước khoáng') || dishName.toLowerCase().includes('nước tinh khiết') || dishName.toLowerCase().includes('aquafina') || dishName.toLowerCase().includes('dasani');
+
+      const sweatPayment = totalCalories > 300 ? { 
+        exerciseId: "bodyweight_squat", 
+        exerciseName: "Squat không tạ", 
+        extraSets: Math.min(6, Math.ceil(totalCalories / 120)) 
+      } : null;
+
+      const newProduct = {
+        dishName: dishName,
+        totalCalories: isWater ? 0 : totalCalories,
+        proteinGrams: isWater ? 0 : proteinGrams,
+        carbsGrams: isWater ? 0 : carbsGrams,
+        fatGrams: isWater ? 0 : fatGrams,
+        advice: `Sản phẩm đóng gói dạng quét mã vạch. Khẩu phần tính: ${servingQuantity}g/ml.`,
+        constituents: [],
+        sweatPayment: sweatPayment,
+        calculationProcess: `Nguồn: Open Food Facts\nKhẩu phần tính: ${servingQuantity}g/ml\n(Dinh dưỡng/100g: ${caloriesPer100g} kcal, ${proteinPer100g}g đạm, ${carbsPer100g}g tinh bột, ${fatPer100g}g béo)`,
+        confidence: 1.0,
+        needsUserConfirmation: false
+      };
+
+      // Cập nhật cache cục bộ
+      vietnamProducts[sBarcode] = newProduct;
+      try {
+        fs.writeFileSync(productsPath, JSON.stringify(vietnamProducts, null, 2), 'utf8');
+        console.log(`[Barcode Cache Auto-Save] Saved product for: ${sBarcode}`);
+      } catch (writeErr) {
+        console.error('Error writing to vietnam_products.json:', writeErr);
+      }
+
+      return res.json(newProduct);
+    }
+
+    // 3. Nếu OFF không có, gọi Gemini API để tra cứu
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      console.log(`[Barcode Gemini Lookup] Asking Gemini to search info for barcode: ${sBarcode}`);
+      const geminiSearchPayload = {
+        contents: [
+          {
+            parts: [
+              {
+                text: `Bạn là trợ lý dinh dưỡng chuyên nghiệp. Hãy dùng kiến thức của bạn hoặc phỏng đoán dựa trên mã vạch Việt Nam (đầu số 893 là Việt Nam) để tìm kiếm/nhận dạng sản phẩm có mã vạch: ${sBarcode}.
+Nếu bạn biết chính xác hoặc tìm kiếm được sản phẩm này, hãy trả về kết quả dưới dạng JSON cấu trúc chính xác như sau (không có ký tự markdown \`\`\`json ở ngoài):
+{
+  "dishName": "Tên sản phẩm tiếng Việt",
+  "totalCalories": 150, (số nguyên calo cho 1 khẩu phần/gói hoặc 100g)
+  "proteinGrams": 5, (số nguyên đạm)
+  "carbsGrams": 20, (số nguyên tinh bột)
+  "fatGrams": 4, (số nguyên chất béo)
+  "advice": "Lời khuyên dinh dưỡng bằng tiếng Việt"
+}
+Nếu bạn hoàn toàn không tìm thấy thông tin gì về mã vạch này, hãy trả về JSON:
+{
+  "error": "not_found"
+}`
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      };
+
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+        const response = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(geminiSearchPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (responseText) {
+            const cleanedText = cleanJsonResponse(responseText);
+            const geminiResult = JSON.parse(cleanedText);
+            if (geminiResult && !geminiResult.error && geminiResult.dishName) {
+              const sweatPayment = geminiResult.totalCalories > 300 ? { 
+                exerciseId: "bodyweight_squat", 
+                exerciseName: "Squat không tạ", 
+                extraSets: Math.min(6, Math.ceil(geminiResult.totalCalories / 120)) 
+              } : null;
+
+              const geminiProduct = {
+                dishName: geminiResult.dishName,
+                totalCalories: geminiResult.totalCalories || 0,
+                proteinGrams: geminiResult.proteinGrams || 0,
+                carbsGrams: geminiResult.carbsGrams || 0,
+                fatGrams: geminiResult.fatGrams || 0,
+                advice: geminiResult.advice || "Sản phẩm đóng gói.",
+                constituents: [],
+                sweatPayment: sweatPayment,
+                calculationProcess: `Nguồn: Tra cứu Gemini AI\n(Thông số ước tính dựa trên nhận dạng sản phẩm)`,
+                confidence: 0.8,
+                needsUserConfirmation: true
+              };
+
+              // Cập nhật cache cục bộ
+              vietnamProducts[sBarcode] = geminiProduct;
+              fs.writeFileSync(productsPath, JSON.stringify(vietnamProducts, null, 2), 'utf8');
+
+              return res.json(geminiProduct);
+            }
+          }
+        }
+      } catch (geminiErr) {
+        console.error('Gemini barcode search error:', geminiErr);
+      }
+    }
+
+    // 4. Nếu thất bại
+    return res.status(404).json({ error: 'product_not_found', message: 'Không tìm thấy sản phẩm ứng với mã vạch này.' });
+
+  } catch (error) {
+    console.error('Server error during barcode scanning:', error);
+    return res.status(500).json({ error: 'Đã có lỗi hệ thống xảy ra trên server.' });
+  }
+});
+
+app.post('/api/register-barcode', generalLimiter, async (req, res) => {
+  try {
+    const { barcode, dishName, totalCalories, proteinGrams, carbsGrams, fatGrams, advice } = req.body;
+    
+    if (!barcode || !dishName) {
+      return res.status(400).json({ error: 'Thiếu thông tin đăng ký mã vạch.' });
+    }
+
+    const sBarcode = sanitizeInput(barcode, 50);
+    const sDishName = sanitizeInput(dishName, 150);
+    const sAdvice = sanitizeInput(advice, 200) || 'Sản phẩm do người dùng đóng góp.';
+
+    const sweatPayment = totalCalories > 300 ? { 
+      exerciseId: "bodyweight_squat", 
+      exerciseName: "Squat không tạ", 
+      extraSets: Math.min(6, Math.ceil(totalCalories / 120)) 
+    } : null;
+
+    const registeredProduct = {
+      dishName: sDishName,
+      totalCalories: parseInt(totalCalories) || 0,
+      proteinGrams: parseInt(proteinGrams) || 0,
+      carbsGrams: parseInt(carbsGrams) || 0,
+      fatGrams: parseInt(fatGrams) || 0,
+      advice: sAdvice,
+      constituents: [],
+      sweatPayment: sweatPayment,
+      calculationProcess: `Nguồn: Người dùng đóng góp thủ công`,
+      confidence: 1.0,
+      needsUserConfirmation: false
+    };
+
+    // Lưu vào cache
+    vietnamProducts[sBarcode] = registeredProduct;
+    try {
+      fs.writeFileSync(productsPath, JSON.stringify(vietnamProducts, null, 2), 'utf8');
+      console.log(`[Barcode Registered] Saved: ${sBarcode} -> ${sDishName}`);
+    } catch (writeErr) {
+      console.error('Error writing registered product to file:', writeErr);
+    }
+
+    return res.json({ success: true, product: registeredProduct });
+
+  } catch (error) {
+    console.error('Server error during barcode registration:', error);
     return res.status(500).json({ error: 'Đã có lỗi hệ thống xảy ra trên server.' });
   }
 });

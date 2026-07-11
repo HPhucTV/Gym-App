@@ -50,6 +50,7 @@ import androidx.core.content.ContextCompat
 import com.example.myapplication.core.nutrition.MealTemplate
 import com.example.myapplication.data.local.LoggedFoodEntity
 import com.example.myapplication.data.local.FoodCatalogEntity
+import androidx.compose.foundation.shape.CircleShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +58,7 @@ fun NutritionScreen(
     state: NutritionUiState,
     onBack: () -> Unit,
     onScan: (Bitmap) -> Unit,
+    onScanBarcode: (String) -> Unit = {},
     onAccept: () -> Unit,
     onDiscard: () -> Unit,
     onUpdateResult: (String, Int, Int, Int, Int) -> Unit,
@@ -140,41 +142,13 @@ fun NutritionScreen(
         }
     }
 
-    var photoFile by remember { mutableStateOf<File?>(null) }
-    var photoUri by remember { mutableStateOf<Uri?>(null) }
-
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            val uri = photoUri
-            val file = photoFile
-            if (uri != null && file != null) {
-                val bitmap = loadResizedBitmapFromFile(context, file, uri)
-                if (bitmap != null) {
-                    onScan(bitmap)
-                }
-            }
-        }
-    }
+    var showBarcodeScanner by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            try {
-                val file = File.createTempFile("captured_food_", ".jpg", context.cacheDir)
-                photoFile = file
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file
-                )
-                photoUri = uri
-                cameraLauncher.launch(uri)
-            } catch (e: Exception) {
-                android.util.Log.e("NutritionScreen", "Failed to create temp file or launch camera", e)
-            }
+            showBarcodeScanner = true
         }
     }
 
@@ -264,7 +238,14 @@ fun NutritionScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Button(
-                                    onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                                    onClick = {
+                                        val hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        if (hasCameraPermission) {
+                                            showBarcodeScanner = true
+                                        } else {
+                                            permissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                        }
+                                    },
                                     enabled = !state.savingDraft,
                                     colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
                                     shape = RoundedCornerShape(16.dp),
@@ -273,7 +254,7 @@ fun NutritionScreen(
                                         .weight(1f)
                                         .height(56.dp)
                                 ) {
-                                    Text("📸 Chụp đĩa ăn", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+                                    Text("📸 Quét mã vạch", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
                                 }
                                 OutlinedButton(
                                     onClick = onStartManual,
@@ -594,37 +575,33 @@ fun NutritionScreen(
                         } else {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                Text(
+                                    "Đã nhập ${state.foodCatalogCount} món thực phẩm",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = customColors.mutedText,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        "Đã nhập ${state.foodCatalogCount} món thực phẩm",
+                                        "Tải Excel hiện tại",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = customColors.mutedText
+                                        color = colors.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { exportCatalogLauncher.launch("danh_sach_thuc_pham.xlsx") }
                                     )
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            "Tải Excel hiện tại",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.primary,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.clickable { exportCatalogLauncher.launch("danh_sach_thuc_pham.xlsx") }
-                                        )
-                                        Text(
-                                            "Đặt lại danh mục",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.error,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.clickable { onClearCatalog() }
-                                        )
-                                    }
+                                    Text(
+                                        "Đặt lại danh mục",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.error,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { onClearCatalog() }
+                                    )
                                 }
 
                                 // Custom Tab Row
@@ -1083,6 +1060,17 @@ fun NutritionScreen(
                         )
                     }
                 }
+            }
+            if (showBarcodeScanner) {
+                BarcodeScannerView(
+                    onBarcodeDetected = { barcode ->
+                        showBarcodeScanner = false
+                        onScanBarcode(barcode)
+                    },
+                    onClose = {
+                        showBarcodeScanner = false
+                    }
+                )
             }
         }
     }
@@ -1960,6 +1948,157 @@ private fun getFileName(context: android.content.Context, uri: Uri): String? {
         }
     }
     return result
+}
+
+@Composable
+fun BarcodeScannerView(
+    onBarcodeDetected: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        onDispose {
+            try {
+                if (cameraProviderFuture.isDone) {
+                    val cameraProvider = cameraProviderFuture.get()
+                    cameraProvider.unbindAll()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("BarcodeScannerView", "Error unbinding camera on dispose", e)
+            }
+        }
+    }
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { ctx ->
+                val previewView = PreviewView(ctx).apply {
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                }
+                val executor = ContextCompat.getMainExecutor(ctx)
+                cameraProviderFuture.addListener({
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
+                    
+                    val barcodeScanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient()
+                    
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                    
+                    imageAnalysis.setAnalyzer(executor) { imageProxy ->
+                        @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+                        val mediaImage = imageProxy.image
+                        if (mediaImage != null) {
+                            val image = com.google.mlkit.vision.common.InputImage.fromMediaImage(
+                                mediaImage,
+                                imageProxy.imageInfo.rotationDegrees
+                            )
+                            barcodeScanner.process(image)
+                                .addOnSuccessListener { barcodes ->
+                                    for (barcode in barcodes) {
+                                        val rawValue = barcode.rawValue
+                                        if (!rawValue.isNullOrBlank()) {
+                                            try {
+                                                val vibrator = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                                                if (vibrator != null) {
+                                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                                        vibrator.vibrate(android.os.VibrationEffect.createOneShot(100, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                                    } else {
+                                                        @Suppress("DEPRECATION")
+                                                        vibrator.vibrate(100)
+                                                    }
+                                                }
+                                            } catch (_: Exception) {}
+                                            onBarcodeDetected(rawValue)
+                                            break
+                                        }
+                                    }
+                                }
+                                .addOnCompleteListener {
+                                    imageProxy.close()
+                                }
+                        } else {
+                            imageProxy.close()
+                        }
+                    }
+                    
+                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                    
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            imageAnalysis
+                        )
+                    } catch (exc: Exception) {
+                        android.util.Log.e("BarcodeScannerView", "Use case binding failed", exc)
+                    }
+                }, executor)
+                previewView
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        
+        Box(
+            modifier = Modifier
+                .size(width = 280.dp, height = 150.dp)
+                .align(Alignment.Center)
+                .background(Color.Transparent)
+                .border(2.dp, EnergyOrange, RoundedCornerShape(12.dp))
+        )
+        
+        Text(
+            text = "Đặt mã vạch vào khung hình để quét",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 120.dp)
+                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier
+                .padding(top = 40.dp, start = 16.dp)
+                .align(Alignment.TopStart)
+                .size(48.dp)
+                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+        ) {
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier
+                    .size(24.dp)
+                    .padding(4.dp)
+            ) {
+                val strokeWidth = 2.5.dp.toPx()
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(0f, size.height),
+                    end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                    strokeWidth = strokeWidth,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            }
+        }
+    }
 }
 
 

@@ -20,6 +20,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 interface FoodAnalysisClient {
     suspend fun analyze(bitmap: Bitmap?): ScanResult?
+    suspend fun scanBarcode(barcode: String): ScanResult?
+    suspend fun registerBarcode(barcode: String, result: ScanResult): Boolean
 }
 
 class OkHttpFoodAnalysisClient(
@@ -32,6 +34,55 @@ class OkHttpFoodAnalysisClient(
         com.example.myapplication.app.BackendConfig.baseUrl?.let { "$it/api/analyze-food" }
     },
 ) : FoodAnalysisClient {
+    override suspend fun scanBarcode(barcode: String): ScanResult? = withContext(Dispatchers.IO) {
+        val baseUrl = com.example.myapplication.app.BackendConfig.baseUrl ?: return@withContext null
+        val url = "$baseUrl/api/scan-barcode?barcode=$barcode"
+
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                if (response.code == 404) {
+                    return@withContext null
+                }
+                val errorBody = response.body?.string()
+                throw java.io.IOException("HTTP error ${response.code}: $errorBody")
+            }
+            val bodyString = response.body?.string() ?: throw java.io.IOException("Phản hồi trống từ máy chủ")
+            parseScanResult(bodyString)
+        }
+    }
+
+    override suspend fun registerBarcode(barcode: String, result: ScanResult): Boolean = withContext(Dispatchers.IO) {
+        val baseUrl = com.example.myapplication.app.BackendConfig.baseUrl ?: return@withContext false
+        val url = "$baseUrl/api/register-barcode"
+
+        val payload = """
+            {
+                "barcode": "$barcode",
+                "dishName": "${result.dishName}",
+                "totalCalories": ${result.totalCalories},
+                "proteinGrams": ${result.proteinGrams},
+                "carbsGrams": ${result.carbsGrams},
+                "fatGrams": ${result.fatGrams},
+                "advice": "${result.advice}"
+            }
+        """.trimIndent()
+
+        val requestBody = payload.toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            response.isSuccessful
+        }
+    }
+
     override suspend fun analyze(bitmap: Bitmap?): ScanResult? = withContext(Dispatchers.IO) {
         if (bitmap == null) return@withContext null
         val endpointUrl = endpointProvider() ?: return@withContext null
