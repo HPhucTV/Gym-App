@@ -105,6 +105,7 @@ class ProgressViewModel(
         filter: WeightFilter,
     ): ProgressUiState {
         val allDates = completedHistory.map { it.completedEpochDay }
+        val allDatesSet = allDates.toSet()
         val marked = allDates.asSequence()
             .filter { YearMonth.from(LocalDate.ofEpochDay(it)) == month }
             .toSet()
@@ -140,7 +141,8 @@ class ProgressViewModel(
                 weeklyStats = weeklyStats,
                 muscleStats = emptyList(),
                 weightHistory = filteredWeights,
-                weightFilter = filter
+                weightFilter = filter,
+                allCompletedDates = allDatesSet
             )
         }
 
@@ -212,7 +214,8 @@ class ProgressViewModel(
             forecastCompletedSessions = activeDates.size,
             forecastElapsedWeeks = elapsedWeeks,
             weightHistory = filteredWeights,
-            weightFilter = filter
+            weightFilter = filter,
+            allCompletedDates = allDatesSet
         )
     }
 }

@@ -17,7 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.theme.customColors
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -45,20 +44,34 @@ fun ContributionGraphCard(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Day Labels on the Left
+            Row(verticalAlignment = Alignment.Top) {
+                // Day Labels on the Left, aligned with grid rows
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
-                    // Show labels for T2, T4, T6 (Mon, Wed, Fri)
-                    Text("T2", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
-                    Box(modifier = Modifier.height(10.dp)) // spacer matching Box size
-                    Text("T4", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
-                    Box(modifier = Modifier.height(10.dp))
-                    Text("T6", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
-                    Box(modifier = Modifier.height(10.dp))
-                    Text("CN", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp)) // Height of Month labels (12.dp) + space (4.dp)
+                    
+                    Box(modifier = Modifier.height(10.dp), contentAlignment = Alignment.Center) {
+                        Text("T2", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp)) {} // Spacer for T3
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp), contentAlignment = Alignment.Center) {
+                        Text("T4", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp)) {} // Spacer for T5
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp), contentAlignment = Alignment.Center) {
+                        Text("T6", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp)) {} // Spacer for T7
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.height(10.dp), contentAlignment = Alignment.Center) {
+                        Text("CN", fontSize = 9.sp, color = customColors.mutedText, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 // Grid scrollable horizontally
@@ -68,53 +81,70 @@ fun ContributionGraphCard(
                     // Back up to the Monday of that week
                     date.minusDays((date.dayOfWeek.value - 1).toLong())
                 }
+                val scrollState = rememberScrollState()
+                
+                // Automatically scroll to the end (most recent weeks) on initial measurement
+                androidx.compose.runtime.LaunchedEffect(scrollState.maxValue) {
+                    scrollState.scrollTo(scrollState.maxValue)
+                }
 
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    modifier = Modifier.horizontalScroll(scrollState),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    for (w in 0..18) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            // Month label at the top of the column if it's the start of a month or first column
-                            val firstDayOfWeek = startDay.plusWeeks(w.toLong())
-                            val showMonthLabel = w == 0 || firstDayOfWeek.dayOfMonth <= 7
-                            val monthLabel = if (showMonthLabel) {
-                                firstDayOfWeek.month.getDisplayName(TextStyle.SHORT, Locale.forLanguageTag("vi"))
-                            } else ""
+                    Column {
+                        // Month Labels Row
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (w in 0..18) {
+                                val firstDayOfWeek = startDay.plusWeeks(w.toLong())
+                                val showMonthLabel = w == 0 || firstDayOfWeek.dayOfMonth <= 7
+                                val monthLabel = if (showMonthLabel) {
+                                    firstDayOfWeek.month.getDisplayName(TextStyle.SHORT, Locale.forLanguageTag("vi"))
+                                } else ""
 
-                            Text(
-                                text = monthLabel,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = customColors.mutedText,
-                                modifier = Modifier.height(12.dp),
-                                maxLines = 1
-                            )
-
-                            // 7 days of the week (Monday to Sunday)
-                            for (d in 0..6) {
-                                val date = firstDayOfWeek.plusDays(d.toLong())
-                                val isFuture = date.isAfter(today)
-                                val epochDay = date.toEpochDay()
-                                val isCompleted = epochDay in markedEpochDays
-
-                                val cellColor = when {
-                                    isFuture -> Color.Transparent
-                                    isCompleted -> Color(0xFF22C55E) // Green for workouts
-                                    else -> colors.outline.copy(alpha = 0.5f) // Gray for rest
+                                Box(modifier = Modifier.width(10.dp).height(12.dp), contentAlignment = Alignment.BottomStart) {
+                                    Text(
+                                        text = monthLabel,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.mutedText,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
+                            }
+                        }
 
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .background(
-                                            color = cellColor,
-                                            shape = RoundedCornerShape(2.dp)
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Grid Columns
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (w in 0..18) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val firstDayOfWeek = startDay.plusWeeks(w.toLong())
+                                    // 7 days of the week (Monday to Sunday)
+                                    for (d in 0..6) {
+                                        val date = firstDayOfWeek.plusDays(d.toLong())
+                                        val isFuture = date.isAfter(today)
+                                        val epochDay = date.toEpochDay()
+                                        val isCompleted = epochDay in markedEpochDays
+
+                                        val cellColor = when {
+                                            isFuture -> Color.Transparent
+                                            isCompleted -> Color(0xFF22C55E) // Green for workouts
+                                            else -> colors.outline.copy(alpha = 0.5f) // Gray for rest
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .background(
+                                                    color = cellColor,
+                                                    shape = RoundedCornerShape(2.dp)
+                                                )
                                         )
-                                )
+                                    }
+                                }
                             }
                         }
                     }

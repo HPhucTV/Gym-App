@@ -53,6 +53,8 @@ class AdaptiveJourneyEndToEndTest {
 
         nutritionRepository = RoomNutritionRepository(
             personalizationDao = dao,
+            foodCatalogDao = database.foodCatalogDao(),
+            loggedFoodDao = database.loggedFoodDao(),
             legacyPreferences = fakeLegacyPrefs,
             todayEpochDay = { todayEpoch },
             nowEpochMillis = { nowMillis }

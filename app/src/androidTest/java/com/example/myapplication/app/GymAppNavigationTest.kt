@@ -33,7 +33,7 @@ class GymAppNavigationTest {
             GymAppTheme {
                 GymApp(
                     rootState = GymRootState.ActiveGoal,
-                    homeContent = { workouts, nutrition, checkIn, recommendations, _ ->
+                    homeContent = { workouts, nutrition, checkIn, recommendations, _, _ ->
                         Column {
                             Button(onClick = workouts) { Text("Home workout") }
                             Button(onClick = nutrition) { Text("Home nutrition") }

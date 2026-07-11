@@ -43,6 +43,7 @@ sealed interface ProgressUiState {
         val forecastElapsedWeeks: Long = 0,
         val weightHistory: List<com.example.myapplication.data.local.WeightMeasurementEntity> = emptyList(),
         val weightFilter: WeightFilter = WeightFilter.LAST_30_DAYS,
+        val allCompletedDates: Set<Long> = emptySet(),
     ) : ProgressUiState
 
     data class NoActiveGoal(
@@ -55,5 +56,6 @@ sealed interface ProgressUiState {
         val muscleStats: List<MuscleCompletedStats> = emptyList(),
         val weightHistory: List<com.example.myapplication.data.local.WeightMeasurementEntity> = emptyList(),
         val weightFilter: WeightFilter = WeightFilter.LAST_30_DAYS,
+        val allCompletedDates: Set<Long> = emptySet(),
     ) : ProgressUiState
 }

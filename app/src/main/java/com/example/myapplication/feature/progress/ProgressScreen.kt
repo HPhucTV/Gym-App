@@ -139,7 +139,7 @@ private fun ProgressContent(
             muscleStats = state.muscleStats
         )
 
-        ContributionGraphCard(markedEpochDays = state.markedEpochDays)
+        ContributionGraphCard(markedEpochDays = state.allCompletedDates)
 
         CalendarCard(
             state.selectedMonth, state.markedEpochDays, state.completedInMonth,
@@ -282,7 +282,7 @@ private fun ProgressWithoutGoal(
             )
         }
 
-        ContributionGraphCard(markedEpochDays = state.markedEpochDays)
+        ContributionGraphCard(markedEpochDays = state.allCompletedDates)
 
         CalendarCard(
             state.selectedMonth, state.markedEpochDays, state.completedInMonth,
