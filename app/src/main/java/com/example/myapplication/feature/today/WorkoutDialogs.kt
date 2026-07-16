@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -144,7 +145,10 @@ fun AchievementUnlockDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedButton(
                     onClick = {
                         shareWorkoutSummary(
@@ -155,19 +159,24 @@ fun AchievementUnlockDialog(
                             achievements = badges,
                         )
                     },
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, EnergyOrange),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = EnergyOrange),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
-                    Text("Chia sẻ 🔗", fontWeight = FontWeight.Bold)
+                    Text("Chia sẻ 🔗", fontWeight = FontWeight.Bold, maxLines = 1)
                 }
                 Button(
                     onClick = onDismiss,
-                    modifier = Modifier.testTag("celebration-dismiss"),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("celebration-dismiss"),
                     colors = ButtonDefaults.buttonColors(containerColor = EnergyOrange),
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
-                    Text("Đóng 🌟", fontWeight = FontWeight.Bold)
+                    Text("Đóng 🌟", fontWeight = FontWeight.Bold, maxLines = 1)
                 }
             }
         },

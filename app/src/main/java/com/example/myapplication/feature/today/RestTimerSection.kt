@@ -79,19 +79,22 @@ fun RestTimerSection(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         "⏱️",
                         fontSize = 24.sp,
-                        modifier = Modifier.padding(end = 12.dp)
+                        modifier = Modifier.padding(end = 8.dp)
                     )
                     Column {
                         Text(
                             "Thời gian nghỉ",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.customColors.primaryText.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.customColors.primaryText.copy(alpha = 0.7f),
+                            maxLines = 1,
                         )
                         AnimatedContent(
                             targetState = secondsLeft,
@@ -107,13 +110,19 @@ fun RestTimerSection(
                                     fontFeatureSettings = "tnum"
                                 ),
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.customColors.recoveryBlue
+                                color = MaterialTheme.colorScheme.customColors.recoveryBlue,
+                                maxLines = 1,
                             )
                         }
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.wrapContentWidth()
+                ) {
                     // +10s Button
                     OutlinedButton(
                         onClick = { secondsLeft += 10 },
@@ -121,9 +130,10 @@ fun RestTimerSection(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.customColors.recoveryBlue
                         ),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
                         modifier = Modifier.height(40.dp)
                     ) {
-                        Text("+10s", fontWeight = FontWeight.Bold)
+                        Text("+10s", fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     // Skip Button
@@ -134,9 +144,10 @@ fun RestTimerSection(
                             containerColor = MaterialTheme.colorScheme.customColors.recoveryBlue,
                             contentColor = Color.White
                         ),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.height(40.dp)
                     ) {
-                        Text("Bỏ qua", fontWeight = FontWeight.Bold)
+                        Text("Bỏ qua", fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
             }
