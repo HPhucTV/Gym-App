@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 data class GoalWithWorkoutCount(
@@ -70,6 +71,12 @@ interface WorkoutDao {
 
     @Insert
     suspend fun insertExercises(exercises: List<SessionExerciseEntity>)
+
+    @Update
+    suspend fun updateSessions(sessions: List<WorkoutSessionEntity>): Int
+
+    @Query("SELECT * FROM workout_sessions WHERE id IN (:sessionIds)")
+    suspend fun getSessions(sessionIds: List<Long>): List<WorkoutSessionEntity>
 
     @Query("SELECT * FROM workout_sessions WHERE goalId = :goalId ORDER BY sequenceIndex ASC, id ASC")
     suspend fun getSessionsForGoal(goalId: Long): List<WorkoutSessionEntity>

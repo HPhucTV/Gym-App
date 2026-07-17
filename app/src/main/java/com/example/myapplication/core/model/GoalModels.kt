@@ -51,14 +51,14 @@ data class GoalConfig(
     val sessionsPerWeek: Int,
     val durationWeeks: Int,
     val restDayMode: RestDayMode,
-    val trainingDays: Set<DayOfWeek> = legacyTrainingDays(sessionsPerWeek),
+    val trainingDays: Set<DayOfWeek> = defaultTrainingDays(sessionsPerWeek),
     val sessionDurationMinutes: Int = 45,
     val goals: List<FitnessGoal> = listOf(goal),
     val gender: Gender = Gender.MALE,
     val bodyType: BodyType = BodyType.MESOMORPH,
 )
 
-fun legacyTrainingDays(sessionsPerWeek: Int): Set<DayOfWeek> = when (sessionsPerWeek) {
+fun defaultTrainingDays(sessionsPerWeek: Int): Set<DayOfWeek> = when (sessionsPerWeek) {
     1 -> setOf(DayOfWeek.MONDAY)
     2 -> setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY)
     3 -> setOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)

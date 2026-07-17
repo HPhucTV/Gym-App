@@ -23,7 +23,7 @@ data class WorkoutExercise(
     val orderIndex: Int,
     val exerciseId: String,
     val prescription: ExercisePrescription,
-    val checked: Boolean,
+    val isChecked: Boolean,
     val originalExerciseId: String? = null,
     val isLightWorkout: Boolean = false,
 )

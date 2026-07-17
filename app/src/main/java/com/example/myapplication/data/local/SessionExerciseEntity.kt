@@ -1,5 +1,6 @@
 package com.example.myapplication.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -23,10 +24,10 @@ data class SessionExerciseEntity(
     val exerciseId: String,
     val originalExerciseId: String? = null,
     val sets: Int,
-    val repsMin: Int?,
-    val repsMax: Int?,
+    @ColumnInfo(name = "repsMin") val minReps: Int?,
+    @ColumnInfo(name = "repsMax") val maxReps: Int?,
     val durationSeconds: Int?,
     val restSeconds: Int,
-    val checked: Boolean = false,
+    @ColumnInfo(name = "checked") val isChecked: Boolean = false,
     val omittedByTimeBudget: Boolean = false,
 )

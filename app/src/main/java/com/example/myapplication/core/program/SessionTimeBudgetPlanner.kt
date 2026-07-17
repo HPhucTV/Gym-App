@@ -31,8 +31,8 @@ object SessionTimeBudgetPlanner {
 
     internal fun estimatedMinutes(prescription: ExercisePrescription): Int {
         val activeSecondsPerSet = prescription.durationSeconds
-            ?: (((prescription.repsMin ?: 1) +
-                (prescription.repsMax ?: prescription.repsMin ?: 1)) / 2 * 4)
+            ?: (((prescription.minReps ?: 1) +
+                (prescription.maxReps ?: prescription.minReps ?: 1)) / 2 * 4)
         val totalSeconds = prescription.sets * (activeSecondsPerSet + prescription.restSeconds)
         return ceil(totalSeconds / 60.0).toInt().coerceAtLeast(1)
     }

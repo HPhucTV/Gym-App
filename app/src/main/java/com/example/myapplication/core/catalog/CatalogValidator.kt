@@ -68,7 +68,7 @@ object CatalogValidator {
                     substituteId !in exercisesById -> {
                         issues += "Exercise '${exercise.id}': Unknown substitute '$substituteId'"
                     }
-                    exercisesById.getValue(substituteId).primaryMuscle != exercise.primaryMuscle -> {
+                    exercisesById.getValue(substituteId).primaryMuscleGroup != exercise.primaryMuscleGroup -> {
                         issues += "Exercise '${exercise.id}' substitute '$substituteId' must use the same primary muscle"
                     }
                     exercisesById.getValue(substituteId).movementPattern != exercise.movementPattern -> {
@@ -120,11 +120,11 @@ object CatalogValidator {
                     if (prescription.exerciseId !in exercisesById) issues += "$exerciseLabel: Unknown exercise '${prescription.exerciseId}'"
                     if (prescription.sets !in 1..6) issues += "$exerciseLabel sets must be in 1..6"
                     if (prescription.restSeconds !in 15..300) issues += "$exerciseLabel restSeconds must be in 15..300"
-                    val validReps = prescription.repsMin != null && prescription.repsMax != null &&
-                        prescription.repsMin in 1..50 && prescription.repsMax in prescription.repsMin..100 &&
+                    val validReps = prescription.minReps != null && prescription.maxReps != null &&
+                        prescription.minReps in 1..50 && prescription.maxReps in prescription.minReps..100 &&
                         prescription.durationSeconds == null
                     val validDuration = prescription.durationSeconds != null && prescription.durationSeconds in 10..3600 &&
-                        prescription.repsMin == null && prescription.repsMax == null
+                        prescription.minReps == null && prescription.maxReps == null
                     if (validReps == validDuration) issues += "$exerciseLabel prescription must use exactly one valid reps or duration mode"
                 }
             }

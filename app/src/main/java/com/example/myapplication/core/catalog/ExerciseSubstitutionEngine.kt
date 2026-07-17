@@ -5,13 +5,13 @@ import com.example.myapplication.core.model.EquipmentProfile
 import com.example.myapplication.core.model.ExerciseDefinition
 
 class ExerciseSubstitutionEngine(exercises: List<ExerciseDefinition>) {
-    private val byId = exercises.associateBy(ExerciseDefinition::id)
+    private val exercisesById = exercises.associateBy(ExerciseDefinition::id)
 
-    fun candidates(exerciseId: String, profile: EquipmentProfile): List<ExerciseDefinition> {
-        val source = byId[exerciseId] ?: return emptyList()
+    fun findSubstitutionCandidates(exerciseId: String, profile: EquipmentProfile): List<ExerciseDefinition> {
+        val source = exercisesById[exerciseId] ?: return emptyList()
         return source.substituteIds
-            .mapNotNull(byId::get)
-            .filter { it.primaryMuscle == source.primaryMuscle }
+            .mapNotNull(exercisesById::get)
+            .filter { it.primaryMuscleGroup == source.primaryMuscleGroup }
             .filter { it.movementPattern == source.movementPattern }
             .filter { it.supports(profile) }
             .distinctBy(ExerciseDefinition::id)

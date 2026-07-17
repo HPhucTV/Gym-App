@@ -49,7 +49,7 @@ class RoomWorkoutStaleMutationTest {
         repository.setExerciseChecked(current.id, 0, false)
 
         val stored = database.workoutDao().getExercisesForSession(current.id)
-        assertTrue(stored.first().checked)
+        assertTrue(stored.first().isChecked)
         assertEquals(0, database.workoutDao().setCurrentExerciseChecked(current.id, 0, false))
     }
 
@@ -62,7 +62,7 @@ class RoomWorkoutStaleMutationTest {
 
         repository.setExerciseChecked(oldCurrent.id, 0, false)
 
-        assertTrue(database.workoutDao().getExercisesForSession(oldCurrent.id).first().checked)
+        assertTrue(database.workoutDao().getExercisesForSession(oldCurrent.id).first().isChecked)
         assertEquals(0, database.workoutDao().setCurrentExerciseChecked(oldCurrent.id, 0, false))
     }
 

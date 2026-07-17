@@ -61,7 +61,7 @@ class RoomWorkoutRepositoryTest {
         assertEquals(0, current.sequenceIndex)
         assertEquals(100, current.dueEpochDay)
         assertEquals(listOf("squat", "plank"), current.exercises.map { it.exerciseId })
-        assertEquals(listOf(false, false), current.exercises.map { it.checked })
+        assertEquals(listOf(false, false), current.exercises.map { it.isChecked })
         val historyBeforeCompletion = repository.observeWorkoutHistory().first()
         assertEquals(2, historyBeforeCompletion.size)
         assertEquals(listOf(100L, 102L), historyBeforeCompletion.map { it.dueEpochDay })
@@ -90,7 +90,7 @@ class RoomWorkoutRepositoryTest {
         repository.setExerciseChecked(current.id, 0, false)
 
         val refreshed = requireNotNull(repository.observeCurrentWorkout().first())
-        assertFalse(refreshed.exercises.first().checked)
+        assertFalse(refreshed.exercises.first().isChecked)
         assertTrue(repository.observeCompletedWorkouts().first().isEmpty())
     }
 
@@ -193,7 +193,7 @@ class RoomWorkoutRepositoryTest {
         assertEquals(listOf(0), shortened.exercises.map { it.orderIndex })
         assertEquals(3, shortened.omittedExerciseCount)
         repository.setExerciseChecked(current.id, 3, true)
-        assertFalse(database.workoutDao().getExercisesForSession(current.id)[3].checked)
+        assertFalse(database.workoutDao().getExercisesForSession(current.id)[3].isChecked)
 
         assertEquals(TimeBudgetResult.Applied, repository.applyTimeBudget(current.id, null))
         val restored = requireNotNull(repository.observeCurrentWorkout().first())
@@ -283,7 +283,7 @@ class RoomWorkoutRepositoryTest {
                 level = ExperienceLevel.BEGINNER,
                 equipment = listOf(Equipment.BODYWEIGHT),
                 movementPattern = MovementPattern.SQUAT,
-                primaryMuscle = MuscleGroup.QUADS,
+                primaryMuscleGroup = MuscleGroup.QUADS,
                 instructionsVi = listOf("Hạ hông có kiểm soát"),
                 substituteIds = listOf("reverse_lunge"),
             ),
@@ -294,7 +294,7 @@ class RoomWorkoutRepositoryTest {
                 level = ExperienceLevel.BEGINNER,
                 equipment = listOf(Equipment.BODYWEIGHT),
                 movementPattern = MovementPattern.SQUAT,
-                primaryMuscle = MuscleGroup.QUADS,
+                primaryMuscleGroup = MuscleGroup.QUADS,
                 instructionsVi = listOf("Bước một chân ra sau"),
                 substituteIds = listOf("squat"),
             ),
@@ -305,7 +305,7 @@ class RoomWorkoutRepositoryTest {
                 level = ExperienceLevel.BEGINNER,
                 equipment = listOf(Equipment.BODYWEIGHT),
                 movementPattern = MovementPattern.CORE,
-                primaryMuscle = MuscleGroup.CORE,
+                primaryMuscleGroup = MuscleGroup.CORE,
                 instructionsVi = listOf("Giữ thân người thẳng"),
             ),
         )

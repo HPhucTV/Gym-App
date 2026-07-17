@@ -19,6 +19,8 @@ import java.time.LocalDate
 import java.time.Period
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 fun interface WeeklySnapshotProvider {
     suspend fun snapshotFor(currentEpochDay: Long): WeeklySnapshot?
@@ -67,7 +69,7 @@ object WeeklySnapshotAssembler {
             .takeUnless(Double::isNaN)
             ?.toInt()
             ?: 0
-        val adherence = if (trackedDays.isEmpty()) {
+        val adherencePercent = if (trackedDays.isEmpty()) {
             0.0
         } else {
             trackedDays.count { it.consumed.calories >= inputs.currentTarget.calories * 0.7 }
@@ -84,7 +86,7 @@ object WeeklySnapshotAssembler {
             currentCalories = inputs.currentTarget.calories,
             currentTarget = inputs.currentTarget,
             averageConsumedCalories = averageConsumed,
-            adherencePercent = adherence,
+            adherencePercent = adherencePercent,
             recentWeights = inputs.recentWeights,
             targetWeightKg = inputs.profile.targetWeightKg,
             latestCheckIn = inputs.checkInsNewestFirst.firstOrNull(),
@@ -115,27 +117,47 @@ class RoomWeeklySnapshotProvider(
     private val nutritionRepository: NutritionRepository,
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
 ) : WeeklySnapshotProvider {
-    override suspend fun snapshotFor(currentEpochDay: Long): WeeklySnapshot? {
-        val goal = workoutRepository.observeActiveGoal().first() ?: return null
-        val profileEntity = personalizationDao.profileNow() ?: return null
-        val currentTarget = nutritionRepository.observeDay(currentEpochDay).first().target ?: return null
+    override suspend fun snapshotFor(currentEpochDay: Long): WeeklySnapshot? = coroutineScope {
+        val goal = workoutRepository.observeActiveGoal().first() ?: return@coroutineScope null
+
+        val profileDeferred = async { personalizationDao.profileNow() }
+        val currentTargetDeferred = async { nutritionRepository.observeDay(currentEpochDay).first().target }
+        val decisionsDeferred = async { personalizationDao.decisionHistoryNow() }
+        val allSessionsDeferred = async { workoutRepository.observeWorkoutHistory().first() }
+        val currentSessionDeferred = async { workoutRepository.observeCurrentWorkout().first() }
+        val completedWorkoutsDeferred = async { workoutRepository.observeCompletedWorkouts().first() }
+        val feedbackDeferred = async { feedbackRepository.observeForGoal(goal.id).first() }
+        
         val rangeStart = Math.subtractExact(currentEpochDay, 6L)
-        val decisions = personalizationDao.decisionHistoryNow()
-        val allSessions = workoutRepository.observeWorkoutHistory().first().filter { it.goalId == goal.id }
+        val nutritionDaysDeferred = async { nutritionRepository.observeRange(rangeStart, currentEpochDay).first() }
+        val recentWeightsDeferred = async { personalizationDao.weightHistoryNow().takeLast(4).map { it.weightKg } }
+        val checkInsDeferred = async { personalizationDao.observeAllCheckIns().first() }
+
+        val profileEntity = profileDeferred.await() ?: return@coroutineScope null
+        val currentTarget = currentTargetDeferred.await() ?: return@coroutineScope null
+        val decisions = decisionsDeferred.await()
+        val allSessions = allSessionsDeferred.await().filter { it.goalId == goal.id }
         val missedCount = allSessions.count { it.completedEpochDay == null && it.dueEpochDay < currentEpochDay }
 
-        return WeeklySnapshotAssembler.build(
+        val currentSession = currentSessionDeferred.await()
+        val completedWorkouts = completedWorkoutsDeferred.await()
+        val feedback = feedbackDeferred.await()
+        val nutritionDays = nutritionDaysDeferred.await()
+        val recentWeights = recentWeightsDeferred.await()
+        val checkInsNewestFirst = checkInsDeferred.await().map { row ->
+            CheckInData(row.energy, row.hunger, row.recovery, row.sleepQuality)
+        }
+
+        WeeklySnapshotAssembler.build(
             WeeklySnapshotInputs(
                 currentEpochDay = currentEpochDay,
                 goal = goal,
-                currentSession = workoutRepository.observeCurrentWorkout().first(),
-                completedWorkouts = workoutRepository.observeCompletedWorkouts().first(),
-                feedback = feedbackRepository.observeForGoal(goal.id).first(),
-                nutritionDays = nutritionRepository.observeRange(rangeStart, currentEpochDay).first(),
-                recentWeights = personalizationDao.weightHistoryNow().takeLast(4).map { it.weightKg },
-                checkInsNewestFirst = personalizationDao.observeAllCheckIns().first().map { row ->
-                    CheckInData(row.energy, row.hunger, row.recovery, row.sleepQuality)
-                },
+                currentSession = currentSession,
+                completedWorkouts = completedWorkouts,
+                feedback = feedback,
+                nutritionDays = nutritionDays,
+                recentWeights = recentWeights,
+                checkInsNewestFirst = checkInsNewestFirst,
                 currentTarget = currentTarget,
                 profile = PersonalProfile(
                     birthDateEpochDay = profileEntity.birthDateEpochDay,

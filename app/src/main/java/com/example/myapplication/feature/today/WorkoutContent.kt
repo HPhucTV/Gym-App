@@ -64,7 +64,7 @@ fun WorkoutContent(
     var timerVisible by remember { mutableStateOf(false) }
 
     val musclesInWorkout = remember(state.rows) {
-        state.rows.map { it.primaryMuscle }.distinct()
+        state.rows.map { it.primaryMuscleGroup }.distinct()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {

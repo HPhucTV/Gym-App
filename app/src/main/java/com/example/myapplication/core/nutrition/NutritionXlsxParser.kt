@@ -1,5 +1,7 @@
 package com.example.myapplication.core.nutrition
 
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
@@ -22,11 +24,11 @@ object NutritionXlsxParser {
             var entry = zip.nextEntry
             while (entry != null) {
                 if (entry.name == "xl/sharedStrings.xml") {
-                    val content = zip.readBytes().toString(Charsets.UTF_8)
-                    sharedStrings = parseSharedStrings(content)
+                    val entryBytes = zip.readBytes()
+                    sharedStrings = parseSharedStrings(ByteArrayInputStream(entryBytes))
                 } else if (entry.name == "xl/worksheets/sheet1.xml") {
-                    val content = zip.readBytes().toString(Charsets.UTF_8)
-                    sheetRows = parseSheetRows(content, sharedStrings)
+                    val entryBytes = zip.readBytes()
+                    sheetRows = parseSheetRows(ByteArrayInputStream(entryBytes), sharedStrings)
                 }
                 entry = zip.nextEntry
             }
@@ -34,133 +36,108 @@ object NutritionXlsxParser {
         return sheetRows
     }
 
-    private fun parseSharedStrings(xml: String): List<String> {
+    private fun parseSharedStrings(inputStream: InputStream): List<String> {
         val strings = mutableListOf<String>()
-        var pos = 0
-        while (true) {
-            val startIdx = xml.indexOf("<si>", pos)
-            if (startIdx == -1) break
-            val endIdx = xml.indexOf("</si>", startIdx)
-            if (endIdx == -1) break
-            
-            val siContent = xml.substring(startIdx + 4, endIdx)
-            strings.add(decodeXmlEntities(extractTextFromSi(siContent)))
-            pos = endIdx + 5
+        val factory = XmlPullParserFactory.newInstance()
+        val parser = factory.newPullParser()
+        parser.setInput(inputStream, "UTF-8")
+
+        var eventType = parser.eventType
+        var inT = false
+        val sb = java.lang.StringBuilder()
+
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    if (parser.name == "t") {
+                        inT = true
+                        sb.setLength(0)
+                    }
+                }
+                XmlPullParser.TEXT -> {
+                    if (inT) {
+                        sb.append(parser.text)
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    if (parser.name == "t") {
+                        inT = false
+                    } else if (parser.name == "si") {
+                        strings.add(decodeXmlEntities(sb.toString()))
+                    }
+                }
+            }
+            eventType = parser.next()
         }
         return strings
     }
 
-    private fun extractTextFromSi(siContent: String): String {
-        val sb = StringBuilder()
-        var pos = 0
-        while (true) {
-            val startIdx = siContent.indexOf("<t", pos)
-            if (startIdx == -1) break
-            val tagCloseIdx = siContent.indexOf(">", startIdx)
-            if (tagCloseIdx == -1) break
-            val endIdx = siContent.indexOf("</t>", tagCloseIdx)
-            if (endIdx == -1) break
-            
-            sb.append(siContent.substring(tagCloseIdx + 1, endIdx))
-            pos = endIdx + 4
-        }
-        return sb.toString()
-    }
-
-    private fun parseSheetRows(xml: String, sharedStrings: List<String>): List<List<String>> {
+    private fun parseSheetRows(inputStream: InputStream, sharedStrings: List<String>): List<List<String>> {
         val rows = mutableListOf<List<String>>()
-        var pos = 0
-        while (true) {
-            val startIdx = xml.indexOf("<row", pos)
-            if (startIdx == -1) break
-            val openTagClose = xml.indexOf(">", startIdx)
-            if (openTagClose == -1) break
-            val endIdx = xml.indexOf("</row>", openTagClose)
-            if (endIdx == -1) break
-            
-            val rowContent = xml.substring(openTagClose + 1, endIdx)
-            rows.add(parseCellsInRow(rowContent, sharedStrings))
-            pos = endIdx + 6
-        }
-        return rows
-    }
+        val factory = XmlPullParserFactory.newInstance()
+        val parser = factory.newPullParser()
+        parser.setInput(inputStream, "UTF-8")
 
-    private val rRegex = Regex("""\br=["']([A-Za-z]+)\d+["']""")
-    private val tRegex = Regex("""\bt=["']([^"']+)["']""")
-
-    private fun parseCellsInRow(rowContent: String, sharedStrings: List<String>): List<String> {
-        val cellMap = mutableMapOf<Int, String>()
-        var pos = 0
+        var eventType = parser.eventType
+        var currentColumnIndex = -1
+        var isShared = false
+        var cellValue: String? = null
+        val currentCells = mutableMapOf<Int, String>()
         var maxColIndex = -1
 
-        while (true) {
-            val startIdx = rowContent.indexOf("<c", pos)
-            if (startIdx == -1) break
-            val tagCloseIdx = rowContent.indexOf(">", startIdx)
-            if (tagCloseIdx == -1) break
-            
-            val cellAttr = rowContent.substring(startIdx, tagCloseIdx)
-            val rMatch = rRegex.find(cellAttr)
-            val colIdx = if (rMatch != null) getColumnIndex(rMatch.groupValues[1]) else -1
-
-            if (colIdx != -1) {
-                if (colIdx > maxColIndex) {
-                    maxColIndex = colIdx
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    val tagName = parser.name
+                    if (tagName == "row") {
+                        currentCells.clear()
+                        maxColIndex = -1
+                    } else if (tagName == "c") {
+                        val rAttr = parser.getAttributeValue(null, "r")
+                        currentColumnIndex = if (rAttr != null) getColumnIndex(rAttr) else -1
+                        if (currentColumnIndex > maxColIndex) {
+                            maxColIndex = currentColumnIndex
+                        }
+                        val tAttr = parser.getAttributeValue(null, "t")
+                        isShared = tAttr == "s"
+                        cellValue = null
+                    } else if (tagName == "v" || tagName == "t") {
+                        cellValue = ""
+                    }
                 }
-
-                val tMatch = tRegex.find(cellAttr)
-                val isShared = tMatch != null && tMatch.groupValues[1] == "s"
-
-                // Check for value tag <v>...</v>
-                val vStart = rowContent.indexOf("<v>", tagCloseIdx)
-                val cellEndIdx = rowContent.indexOf("</c>", tagCloseIdx)
-                val limit = if (cellEndIdx != -1) cellEndIdx else rowContent.length
-                
-                if (vStart != -1 && vStart < limit) {
-                    val vEnd = rowContent.indexOf("</v>", vStart)
-                    if (vEnd != -1) {
-                        val rawVal = rowContent.substring(vStart + 3, vEnd)
-                        val decodedVal = if (isShared) {
-                            val idx = rawVal.toIntOrNull()
-                            if (idx != null && idx >= 0 && idx < sharedStrings.size) {
-                                sharedStrings[idx]
+                XmlPullParser.TEXT -> {
+                    if (cellValue != null) {
+                        cellValue += parser.text
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    val tagName = parser.name
+                    if (tagName == "c") {
+                        if (currentColumnIndex != -1) {
+                            val finalVal = if (isShared && cellValue != null) {
+                                val idx = cellValue!!.toIntOrNull()
+                                if (idx != null && idx >= 0 && idx < sharedStrings.size) {
+                                    sharedStrings[idx]
+                                } else {
+                                    ""
+                                }
                             } else {
-                                ""
+                                cellValue ?: ""
                             }
-                        } else {
-                            rawVal
+                            currentCells[currentColumnIndex] = decodeXmlEntities(finalVal)
                         }
-                        cellMap[colIdx] = decodeXmlEntities(decodedVal)
-                    }
-                } else {
-                    // Check for inline string <is><t>...</t></is>
-                    val isStart = rowContent.indexOf("<is>", tagCloseIdx)
-                    if (isStart != -1 && isStart < limit) {
-                        val tStart = rowContent.indexOf("<t", isStart)
-                        if (tStart != -1) {
-                            val tOpenClose = rowContent.indexOf(">", tStart)
-                            val tEnd = rowContent.indexOf("</t>", tOpenClose)
-                            if (tOpenClose != -1 && tEnd != -1) {
-                                cellMap[colIdx] = decodeXmlEntities(rowContent.substring(tOpenClose + 1, tEnd))
-                            }
+                    } else if (tagName == "row") {
+                        val result = MutableList(maxColIndex + 1) { "" }
+                        for ((col, valStr) in currentCells) {
+                            result[col] = valStr
                         }
+                        rows.add(result)
                     }
                 }
             }
-
-            val cCloseIdx = rowContent.indexOf("</c>", tagCloseIdx)
-            if (cCloseIdx == -1) {
-                pos = tagCloseIdx + 1
-            } else {
-                pos = cCloseIdx + 4
-            }
+            eventType = parser.next()
         }
-
-        val result = MutableList(maxColIndex + 1) { "" }
-        for ((col, valStr) in cellMap) {
-            result[col] = valStr
-        }
-        return result
+        return rows
     }
 
     private fun getColumnIndex(ref: String): Int {

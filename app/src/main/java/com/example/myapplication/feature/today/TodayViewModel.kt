@@ -185,14 +185,14 @@ class TodayViewModel(
     fun requestSubstitution(orderIndex: Int) {
         val state = _uiState.value as? TodayUiState.Workout ?: return
         val row = state.rows.firstOrNull { it.orderIndex == orderIndex } ?: return
-        if (row.checked || orderIndex in state.pendingOrderIndices) return
+        if (row.isChecked || orderIndex in state.pendingOrderIndices) return
         val profile = lastGoalConfig?.equipmentProfile ?: return
         val originalId = row.originalExerciseId ?: row.exerciseId
         val candidates = buildList {
             if (row.originalExerciseId != null && row.exerciseId != originalId) {
                 catalog[originalId]?.let(::add)
             }
-            addAll(substitutionEngine.candidates(originalId, profile).filter { it.id != row.exerciseId })
+            addAll(substitutionEngine.findSubstitutionCandidates(originalId, profile).filter { it.id != row.exerciseId })
         }.distinctBy { it.id }.take(3)
 
         if (candidates.isEmpty()) {
@@ -483,11 +483,11 @@ class TodayViewModel(
             }
 
             WorkoutRowUi(exercise.orderIndex, definition.nameVi, finalPrescriptionText,
-                exercise.prescription.restSeconds, definition.instructionsVi, exercise.checked, exercise.exerciseId,
-                definition.primaryMuscle, exercise.originalExerciseId, exercise.isLightWorkout, definition.gif3dPath)
+                exercise.prescription.restSeconds, definition.instructionsVi, exercise.isChecked, exercise.exerciseId,
+                definition.primaryMuscleGroup, exercise.originalExerciseId, exercise.isLightWorkout, definition.gif3dPath)
         }
         val pending = ops.pending.filter { it.first == session.id }.map { it.second }.toSet()
-        val checked = rows.count { it.checked }
+        val checked = rows.count { it.isChecked }
         val activePatterns = rows.mapNotNull { row -> catalog[row.exerciseId]?.movementPattern }.toSet()
         val warmUp = movementBlocks.takeIf { it.isNotEmpty() }?.let {
             MovementBlockPlanner.select(it, MovementBlockKind.WARM_UP, activePatterns).toUi()
@@ -538,6 +538,6 @@ private fun MovementBlock.toUi() = AdvisoryMovementBlockUi(
 
 private fun ExercisePrescription.displayText(): String = when {
     durationSeconds != null -> "$durationSeconds giây"
-    repsMin != null && repsMax != null -> if (repsMin == repsMax) "$sets × $repsMin" else "$sets × ${repsMin}–${repsMax}"
+    minReps != null && maxReps != null -> if (minReps == maxReps) "$sets × $minReps" else "$sets × ${minReps}–${maxReps}"
     else -> "$sets hiệp"
 }

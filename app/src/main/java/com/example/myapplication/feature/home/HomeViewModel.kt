@@ -54,7 +54,7 @@ internal fun mapHomeUiState(
         workoutTitle = workout?.titleVi,
         workoutFocus = workout?.focusVi,
         durationMinutes = workout?.estimatedMinutes,
-        completedExercises = workout?.exercises?.count { it.checked } ?: 0,
+        completedExercises = workout?.exercises?.count { it.isChecked } ?: 0,
         totalExercises = workout?.exercises?.size ?: 0,
         completedThisWeek = completed.count { it.completedEpochDay in weekStart..weekEnd },
         streakDays = streakDays,

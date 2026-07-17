@@ -102,11 +102,11 @@ class HomeStateMapperTest {
                 prescription = ExercisePrescription(
                     exerciseId = "exercise-$index",
                     sets = 3,
-                    repsMin = 8,
-                    repsMax = 12,
+                    minReps = 8,
+                    maxReps = 12,
                     restSeconds = 60,
                 ),
-                checked = isChecked,
+                isChecked = isChecked,
             )
         },
     )

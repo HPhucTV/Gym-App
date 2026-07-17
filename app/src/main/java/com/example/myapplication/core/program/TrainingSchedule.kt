@@ -1,6 +1,6 @@
 package com.example.myapplication.core.program
 
-import com.example.myapplication.core.model.legacyTrainingDays
+import com.example.myapplication.core.model.defaultTrainingDays
 import java.time.DayOfWeek
 
 object TrainingSchedule {
@@ -13,5 +13,5 @@ object TrainingSchedule {
         }
     }
 
-    fun defaultDays(sessionsPerWeek: Int): Set<DayOfWeek> = legacyTrainingDays(sessionsPerWeek)
+    fun defaultDays(sessionsPerWeek: Int): Set<DayOfWeek> = defaultTrainingDays(sessionsPerWeek)
 }

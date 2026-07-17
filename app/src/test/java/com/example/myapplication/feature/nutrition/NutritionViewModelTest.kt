@@ -426,7 +426,7 @@ class NutritionViewModelTest {
             nutritionRepository = FakeNutritionRepository(),
             foodCatalogDao = fakeDao,
             currentEpochDay = { 20636L },
-            ioDispatcher = dispatcher
+            dispatcher = dispatcher
         )
         collectUiState(viewModel)
         runCurrent()
@@ -576,7 +576,7 @@ class NutritionViewModelTest {
             nutritionRepository = repo,
             foodCatalogDao = dao,
             currentEpochDay = { 20636L },
-            ioDispatcher = dispatcher
+            dispatcher = dispatcher
         )
         collectUiState(viewModel)
         runCurrent()
@@ -602,7 +602,7 @@ class NutritionViewModelTest {
             nutritionRepository = repo,
             foodCatalogDao = dao,
             currentEpochDay = { 20636L },
-            ioDispatcher = dispatcher
+            dispatcher = dispatcher
         )
         collectUiState(viewModel)
         runCurrent()

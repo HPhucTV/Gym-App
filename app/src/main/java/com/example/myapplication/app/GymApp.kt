@@ -295,7 +295,7 @@ fun GymApp(container: AppContainer) {
                         }
                     }
                 },
-                onSearchCatalog = nutritionViewModel::searchFoodCatalog,
+                onSearchCatalog = nutritionViewModel::searchFoodsCatalog,
                 onClearCatalog = nutritionViewModel::clearFoodCatalog,
                 onAddFoodFromCatalog = nutritionViewModel::addFoodFromCatalog,
                 onAddToCart = nutritionViewModel::addToCart,

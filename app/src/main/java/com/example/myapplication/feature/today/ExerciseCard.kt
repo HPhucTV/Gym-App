@@ -57,11 +57,11 @@ fun ExerciseCard(
     val customColors = colors.customColors
 
     val borderColor by animateColorAsState(
-        targetValue = if (row.checked) customColors.checkedCardBorder else colors.outline,
+        targetValue = if (row.isChecked) customColors.checkedCardBorder else colors.outline,
         label = "cardBorder",
     )
     val bgColor by animateColorAsState(
-        targetValue = if (row.checked) customColors.greenLight else colors.surfaceVariant,
+        targetValue = if (row.isChecked) customColors.greenLight else colors.surfaceVariant,
         label = "cardBg",
     )
 
@@ -80,11 +80,11 @@ fun ExerciseCard(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(if (row.checked) SuccessGreen else EnergyOrange),
+                    .background(if (row.isChecked) SuccessGreen else EnergyOrange),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    if (row.checked) "✓" else "${row.orderIndex + 1}",
+                    if (row.isChecked) "✓" else "${row.orderIndex + 1}",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
@@ -99,7 +99,7 @@ fun ExerciseCard(
                         style = MaterialTheme.typography.titleMedium,
                         color = customColors.primaryText,
                         fontWeight = FontWeight.SemiBold,
-                        textDecoration = if (row.checked) TextDecoration.LineThrough else TextDecoration.None,
+                        textDecoration = if (row.isChecked) TextDecoration.LineThrough else TextDecoration.None,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (row.isLightWorkout) {
@@ -123,7 +123,7 @@ fun ExerciseCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        muscleEmoji(row.primaryMuscle),
+                        muscleEmoji(row.primaryMuscleGroup),
                         fontSize = 14.sp,
                     )
                     Text(
@@ -135,7 +135,7 @@ fun ExerciseCard(
             }
 
             Checkbox(
-                checked = row.checked,
+                checked = row.isChecked,
                 onCheckedChange = onCheckedChange,
                 enabled = enabled,
                 colors = CheckboxDefaults.colors(
@@ -209,7 +209,7 @@ fun ExerciseCard(
             }
         }
 
-        if (!row.checked) {
+        if (!row.isChecked) {
             TextButton(
                 onClick = onSubstitute,
                 enabled = enabled,

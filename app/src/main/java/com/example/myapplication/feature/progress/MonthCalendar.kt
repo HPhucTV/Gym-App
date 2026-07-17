@@ -20,6 +20,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 internal val CompletedDayBackgroundColor = SuccessGreen
+private val DayFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 internal val CompletedDayContentColor = Color(0xFF0F172A) // High contrast dark color on green background
 
 @Composable
@@ -79,18 +80,19 @@ fun MonthCalendar(
             }
         }
         Spacer(Modifier.height(6.dp))
-        val leading = selectedMonth.atDay(1).dayOfWeek.value - 1
-        val cells = leading + selectedMonth.lengthOfMonth()
-        val rows = (cells + 6) / 7
+        val leadingEmptyDays = selectedMonth.atDay(1).dayOfWeek.value - 1
+        val calendarCells = leadingEmptyDays + selectedMonth.lengthOfMonth()
+        val rows = (calendarCells + 6) / 7
         repeat(rows) { row ->
             Row(Modifier.fillMaxWidth()) {
                 repeat(7) { column ->
                     val index = row * 7 + column
-                    val dayNumber = index - leading + 1
+                    val dayNumber = index - leadingEmptyDays + 1
                     if (dayNumber !in 1..selectedMonth.lengthOfMonth()) {
                         Box(Modifier.weight(1f).height(48.dp).testTag("calendar-blank-$index"))
                     } else {
-                        CalendarDay(selectedMonth.atDay(dayNumber), selectedMonth.atDay(dayNumber).toEpochDay() in markedEpochDays,
+                        val localDate = selectedMonth.atDay(dayNumber)
+                        CalendarDay(localDate, localDate.toEpochDay() in markedEpochDays,
                             Modifier.weight(1f))
                     }
                 }
@@ -104,7 +106,7 @@ private fun CalendarDay(date: LocalDate, completed: Boolean, modifier: Modifier 
     val colors = MaterialTheme.colorScheme
     val customColors = colors.customColors
 
-    val formatted = date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+    val formatted = date.format(DayFormatter)
     val description = if (completed) "Đã hoàn thành ngày $formatted" else "Ngày $formatted"
     Box(
         modifier = modifier.height(48.dp).semantics(mergeDescendants = true) { contentDescription = description },

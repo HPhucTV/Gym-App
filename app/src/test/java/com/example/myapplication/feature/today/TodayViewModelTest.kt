@@ -37,7 +37,7 @@ class TodayViewModelTest {
         assertEquals(ProgramPhase.FOUNDATION, state.phase)
         vm.setChecked(0, true); advanceUntilIdle()
         assertEquals(Triple(7L, 0, true), repository.checks.single())
-        repository.current.value = workout(checked = true); runCurrent()
+        repository.current.value = workout(isChecked = true); runCurrent()
         assertTrue((vm.uiState.value as TodayUiState.Workout).canComplete)
     }
 
@@ -97,7 +97,7 @@ class TodayViewModelTest {
     }
 
     @Test fun `time budget is locked after any exercise is checked`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val vm = TodayViewModel(repository, catalog) { 100L }
         runCurrent()
 
@@ -153,10 +153,10 @@ class TodayViewModelTest {
     }
 
     @Test fun `completion is guarded deduplicated recoverable and retryable`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = false))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = false))
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         vm.completeWorkout(); runCurrent(); assertEquals(0, repository.completions)
-        repository.current.value = workout(checked = true); runCurrent()
+        repository.current.value = workout(isChecked = true); runCurrent()
         val gate = CompletableDeferred<Unit>(); repository.completionGate = gate
         vm.completeWorkout(); vm.completeWorkout(); runCurrent(); assertEquals(1, repository.completions)
         gate.complete(Unit); advanceUntilIdle()
@@ -169,7 +169,7 @@ class TodayViewModelTest {
     }
 
     @Test fun `completion uses current session and injected day then restores while flow catches up`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val vm = TodayViewModel(repository, catalog) { 4321 }; runCurrent()
         vm.completeWorkout(); advanceUntilIdle()
         assertEquals(7L to 4321L, repository.completionArguments.single())
@@ -179,7 +179,7 @@ class TodayViewModelTest {
     }
 
     @Test fun `completion exposes feedback request and submitting saves it once`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val feedback = FakeWorkoutFeedbackRepository()
         val vm = TodayViewModel(
             repository = repository,
@@ -207,7 +207,7 @@ class TodayViewModelTest {
     }
 
     @Test fun `dismissing feedback records nothing`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val feedback = FakeWorkoutFeedbackRepository()
         val vm = TodayViewModel(repository, catalog, feedbackRepository = feedback) { 100L }
         runCurrent()
@@ -221,7 +221,7 @@ class TodayViewModelTest {
     }
 
     @Test fun `feedback save failure keeps request open with retry message`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val feedback = FakeWorkoutFeedbackRepository().apply { failSave = true }
         val vm = TodayViewModel(repository, catalog, feedbackRepository = feedback) { 100L }
         runCurrent()
@@ -237,12 +237,12 @@ class TodayViewModelTest {
     }
 
     @Test fun `blocked and already completed results never leave workout stuck`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true))
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true))
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         repository.completionResult = CompleteWorkoutResult.BlockedByUncheckedExercises
         vm.completeWorkout(); advanceUntilIdle()
         assertTrue(vm.uiState.value is TodayUiState.Error || vm.uiState.value is TodayUiState.Workout)
-        repository.current.value = workout(checked = true, due = 99); runCurrent()
+        repository.current.value = workout(isChecked = true, due = 99); runCurrent()
         repository.completionResult = CompleteWorkoutResult.AlreadyCompleted
         vm.completeWorkout(); advanceUntilIdle()
         assertFalse((vm.uiState.value as TodayUiState.Workout).isCompleting)
@@ -250,14 +250,14 @@ class TodayViewModelTest {
     }
 
     @Test fun `completion cancellation runs cleanup and leaves surviving workout interactive`() = runTest(dispatcher) {
-        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { cancelCompletion = true }
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true)).apply { cancelCompletion = true }
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         vm.completeWorkout(); advanceUntilIdle()
         assertFalse((vm.uiState.value as TodayUiState.Workout).isCompleting)
     }
     @Test fun `pending uncheck prevents completion race`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
-        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { checkGate = gate }
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true)).apply { checkGate = gate }
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         vm.setChecked(0, false); vm.completeWorkout(); runCurrent()
         assertEquals(0, repository.completions)
@@ -268,10 +268,10 @@ class TodayViewModelTest {
 
     @Test fun `new session is interactive while old completion is gated`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
-        val repository = FakeTodayRepository(goal(), workout(checked = true)).apply { completionGate = gate }
+        val repository = FakeTodayRepository(goal(), workout(isChecked = true)).apply { completionGate = gate }
         val vm = TodayViewModel(repository, catalog) { 100 }; runCurrent()
         vm.completeWorkout(); runCurrent()
-        repository.current.value = workout(checked = true).copy(id = 8, titleVi = "Buổi mới"); runCurrent()
+        repository.current.value = workout(isChecked = true).copy(id = 8, titleVi = "Buổi mới"); runCurrent()
         val newer = vm.uiState.value as TodayUiState.Workout
         assertEquals(8L, newer.sessionId); assertFalse(newer.isCompleting)
         gate.complete(Unit); advanceUntilIdle()
@@ -302,15 +302,15 @@ class TodayViewModelTest {
         val failed = vm.uiState.value as TodayUiState.Workout
         assertNotNull(failed.interactionError)
         assertTrue(failed.pendingOrderIndices.isEmpty())
-        repository.failCheck = false; repository.current.value = workout(checked = true); runCurrent()
+        repository.failCheck = false; repository.current.value = workout(isChecked = true); runCurrent()
         assertTrue(vm.uiState.value is TodayUiState.Workout)
     }
 
     private fun goal(mode: RestDayMode = RestDayMode.FULL_REST) = ActiveGoal(1, GoalConfig(
         FitnessGoal.GENERAL_FITNESS, ExperienceLevel.BEGINNER, EquipmentProfile.BODYWEIGHT_ONLY, 3, 4, mode), 12)
-    private fun workout(checked: Boolean = false, due: Long = 100, exerciseId: String = "push_up") = WorkoutSession(
+    private fun workout(isChecked: Boolean = false, due: Long = 100, exerciseId: String = "push_up") = WorkoutSession(
         7, 1, 0, "Toàn thân A", "Ngực và thân giữa", 25, due,
-        listOf(WorkoutExercise(0, exerciseId, ExercisePrescription(exerciseId, 3, 8, 12, restSeconds = 60), checked)))
+        listOf(WorkoutExercise(0, exerciseId, ExercisePrescription(exerciseId, 3, 8, 12, restSeconds = 60), isChecked)))
 
     companion object {
         val catalog = listOf(ExerciseDefinition("push_up", "project:push_up", "Chống đẩy",
@@ -344,7 +344,7 @@ private class FakeTodayRepository(goal: ActiveGoal?, workout: WorkoutSession?) :
     override fun observeCompletedWorkouts(): Flow<List<CompletedWorkout>> = flowOf(emptyList())
     override suspend fun setExerciseChecked(sessionId: Long, orderIndex: Int, checked: Boolean) {
         checks += Triple(sessionId, orderIndex, checked); checkGate?.await(); if (failCheck) error("disk")
-        current.value = current.value?.copy(exercises = current.value!!.exercises.map { if (it.orderIndex == orderIndex) it.copy(checked = checked) else it })
+        current.value = current.value?.copy(exercises = current.value!!.exercises.map { if (it.orderIndex == orderIndex) it.copy(isChecked = checked) else it })
     }
     override suspend fun completeWorkout(sessionId: Long, completedEpochDay: Long): CompleteWorkoutResult {
         completions++; completionArguments += sessionId to completedEpochDay; completionGate?.await()

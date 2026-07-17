@@ -65,8 +65,8 @@ class ProgramContentQualityTest {
         programs.forEach { program ->
             program.workouts.zipWithNext().forEach { (current, next) ->
                 if (current.restDaysAfter == 0) {
-                    val currentMuscles = current.exercises.map { exercises.getValue(it.exerciseId).primaryMuscle }.toSet()
-                    val nextMuscles = next.exercises.map { exercises.getValue(it.exerciseId).primaryMuscle }.toSet()
+                    val currentMuscles = current.exercises.map { exercises.getValue(it.exerciseId).primaryMuscleGroup }.toSet()
+                    val nextMuscles = next.exercises.map { exercises.getValue(it.exerciseId).primaryMuscleGroup }.toSet()
                     assertTrue(
                         "${program.id} ${current.sequence}->${next.sequence} overlap ${currentMuscles intersect nextMuscles}",
                         (currentMuscles intersect nextMuscles).isEmpty(),

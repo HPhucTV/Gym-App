@@ -272,7 +272,7 @@ class RoomAdaptationRepository(
         if (sessionIds.isEmpty()) {
             return DecisionActionResult.Stale("Không còn buổi tập sắp tới để áp dụng giảm tải.")
         }
-        val sessions = sessionIds.mapNotNull { workoutDao.getSession(it) }
+        val sessions = workoutDao.getSessions(sessionIds)
         if (sessions.size != sessionIds.size || sessions.any { it.volumeScalePercent != 100 }) {
             return DecisionActionResult.Stale("Lịch tập đã thay đổi kể từ khi tạo đề xuất giảm tải.")
         }

@@ -52,6 +52,7 @@ class RoomWorkoutRepository(
     )
 
     private val dao = database.workoutDao()
+    private val exercisesMap by lazy { exercisesProvider().associateBy { it.id } }
 
     override fun observeActiveGoal(): Flow<ActiveGoal?> = dao.observeActiveGoal().map { row ->
         row?.let {
@@ -159,8 +160,8 @@ class RoomWorkoutRepository(
                         orderIndex = exerciseIndex,
                         exerciseId = prescription.exerciseId,
                         sets = prescription.sets,
-                        repsMin = prescription.repsMin,
-                        repsMax = prescription.repsMax,
+                        minReps = prescription.minReps,
+                        maxReps = prescription.maxReps,
                         durationSeconds = prescription.durationSeconds,
                         restSeconds = prescription.restSeconds,
                     )
@@ -185,14 +186,14 @@ class RoomWorkoutRepository(
 
         val row = dao.getExercisesForSession(sessionId).firstOrNull { it.orderIndex == orderIndex }
             ?: return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
-        if (row.checked) return@withTransaction ExerciseSubstitutionResult.AlreadyChecked
+        if (row.isChecked) return@withTransaction ExerciseSubstitutionResult.AlreadyChecked
 
         val session = dao.getSession(sessionId)
             ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
         val profile = dao.getGoal(session.goalId)?.equipmentProfile
             ?: return@withTransaction ExerciseSubstitutionResult.StaleSession
         val originalId = row.originalExerciseId ?: row.exerciseId
-        val validIds = ExerciseSubstitutionEngine(exercisesProvider()).candidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
+        val validIds = ExerciseSubstitutionEngine(exercisesProvider()).findSubstitutionCandidates(originalId, profile).mapTo(mutableSetOf()) { it.id }
         if (row.originalExerciseId != null) validIds += originalId
         if (replacementExerciseId !in validIds) {
             return@withTransaction ExerciseSubstitutionResult.InvalidCandidate
@@ -231,8 +232,8 @@ class RoomWorkoutRepository(
                     ExercisePrescription(
                         exerciseId = row.exerciseId,
                         sets = scaledSets(row.sets, session.volumeScalePercent),
-                        repsMin = row.repsMin,
-                        repsMax = row.repsMax,
+                        minReps = row.minReps,
+                        maxReps = row.maxReps,
                         durationSeconds = row.durationSeconds,
                         restSeconds = row.restSeconds,
                     )
@@ -326,9 +327,10 @@ class RoomWorkoutRepository(
                     trainingDays = trainingDays,
                     workoutCount = laterSessions.size,
                 )
-                laterSessions.zip(newDueDates).forEach { (later, dueEpochDay) ->
-                    dao.updateSessionDueEpochDay(later.id, dueEpochDay)
+                val updatedSessions = laterSessions.zip(newDueDates).map { (later, dueEpochDay) ->
+                    later.copy(dueEpochDay = dueEpochDay)
                 }
+                dao.updateSessions(updatedSessions)
             }
         }
         CompleteWorkoutResult.Completed
@@ -350,7 +352,7 @@ class RoomWorkoutRepository(
     }
 
     private fun SessionWithExercises.toDomain(soreMuscles: Set<String> = emptySet()): WorkoutSession {
-        val exercisesMap = exercisesProvider().associateBy { it.id }
+        val exercisesMap = this@RoomWorkoutRepository.exercisesMap
         return WorkoutSession(
             id = session.id,
             goalId = session.goalId,
@@ -361,7 +363,7 @@ class RoomWorkoutRepository(
             dueEpochDay = session.dueEpochDay,
             exercises = exercises.filterNot { it.omittedByTimeBudget }.sortedBy { it.orderIndex }.map { exercise ->
                 val definition = exercisesMap[exercise.exerciseId]
-                val isSore = definition?.primaryMuscle?.name?.let { muscleName ->
+                val isSore = definition?.primaryMuscleGroup?.name?.let { muscleName ->
                     soreMuscles.contains(muscleName)
                 } ?: false
 
@@ -381,12 +383,12 @@ class RoomWorkoutRepository(
                         } else {
                             exercise.sets
                         },
-                        repsMin = exercise.repsMin,
-                        repsMax = exercise.repsMax,
+                        minReps = exercise.minReps,
+                        maxReps = exercise.maxReps,
                         durationSeconds = exercise.durationSeconds,
                         restSeconds = exercise.restSeconds,
                     ),
-                    checked = exercise.checked,
+                    isChecked = exercise.isChecked,
                     isLightWorkout = isSore && session.completedEpochDay == null,
                 )
             },

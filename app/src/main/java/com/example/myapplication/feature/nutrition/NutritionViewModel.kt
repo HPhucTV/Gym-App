@@ -143,7 +143,7 @@ class NutritionViewModel(
     private val foodAnalysisClient: FoodAnalysisClient = OkHttpFoodAnalysisClient(),
     private val cloudAiConsent: Flow<Boolean> = flowOf(false),
     private val currentEpochDay: () -> Long = { LocalDate.now().toEpochDay() },
-    private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
+    private val dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
 ) : ViewModel() {
     private val scanningState = MutableStateFlow(false)
     private val scanResultState = MutableStateFlow<ScanResult?>(null)
@@ -687,10 +687,10 @@ class NutritionViewModel(
         viewModelScope.launch {
             try {
                 val batchId = System.currentTimeMillis().toString()
-                val parseResult = kotlinx.coroutines.withContext(ioDispatcher) {
+                val parseResult = kotlinx.coroutines.withContext(dispatcher) {
                     if (fileName.endsWith(".xlsx", ignoreCase = true)) {
                         NutritionXlsxParser.parse(fileData, batchId)
-                    } else {
+                      } else {
                         val csvText = String(fileData, Charsets.UTF_8)
                         NutritionCsvParser.parse(csvText, batchId)
                     }
@@ -700,7 +700,7 @@ class NutritionViewModel(
                     importSuccessState.value = false
                     importErrorMessageState.value = parseResult.warnings.firstOrNull() ?: "Tệp trống hoặc không đúng cấu trúc."
                 } else {
-                    kotlinx.coroutines.withContext(ioDispatcher) {
+                    kotlinx.coroutines.withContext(dispatcher) {
                         dao.insertAll(parseResult.items)
                     }
                     importWarningsState.value = parseResult.warnings
@@ -715,13 +715,13 @@ class NutritionViewModel(
 
     suspend fun exportFoodCatalogToXlsx(): ByteArray {
         val dao = foodCatalogDao ?: return ByteArray(0)
-        val items = kotlinx.coroutines.withContext(ioDispatcher) {
+        val items = kotlinx.coroutines.withContext(dispatcher) {
             dao.getAllNow()
         }
         return com.example.myapplication.core.nutrition.NutritionXlsxWriter.write(items)
     }
 
-    fun searchFoodCatalog(query: String) {
+    fun searchFoodsCatalog(query: String) {
         searchQueryState.value = query
     }
 

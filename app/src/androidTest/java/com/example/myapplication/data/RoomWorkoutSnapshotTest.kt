@@ -40,8 +40,8 @@ class RoomWorkoutSnapshotTest {
             assertEquals(listOf("squat", "plank"), exercises.map { it.exerciseId })
             assertEquals(listOf(0, 1), exercises.map { it.orderIndex })
             assertEquals(3, exercises.first().sets)
-            assertEquals(8, exercises.first().repsMin)
-            assertEquals(12, exercises.first().repsMax)
+            assertEquals(8, exercises.first().minReps)
+            assertEquals(12, exercises.first().maxReps)
             assertEquals(60, exercises.first().restSeconds)
             assertEquals(30, exercises.last().durationSeconds)
         } finally {

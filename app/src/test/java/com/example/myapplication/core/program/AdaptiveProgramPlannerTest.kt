@@ -47,8 +47,8 @@ class AdaptiveProgramPlannerTest {
         val original = program().workouts.first().exercises.first()
         val build = plan.first { it.week == 3 }.exercises.first()
         assertEquals(original.exerciseId, build.exerciseId)
-        assertEquals(original.repsMin, build.repsMin)
-        assertEquals(original.repsMax, build.repsMax)
+        assertEquals(original.minReps, build.minReps)
+        assertEquals(original.maxReps, build.maxReps)
         assertEquals(original.durationSeconds, build.durationSeconds)
         assertEquals(original.restSeconds, build.restSeconds)
     }

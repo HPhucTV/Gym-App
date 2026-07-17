@@ -1,6 +1,7 @@
 package com.example.myapplication.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 @Serializable
 enum class Equipment {
@@ -54,8 +55,8 @@ data class ExerciseDefinition(
     val level: ExperienceLevel,
     val equipment: List<Equipment>,
     val movementPattern: MovementPattern,
-    val primaryMuscle: MuscleGroup,
-    val secondaryMuscles: List<MuscleGroup> = emptyList(),
+    @SerialName("primaryMuscle") val primaryMuscleGroup: MuscleGroup,
+    @SerialName("secondaryMuscles") val secondaryMuscleGroups: List<MuscleGroup> = emptyList(),
     val instructionsVi: List<String>,
     val substituteIds: List<String> = emptyList(),
     val gif3dPath: String? = null,
@@ -65,8 +66,8 @@ data class ExerciseDefinition(
 data class ExercisePrescription(
     val exerciseId: String,
     val sets: Int,
-    val repsMin: Int? = null,
-    val repsMax: Int? = null,
+    @SerialName("repsMin") val minReps: Int? = null,
+    @SerialName("repsMax") val maxReps: Int? = null,
     val durationSeconds: Int? = null,
     val restSeconds: Int,
 )

@@ -26,13 +26,13 @@ class ExerciseSubstitutionEngineTest {
 
         assertEquals(
             listOf("knee_push_up"),
-            engine.candidates("push_up", EquipmentProfile.BODYWEIGHT_ONLY).map { it.id },
+            engine.findSubstitutionCandidates("push_up", EquipmentProfile.BODYWEIGHT_ONLY).map { it.id },
         )
         assertEquals(
             listOf("knee_push_up", "machine_press", "barbell_press"),
-            engine.candidates("push_up", EquipmentProfile.FULL_GYM).map { it.id },
+            engine.findSubstitutionCandidates("push_up", EquipmentProfile.FULL_GYM).map { it.id },
         )
-        assertEquals(emptyList<ExerciseDefinition>(), engine.candidates("missing", EquipmentProfile.FULL_GYM))
+        assertEquals(emptyList<ExerciseDefinition>(), engine.findSubstitutionCandidates("missing", EquipmentProfile.FULL_GYM))
     }
 
     @Test
@@ -96,7 +96,7 @@ class ExerciseSubstitutionEngineTest {
         level = level,
         equipment = equipment,
         movementPattern = movementPattern,
-        primaryMuscle = muscle,
+        primaryMuscleGroup = muscle,
         instructionsVi = listOf("Bước một.", "Bước hai."),
         substituteIds = substituteIds,
     )

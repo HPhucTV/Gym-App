@@ -163,7 +163,7 @@ class ProgressViewModel(
                 for (presc in workout.exercises) {
                     val definition = exercisesCatalog[presc.exerciseId]
                     if (definition != null) {
-                        muscleStats[definition.primaryMuscle] = (muscleStats[definition.primaryMuscle] ?: 0) + 1
+                        muscleStats[definition.primaryMuscleGroup] = (muscleStats[definition.primaryMuscleGroup] ?: 0) + 1
                     }
                 }
             }

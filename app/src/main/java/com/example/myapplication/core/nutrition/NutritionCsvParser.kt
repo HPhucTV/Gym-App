@@ -2,6 +2,8 @@ package com.example.myapplication.core.nutrition
 
 import com.example.myapplication.data.local.FoodCatalogEntity
 
+private val NonNumericRegex = Regex("[^0-9.,-]")
+
 data class CsvParseResult(
     val items: List<FoodCatalogEntity>,
     val warnings: List<String>
@@ -66,22 +68,22 @@ object NutritionCsvParser {
         val warnings = mutableListOf<String>()
 
         for (i in 1 until rows.size) {
-            val tokens = rows[i]
-            if (tokens.isEmpty()) continue
+            val rowCells = rows[i]
+            if (rowCells.isEmpty()) continue
 
             val rowNum = i + 1
-            val name = if (nameIdx < tokens.size) tokens[nameIdx] else ""
+            val name = if (nameIdx < rowCells.size) rowCells[nameIdx] else ""
             if (name.isEmpty()) continue
 
-            val grams = if (gramsIdx >= 0 && gramsIdx < tokens.size) parseDouble(tokens[gramsIdx], 100.0) else 100.0
-            val calories = if (caloriesIdx >= 0 && caloriesIdx < tokens.size) parseDouble(tokens[caloriesIdx], 0.0) else 0.0
-            val fat = if (fatIdx >= 0 && fatIdx < tokens.size) parseDouble(tokens[fatIdx], 0.0) else 0.0
-            val carbs = if (carbsIdx >= 0 && carbsIdx < tokens.size) parseDouble(tokens[carbsIdx], 0.0) else 0.0
-            val protein = if (proteinIdx >= 0 && proteinIdx < tokens.size) parseDouble(tokens[proteinIdx], 0.0) else 0.0
-            val fiber = if (fiberIdx >= 0 && fiberIdx < tokens.size) parseDouble(tokens[fiberIdx], 0.0) else 0.0
-            val potassium = if (potassiumIdx >= 0 && potassiumIdx < tokens.size) parseDouble(tokens[potassiumIdx], 0.0) else 0.0
-            val sodium = if (sodiumIdx >= 0 && sodiumIdx < tokens.size) parseDouble(tokens[sodiumIdx], 0.0) else 0.0
-            val cholesterol = if (cholesterolIdx >= 0 && cholesterolIdx < tokens.size) parseDouble(tokens[cholesterolIdx], 0.0) else 0.0
+            val grams = if (gramsIdx >= 0 && gramsIdx < rowCells.size) parseDouble(rowCells[gramsIdx], 100.0) else 100.0
+            val calories = if (caloriesIdx >= 0 && caloriesIdx < rowCells.size) parseDouble(rowCells[caloriesIdx], 0.0) else 0.0
+            val fat = if (fatIdx >= 0 && fatIdx < rowCells.size) parseDouble(rowCells[fatIdx], 0.0) else 0.0
+            val carbs = if (carbsIdx >= 0 && carbsIdx < rowCells.size) parseDouble(rowCells[carbsIdx], 0.0) else 0.0
+            val protein = if (proteinIdx >= 0 && proteinIdx < rowCells.size) parseDouble(rowCells[proteinIdx], 0.0) else 0.0
+            val fiber = if (fiberIdx >= 0 && fiberIdx < rowCells.size) parseDouble(rowCells[fiberIdx], 0.0) else 0.0
+            val potassium = if (potassiumIdx >= 0 && potassiumIdx < rowCells.size) parseDouble(rowCells[potassiumIdx], 0.0) else 0.0
+            val sodium = if (sodiumIdx >= 0 && sodiumIdx < rowCells.size) parseDouble(rowCells[sodiumIdx], 0.0) else 0.0
+            val cholesterol = if (cholesterolIdx >= 0 && cholesterolIdx < rowCells.size) parseDouble(rowCells[cholesterolIdx], 0.0) else 0.0
 
             // Validation rules
             if (grams < 0.0 || calories < 0.0 || fat < 0.0 || carbs < 0.0 || protein < 0.0 || fiber < 0.0 || potassium < 0.0 || sodium < 0.0 || cholesterol < 0.0) {
@@ -96,9 +98,9 @@ object NutritionCsvParser {
                 }
             }
 
-            val macroCal = (protein * 4.0) + (carbs * 4.0) + (fat * 9.0)
-            if (calories > 20.0 && kotlin.math.abs(macroCal - calories) / calories > 0.3) {
-                warnings.add("Dòng $rowNum: Tổng calo của Protein/Carb/Fat (${macroCal.toInt()} kcal) lệch hơn 30% so với Calo khai báo ($calories kcal) ở món '$name'.")
+            val macroCalories = (protein * 4.0) + (carbs * 4.0) + (fat * 9.0)
+            if (calories > 20.0 && kotlin.math.abs(macroCalories - calories) / calories > 0.3) {
+                warnings.add("Dòng $rowNum: Tổng calo của Protein/Carb/Fat (${macroCalories.toInt()} kcal) lệch hơn 30% so với Calo khai báo ($calories kcal) ở món '$name'.")
             }
 
             if (fiber > grams) {
@@ -125,36 +127,36 @@ object NutritionCsvParser {
         return CsvParseResult(foodList, warnings)
     }
 
-    private fun parseCsvLine(line: String, sep: Char): List<String> {
+    private fun parseCsvLine(line: String, separator: Char): List<String> {
         val result = mutableListOf<String>()
-        var cur = StringBuilder()
+        var currentCellBuilder = StringBuilder()
         var inQuotes = false
         var i = 0
         while (i < line.length) {
             val c = line[i]
             if (c == '"') {
                 if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
-                    cur.append('"')
+                    currentCellBuilder.append('"')
                     i++
                 } else {
                     inQuotes = !inQuotes
                 }
-            } else if (c == sep && !inQuotes) {
-                result.add(cur.toString().trim())
-                cur = StringBuilder()
+            } else if (c == separator && !inQuotes) {
+                result.add(currentCellBuilder.toString().trim())
+                currentCellBuilder = StringBuilder()
             } else {
-                cur.append(c)
+                currentCellBuilder.append(c)
             }
             i++
         }
-        result.add(cur.toString().trim())
+        result.add(currentCellBuilder.toString().trim())
         return result
     }
 
     private fun parseDouble(value: String, default: Double): Double {
         if (value.isEmpty()) return default
         // Clean value of non-numeric characters except dots, commas, minus, and digits
-        val cleaned = value.replace(Regex("[^0-9.,-]"), "").trim()
+        val cleaned = value.replace(NonNumericRegex, "").trim()
         if (cleaned.isEmpty()) return default
         return try {
             // Replace comma with dot if comma is used as decimal separator

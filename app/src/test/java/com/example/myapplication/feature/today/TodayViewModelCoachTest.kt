@@ -77,7 +77,7 @@ class TodayViewModelCoachTest {
                 level = ExperienceLevel.BEGINNER,
                 equipment = emptyList(),
                 movementPattern = MovementPattern.HORIZONTAL_PUSH,
-                primaryMuscle = MuscleGroup.CHEST,
+                primaryMuscleGroup = MuscleGroup.CHEST,
                 instructionsVi = listOf("Giữ thân thẳng"),
             ),
         )
@@ -116,7 +116,7 @@ private class CoachWorkoutRepository : WorkoutRepository {
                 orderIndex = 0,
                 exerciseId = "push_up",
                 prescription = ExercisePrescription("push_up", 3, 8, 12, restSeconds = 60),
-                checked = false,
+                isChecked = false,
             ),
         ),
     )

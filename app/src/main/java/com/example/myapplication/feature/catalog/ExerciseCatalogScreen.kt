@@ -45,7 +45,7 @@ fun ExerciseCatalogScreen(
         exercises.filter { exercise ->
             val matchesSearch = exercise.nameVi.contains(searchQuery, ignoreCase = true) ||
                     exercise.instructionsVi.any { it.contains(searchQuery, ignoreCase = true) }
-            val matchesMuscle = selectedMuscle == null || exercise.primaryMuscle == selectedMuscle || exercise.secondaryMuscles.contains(selectedMuscle)
+            val matchesMuscle = selectedMuscle == null || exercise.primaryMuscleGroup == selectedMuscle || exercise.secondaryMuscleGroups.contains(selectedMuscle)
             val matchesEquipment = selectedEquipment == null || exercise.equipment.contains(selectedEquipment)
             matchesSearch && matchesMuscle && matchesEquipment
         }
@@ -202,7 +202,7 @@ private fun CatalogExerciseCard(exercise: ExerciseDefinition) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    muscleEmoji(exercise.primaryMuscle),
+                    muscleEmoji(exercise.primaryMuscleGroup),
                     fontSize = 18.sp
                 )
             }
@@ -216,7 +216,7 @@ private fun CatalogExerciseCard(exercise: ExerciseDefinition) {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "${muscleLabelVi(exercise.primaryMuscle)} · ${exercise.equipment.joinToString { equipmentLabelVi(it) }}",
+                    "${muscleLabelVi(exercise.primaryMuscleGroup)} · ${exercise.equipment.joinToString { equipmentLabelVi(it) }}",
                     color = customColors.mutedText,
                     style = MaterialTheme.typography.bodySmall
                 )

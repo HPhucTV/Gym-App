@@ -78,7 +78,7 @@ class OnboardingViewModel(
             sessionsPerWeek = sessionsPerWeek,
             durationWeeks = durationWeeks,
             restDayMode = null,
-            trainingDays = legacyTrainingDays(sessionsPerWeek),
+            trainingDays = defaultTrainingDays(sessionsPerWeek),
             sessionDurationMinutes = 45,
         )
     }

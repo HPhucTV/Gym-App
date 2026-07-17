@@ -130,7 +130,7 @@ class TodayScreenTest {
         listOf(WorkoutRowUi(0, "Chống đẩy", "3 × 8", 60, listOf(instruction, "Bước hai"), false, "push_up")),
         0, 1, false, false)
     private fun set(row: WorkoutRowUi, complete: Boolean, onCheck: () -> Unit = {}) = setState(
-        TodayUiState.Workout(7, "Toàn thân", "Ngực", 25, listOf(row), if (row.checked) 1 else 0, 1, complete, false),
+        TodayUiState.Workout(7, "Toàn thân", "Ngực", 25, listOf(row), if (row.isChecked) 1 else 0, 1, complete, false),
         onCheckedChange = { _, _ -> onCheck() })
     private fun setState(state: TodayUiState, onCheckedChange: (Int, Boolean) -> Unit = { _, _ -> }) = rule.setContent {
         GymAppTheme { TodayScreen(state, onCheckedChange, {}, {}) }
