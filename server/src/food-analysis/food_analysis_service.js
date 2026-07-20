@@ -1,0 +1,181 @@
+const {
+  FoodAnalysisError,
+  providerObservationSchema,
+} = require('./contracts');
+
+const FIRST_IMAGE_CONFIDENCE = 0.60;
+const SECOND_IMAGE_CONFIDENCE = 0.55;
+const REQUIRED_LABEL_FACTS = ['calories', 'proteinGrams', 'carbsGrams', 'fatGrams'];
+
+function unavailable() {
+  return new FoodAnalysisError(
+    'ANALYSIS_UNAVAILABLE',
+    'Phiên phân tích không khả dụng.',
+    409,
+  );
+}
+
+function invalidConfirmation(field = 'confirmation') {
+  return new FoodAnalysisError(
+    'INVALID_CONFIRMATION',
+    'Xác nhận dinh dưỡng không hợp lệ.',
+    400,
+    { field },
+  );
+}
+
+class FoodAnalysisService {
+  constructor({ observer, estimator, sessionStore, logger }) {
+    this.observer = observer;
+    this.estimator = estimator;
+    this.sessionStore = sessionStore;
+    this.logger = logger;
+  }
+
+  async start({ bytes, mimeType }) {
+    const observation = this.#validated(await this.observer.observePrimary({ bytes, mimeType }));
+    const status = this.#initialStatus(observation);
+    const session = this.sessionStore.create({
+      imageType: observation.imageType,
+      status,
+      observation,
+      usedSecondImage: false,
+    });
+    return this.#reviewResponse(session);
+  }
+
+  async addSecondaryImage(analysisId, { bytes, mimeType }) {
+    const session = this.sessionStore.get(analysisId);
+    if (session.status !== 'NEEDS_SECOND_IMAGE' || session.usedSecondImage) throw unavailable();
+    const observation = this.#validated(await this.observer.observeSecondary({
+      bytes,
+      mimeType,
+      previousObservation: session.observation,
+    }));
+    const status = observation.imageType === 'UNKNOWN'
+      ? 'UNRECOGNIZED'
+      : 'NEEDS_CONFIRMATION';
+    const updated = this.sessionStore.update(analysisId, {
+      imageType: observation.imageType,
+      status,
+      observation,
+      usedSecondImage: true,
+    });
+    return this.#reviewResponse(updated);
+  }
+
+  async confirm(analysisId, confirmation) {
+    const session = this.sessionStore.get(analysisId);
+    if (session.status !== 'NEEDS_CONFIRMATION') throw unavailable();
+    const cleanConfirmation = this.#confirmationFor(session, confirmation);
+    this.#requireManualComponents(session, cleanConfirmation);
+
+    const result = session.imageType === 'MEAL'
+      ? this.estimator.estimateMeal(cleanConfirmation)
+      : this.estimator.estimateLabel(cleanConfirmation);
+    const response = {
+      analysisId,
+      imageType: session.imageType,
+      status: 'READY',
+      nameVi: cleanConfirmation.nameVi,
+      estimate: result.estimate,
+      confidenceLevel: result.confidenceLevel,
+      uncertaintyReasons: session.imageType === 'MEAL'
+        ? cleanConfirmation.uncertaintyReasons
+        : [],
+      calculationSummary: result.calculationSummary || result.calculationSummaryVi,
+    };
+    this.sessionStore.delete(analysisId);
+    return response;
+  }
+
+  #validated(value) {
+    const parsed = providerObservationSchema.safeParse(value);
+    if (!parsed.success) {
+      throw new FoodAnalysisError(
+        'INVALID_PROVIDER_RESPONSE',
+        'Phản hồi phân tích ảnh không hợp lệ.',
+        502,
+      );
+    }
+    return parsed.data;
+  }
+
+  #initialStatus(observation) {
+    if (observation.imageType === 'UNKNOWN') return 'UNRECOGNIZED';
+    if (observation.imageType === 'MEAL') {
+      const uncertainMajor = observation.components.some((component) => component.isMajor
+        && (component.confidence < FIRST_IMAGE_CONFIDENCE || component.suggestedPortion === null));
+      const separationAmbiguous = observation.uncertaintyReasons.includes('OVERLAP');
+      return uncertainMajor || separationAmbiguous
+        ? 'NEEDS_SECOND_IMAGE'
+        : 'NEEDS_CONFIRMATION';
+    }
+    return this.#labelNeedsMoreInformation(observation.labelFacts)
+      ? 'NEEDS_SECOND_IMAGE'
+      : 'NEEDS_CONFIRMATION';
+  }
+
+  #labelNeedsMoreInformation(labelFacts) {
+    const factsComplete = REQUIRED_LABEL_FACTS.every((field) => labelFacts.facts[field] !== null);
+    const consumedAmountKnown = labelFacts.netWeightGrams !== null;
+    return labelFacts.basis === 'UNKNOWN'
+      || !factsComplete
+      || !consumedAmountKnown
+      || labelFacts.missingFields.length > 0;
+  }
+
+  #reviewResponse(session) {
+    const observation = session.observation;
+    return {
+      analysisId: session.id,
+      imageType: session.imageType,
+      status: session.status,
+      components: observation.imageType === 'MEAL'
+        ? observation.components.map((component) => ({
+          ...component,
+          matchedFoodId: this.estimator.database?.match(component.nameVi)?.id || null,
+          requiresManualPortion: session.usedSecondImage
+            && component.isMajor
+            && (component.confidence < SECOND_IMAGE_CONFIDENCE || component.suggestedPortion === null),
+        }))
+        : null,
+      labelFacts: observation.imageType === 'NUTRITION_LABEL'
+        ? observation.labelFacts
+        : null,
+      confidence: observation.confidence,
+      uncertaintyReasons: observation.uncertaintyReasons,
+      expiresAt: session.expiresAt,
+    };
+  }
+
+  #confirmationFor(session, confirmation) {
+    if (!confirmation || typeof confirmation !== 'object' || Array.isArray(confirmation)) {
+      throw invalidConfirmation();
+    }
+    const { kind, ...cleanConfirmation } = confirmation;
+    if (kind !== undefined && kind !== session.imageType) throw invalidConfirmation('kind');
+    return cleanConfirmation;
+  }
+
+  #requireManualComponents(session, confirmation) {
+    if (session.imageType !== 'MEAL' || !session.usedSecondImage) return;
+    const manualIds = session.observation.components
+      .filter((component) => component.isMajor
+        && (component.confidence < SECOND_IMAGE_CONFIDENCE || component.suggestedPortion === null))
+      .map((component) => component.id);
+    if (manualIds.length === 0) return;
+    if (!Array.isArray(confirmation.components)) throw invalidConfirmation('components');
+    const confirmedIds = new Set(confirmation.components
+      .filter((component) => component && component.portion)
+      .map((component) => component.observationId));
+    const missing = manualIds.find((id) => !confirmedIds.has(id));
+    if (missing) throw invalidConfirmation(`components.${missing}.portion`);
+  }
+}
+
+module.exports = {
+  FIRST_IMAGE_CONFIDENCE,
+  SECOND_IMAGE_CONFIDENCE,
+  FoodAnalysisService,
+};

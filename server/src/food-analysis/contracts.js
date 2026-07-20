@@ -53,11 +53,83 @@ const labelConfirmationSchema = z.object({
   }
 });
 
-const providerObservationSchema = z.object({
-  observationId: z.string().trim().min(1).max(100),
+const providerConfidenceSchema = z.number().finite().min(0).max(1);
+const providerComponentSchema = z.object({
+  id: z.string().trim().min(1).max(100),
   nameVi: z.string().trim().min(1).max(160),
-  confidence: z.number().finite().min(0).max(1),
+  confidence: providerConfidenceSchema,
+  isMajor: z.boolean(),
+  suggestedPortion: portionSchema.nullable(),
 }).strict();
+const providerMissingFieldSchema = z.enum([
+  'BASIS',
+  'CALORIES',
+  'PROTEIN_GRAMS',
+  'CARBS_GRAMS',
+  'FAT_GRAMS',
+  'SERVING_SIZE_GRAMS',
+  'SERVINGS_PER_CONTAINER',
+  'NET_WEIGHT_GRAMS',
+  'CONSUMED_AMOUNT',
+]);
+const providerNullableFactsSchema = z.object({
+  calories: finiteNonNegative.max(1000).nullable(),
+  proteinGrams: finiteNonNegative.max(100).nullable(),
+  carbsGrams: finiteNonNegative.max(100).nullable(),
+  fatGrams: finiteNonNegative.max(100).nullable(),
+}).strict();
+const providerLabelFactsSchema = z.object({
+  nameVi: z.string().trim().min(1).max(160),
+  basis: z.enum(['PER_100G', 'PER_SERVING', 'UNKNOWN']),
+  facts: providerNullableFactsSchema,
+  servingSizeGrams: z.number().finite().positive().max(5000).nullable(),
+  servingsPerContainer: z.number().finite().positive().max(100).nullable(),
+  netWeightGrams: z.number().finite().positive().max(5000).nullable(),
+  confidence: providerConfidenceSchema,
+  missingFields: z.array(providerMissingFieldSchema).max(9),
+}).strict().superRefine((value, context) => {
+  const requiredMissingFields = [
+    [value.basis === 'UNKNOWN', 'BASIS', 'basis'],
+    [value.facts.calories === null, 'CALORIES', 'facts.calories'],
+    [value.facts.proteinGrams === null, 'PROTEIN_GRAMS', 'facts.proteinGrams'],
+    [value.facts.carbsGrams === null, 'CARBS_GRAMS', 'facts.carbsGrams'],
+    [value.facts.fatGrams === null, 'FAT_GRAMS', 'facts.fatGrams'],
+    [value.netWeightGrams === null, 'CONSUMED_AMOUNT', 'netWeightGrams'],
+  ];
+  for (const [isMissing, code, path] of requiredMissingFields) {
+    if (isMissing && !value.missingFields.includes(code)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: path.split('.'),
+        message: `${code} must be named in missingFields`,
+      });
+    }
+  }
+});
+const providerObservationBase = {
+  confidence: providerConfidenceSchema,
+  uncertaintyReasons: z.array(uncertaintyReasonSchema).max(4),
+};
+const providerObservationSchema = z.discriminatedUnion('imageType', [
+  z.object({
+    imageType: z.literal('MEAL'),
+    ...providerObservationBase,
+    components: z.array(providerComponentSchema).min(1).max(20),
+    labelFacts: z.null(),
+  }).strict(),
+  z.object({
+    imageType: z.literal('NUTRITION_LABEL'),
+    ...providerObservationBase,
+    components: z.null(),
+    labelFacts: providerLabelFactsSchema,
+  }).strict(),
+  z.object({
+    imageType: z.literal('UNKNOWN'),
+    ...providerObservationBase,
+    components: z.null(),
+    labelFacts: z.null(),
+  }).strict(),
+]);
 const analysisStatusSchema = z.enum(['PENDING_CONFIRMATION', 'CONFIRMED', 'REJECTED']);
 const rangeSchema = z.object({ min: finiteNonNegative, mid: finiteNonNegative, max: finiteNonNegative }).strict()
   .refine((range) => range.min <= range.mid && range.mid <= range.max, 'Khoảng ước tính không hợp lệ');
@@ -95,6 +167,8 @@ module.exports = {
   nutrientFactsSchema,
   nutritionEstimateSchema,
   portionSchema,
+  providerComponentSchema,
+  providerLabelFactsSchema,
   providerObservationSchema,
   rangeSchema,
   parseConfirmation,
