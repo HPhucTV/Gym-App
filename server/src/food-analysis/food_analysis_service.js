@@ -2,6 +2,12 @@ const {
   FoodAnalysisError,
   providerObservationSchema,
 } = require('./contracts');
+const {
+  confidenceBucket,
+  confirmationCorrectionBuckets,
+  durationBucket,
+  rangeWidthBucket,
+} = require('../http/analysis_logger');
 
 const FIRST_IMAGE_CONFIDENCE = 0.60;
 const SECOND_IMAGE_CONFIDENCE = 0.55;
@@ -40,61 +46,123 @@ class FoodAnalysisService {
     this.logger = logger;
   }
 
-  async start({ bytes, mimeType }) {
-    const observation = this.#validated(await this.observer.observePrimary({ bytes, mimeType }));
-    const status = this.#initialStatus(observation);
-    const session = this.sessionStore.create({
-      imageType: observation.imageType,
-      status,
-      observation,
-      usedSecondImage: false,
-    });
-    return this.#reviewResponse(session);
+  async start({ bytes, mimeType, requestId }) {
+    const startedAt = Date.now();
+    try {
+      const observation = this.#validated(await this.observer.observePrimary({ bytes, mimeType }));
+      const status = this.#initialStatus(observation);
+      const session = this.sessionStore.create({
+        imageType: observation.imageType,
+        status,
+        observation,
+        usedSecondImage: false,
+      });
+      const response = this.#reviewResponse(session);
+      this.#emit('food_analysis_completed', {
+        requestId,
+        imageType: response.imageType,
+        status: response.status,
+        confidenceBucket: confidenceBucket(response.confidence),
+        usedSecondImage: false,
+        durationBucket: durationBucket(Date.now() - startedAt),
+      });
+      return response;
+    } catch (error) {
+      this.#emitFailure(error, requestId, startedAt);
+      throw error;
+    }
   }
 
-  async addSecondaryImage(analysisId, { bytes, mimeType }) {
-    const session = this.sessionStore.get(analysisId);
-    if (session.status !== 'NEEDS_SECOND_IMAGE' || session.usedSecondImage) throw unavailable();
-    const observation = this.#validated(await this.observer.observeSecondary({
-      bytes,
-      mimeType,
-      previousObservation: session.observation,
-    }));
-    const status = observation.imageType === 'UNKNOWN'
-      ? 'UNRECOGNIZED'
-      : 'NEEDS_CONFIRMATION';
-    const updated = this.sessionStore.update(analysisId, {
-      imageType: observation.imageType,
-      status,
-      observation,
-      usedSecondImage: true,
-    });
-    return this.#reviewResponse(updated);
+  async addSecondaryImage(analysisId, { bytes, mimeType, requestId }) {
+    const startedAt = Date.now();
+    try {
+      const session = this.sessionStore.get(analysisId);
+      if (session.status !== 'NEEDS_SECOND_IMAGE' || session.usedSecondImage) throw unavailable();
+      const observation = this.#validated(await this.observer.observeSecondary({
+        bytes,
+        mimeType,
+        previousObservation: session.observation,
+      }));
+      const status = observation.imageType === 'UNKNOWN'
+        ? 'UNRECOGNIZED'
+        : 'NEEDS_CONFIRMATION';
+      const updated = this.sessionStore.update(analysisId, {
+        imageType: observation.imageType,
+        status,
+        observation,
+        usedSecondImage: true,
+      });
+      const response = this.#reviewResponse(updated);
+      this.#emit('food_analysis_completed', {
+        requestId,
+        imageType: response.imageType,
+        status: response.status,
+        confidenceBucket: confidenceBucket(response.confidence),
+        usedSecondImage: true,
+        durationBucket: durationBucket(Date.now() - startedAt),
+      });
+      return response;
+    } catch (error) {
+      this.#emitFailure(error, requestId, startedAt);
+      throw error;
+    }
   }
 
-  async confirm(analysisId, confirmation) {
-    const session = this.sessionStore.get(analysisId);
-    if (session.status !== 'NEEDS_CONFIRMATION') throw unavailable();
-    const cleanConfirmation = this.#confirmationFor(session, confirmation);
-    this.#requireManualComponents(session, cleanConfirmation);
+  async confirm(analysisId, confirmation, { requestId } = {}) {
+    const startedAt = Date.now();
+    try {
+      const session = this.sessionStore.get(analysisId);
+      if (session.status !== 'NEEDS_CONFIRMATION') throw unavailable();
+      const cleanConfirmation = this.#confirmationFor(session, confirmation);
+      this.#requireManualComponents(session, cleanConfirmation);
 
-    const result = session.imageType === 'MEAL'
-      ? this.estimator.estimateMeal(cleanConfirmation)
-      : this.estimator.estimateLabel(cleanConfirmation);
-    const response = {
-      analysisId,
-      imageType: session.imageType,
-      status: 'READY',
-      nameVi: cleanConfirmation.nameVi,
-      estimate: result.estimate,
-      confidenceLevel: result.confidenceLevel,
-      uncertaintyReasons: session.imageType === 'MEAL'
-        ? cleanConfirmation.uncertaintyReasons
-        : [],
-      calculationSummary: result.calculationSummary || result.calculationSummaryVi,
-    };
-    this.sessionStore.delete(analysisId);
-    return response;
+      const result = session.imageType === 'MEAL'
+        ? this.estimator.estimateMeal(cleanConfirmation)
+        : this.estimator.estimateLabel(cleanConfirmation);
+      const response = {
+        analysisId,
+        imageType: session.imageType,
+        status: 'READY',
+        nameVi: cleanConfirmation.nameVi,
+        estimate: result.estimate,
+        confidenceLevel: result.confidenceLevel,
+        uncertaintyReasons: session.imageType === 'MEAL'
+          ? cleanConfirmation.uncertaintyReasons
+          : [],
+        calculationSummary: result.calculationSummary || result.calculationSummaryVi,
+      };
+      this.sessionStore.delete(analysisId);
+      this.#emit('food_analysis_confirmation_completed', {
+        requestId,
+        imageType: response.imageType,
+        status: response.status,
+        confidenceBucket: response.confidenceLevel,
+        usedSecondImage: session.usedSecondImage,
+        ...confirmationCorrectionBuckets(session.observation, cleanConfirmation),
+        rangeWidthBucket: rangeWidthBucket(response.estimate),
+        durationBucket: durationBucket(Date.now() - startedAt),
+      });
+      return response;
+    } catch (error) {
+      this.#emitFailure(error, requestId, startedAt);
+      throw error;
+    }
+  }
+
+  #emitFailure(error, requestId, startedAt) {
+    this.#emit('food_analysis_failed', {
+      requestId,
+      errorCode: typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR',
+      durationBucket: durationBucket(Date.now() - startedAt),
+    });
+  }
+
+  #emit(name, fields) {
+    try {
+      this.logger?.event?.(name, fields);
+    } catch {
+      // Telemetry is best effort and must not affect analysis behavior.
+    }
   }
 
   #validated(value) {

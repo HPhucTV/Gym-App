@@ -58,6 +58,9 @@ ${JSON.stringify(parsedPrevious.data)}`,
   }
 
   async #observe({ bytes, mimeType, prompt }) {
+    if (typeof this.apiKey !== 'string' || !this.apiKey.trim()) {
+      throw unavailable();
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {

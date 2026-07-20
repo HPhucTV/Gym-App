@@ -393,3 +393,36 @@ test('session remains usable after a correctable estimator confirmation error', 
   assert.equal(service.sessionStore.get(started.analysisId).status, 'NEEDS_CONFIRMATION');
   assert.equal((await service.confirm(started.analysisId, validMealConfirmation())).status, 'READY');
 });
+
+test('emits bounded workflow telemetry including correction buckets and failures', async () => {
+  const events = [];
+  const service = makeService({ observer: sequenceObserver([mealObservation(0.8)]) });
+  service.logger = { event: (name, fields) => events.push({ name, fields }) };
+
+  const started = await service.start({ ...validJpeg(), requestId: 'request-1' });
+  await service.confirm(started.analysisId, {
+    ...validMealConfirmation(),
+    nameVi: 'Tên đã sửa',
+    components: [{
+      ...validMealConfirmation().components[0],
+      nameVi: 'Tên thành phần đã sửa',
+      portion: { kind: 'GRAMS', grams: 150 },
+    }],
+  }, { requestId: 'request-2' });
+
+  await assert.rejects(
+    service.confirm(started.analysisId, validMealConfirmation(), { requestId: 'request-3' }),
+    (error) => error.code === 'ANALYSIS_UNAVAILABLE',
+  );
+  assert.deepEqual(events.map((event) => event.name), [
+    'food_analysis_completed',
+    'food_analysis_confirmation_completed',
+    'food_analysis_failed',
+  ]);
+  assert.equal(events[0].fields.requestId, 'request-1');
+  assert.equal(events[1].fields.componentCorrectionBucket, 'ONE');
+  assert.equal(events[1].fields.portionCorrectionBucket, 'ONE');
+  assert.equal(events[2].fields.errorCode, 'ANALYSIS_UNAVAILABLE');
+  assert.equal(JSON.stringify(events).includes('Tên đã sửa'), false);
+  assert.equal(JSON.stringify(events).includes('Tên thành phần đã sửa'), false);
+});

@@ -5,6 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+const { AnalysisSessionStore } = require('./src/food-analysis/analysis_session_store');
+const { FoodAnalysisService } = require('./src/food-analysis/food_analysis_service');
+const { FoodDatabase } = require('./src/food-analysis/food_database');
+const { GeminiFoodObserver } = require('./src/food-analysis/gemini_food_observer');
+const { NutritionEstimator } = require('./src/food-analysis/nutrition_estimator');
+const { createFoodAnalysisRouter } = require('./src/food-analysis/router');
+const { AnalysisLogger } = require('./src/http/analysis_logger');
+const { sendApiError } = require('./src/http/api_error');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -45,6 +53,29 @@ const barcodeLimiter = rateLimit({
 
 app.use(generalLimiter);
 app.use(cors());
+
+const approvedFoods = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'data', 'vietnamese_foods.json'), 'utf8'),
+);
+const photoFoodDatabase = new FoodDatabase(approvedFoods);
+const photoNutritionEstimator = new NutritionEstimator({ database: photoFoodDatabase });
+const photoFoodObserver = new GeminiFoodObserver({
+  apiKey: process.env.GEMINI_API_KEY,
+  model: geminiModel,
+});
+const photoAnalysisStore = new AnalysisSessionStore({ ttlMs: 15 * 60 * 1000 });
+const photoAnalysisLogger = new AnalysisLogger();
+const photoAnalysisService = new FoodAnalysisService({
+  observer: photoFoodObserver,
+  estimator: photoNutritionEstimator,
+  sessionStore: photoAnalysisStore,
+  logger: photoAnalysisLogger,
+});
+app.use('/api/food-analyses', createFoodAnalysisRouter({
+  service: photoAnalysisService,
+  logger: photoAnalysisLogger,
+}));
+
 app.use(express.json());
 
 const productsPath = path.join(__dirname, 'vietnam_products.json');
@@ -740,7 +771,16 @@ Yêu cầu:
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server Gym App Backend đang chạy tại http://localhost:${port}`);
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  return sendApiError(res, error);
 });
+
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Server Gym App Backend đang chạy tại http://localhost:${port}`);
+  });
+}
+
+module.exports = { app };
 

@@ -155,6 +155,27 @@ test('maps HTTP and network failures to ANALYSIS_UNAVAILABLE', async () => {
   );
 });
 
+test('fails closed without a Gemini key and never calls fetch', async () => {
+  let called = false;
+  const observer = new GeminiFoodObserver({
+    apiKey: '',
+    model: 'gemini-test',
+    fetchImpl: async () => {
+      called = true;
+      throw new Error('must not be called');
+    },
+  });
+
+  await assert.rejects(
+    observer.observePrimary({
+      bytes: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+      mimeType: 'image/jpeg',
+    }),
+    (error) => error.code === 'ANALYSIS_UNAVAILABLE',
+  );
+  assert.equal(called, false);
+});
+
 test('aborts provider requests at the configured timeout', async () => {
   let observedAbort = false;
   const observer = new GeminiFoodObserver({
