@@ -25,6 +25,8 @@ abstract class FoodAnalysisClient {
 }
 
 class DioFoodAnalysisClient implements FoodAnalysisClient {
+  static const Object _discardedDetail = Object();
+
   final Dio _dio;
   final String? Function() _endpointProvider;
   final Set<CancelToken> _photoCancelTokens = {};
@@ -213,6 +215,9 @@ class DioFoodAnalysisClient implements FoodAnalysisClient {
     } on FoodAnalysisFormatException {
       rethrow;
     } on DioException catch (error) {
+      if (error.type == DioExceptionType.cancel) {
+        throw const FoodAnalysisCancelledException();
+      }
       throw _photoApiException(error);
     } finally {
       _photoCancelTokens.remove(cancelToken);
@@ -280,19 +285,59 @@ class DioFoodAnalysisClient implements FoodAnalysisClient {
   Map<String, Object?> _safeDetails(Object? value) {
     if (value is! Map) return const {};
     final details = <String, Object?>{};
-    for (final entry in value.entries.take(4)) {
-      if (entry.key is String) {
-        details[entry.key as String] = entry.value;
-      }
+    for (final entry in value.entries) {
+      if (details.length == 4) break;
+      if (entry.key is! String) continue;
+      final key = (entry.key as String).trim();
+      if (key.isEmpty || key.length > 64) continue;
+      final sanitized = _sanitizeDetail(entry.value, depth: 0);
+      if (identical(sanitized, _discardedDetail)) continue;
+      details[key] = sanitized;
     }
-    return details;
+    return Map.unmodifiable(details);
+  }
+
+  Object? _sanitizeDetail(Object? value, {required int depth}) {
+    if (value == null || value is bool) return value;
+    if (value is String) {
+      return value.length <= 120 ? value : value.substring(0, 120);
+    }
+    if (value is num) {
+      return value.isFinite ? value : _discardedDetail;
+    }
+    if (depth >= 2) return _discardedDetail;
+    if (value is Map) {
+      final sanitized = <String, Object?>{};
+      for (final entry in value.entries) {
+        if (sanitized.length == 4) break;
+        if (entry.key is! String) continue;
+        final key = (entry.key as String).trim();
+        if (key.isEmpty || key.length > 64) continue;
+        final nested = _sanitizeDetail(entry.value, depth: depth + 1);
+        if (identical(nested, _discardedDetail)) continue;
+        sanitized[key] = nested;
+      }
+      return Map.unmodifiable(sanitized);
+    }
+    if (value is List) {
+      final sanitized = <Object?>[];
+      for (final item in value) {
+        if (sanitized.length == 4) break;
+        final nested = _sanitizeDetail(item, depth: depth + 1);
+        if (!identical(nested, _discardedDetail)) {
+          sanitized.add(nested);
+        }
+      }
+      return List.unmodifiable(sanitized);
+    }
+    return _discardedDetail;
   }
 
   String _encodedAnalysisId(String analysisId) {
     final trimmed = analysisId.trim();
-    if (trimmed.isEmpty || trimmed.length > 200) {
+    if (trimmed.isEmpty) {
       throw const FoodAnalysisFormatException(
-        'analysisId must be a non-empty bounded identifier.',
+        'analysisId must be a non-empty identifier.',
       );
     }
     return Uri.encodeComponent(trimmed);

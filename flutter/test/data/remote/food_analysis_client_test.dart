@@ -6,9 +6,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_app/core/model/food_photo_analysis_models.dart';
 import 'package:gym_app/core/model/nutrition_models.dart';
+import 'package:gym_app/data/remote/backend_config.dart';
 import 'package:gym_app/data/remote/food_analysis_client.dart';
 
 void main() {
+  tearDown(() {
+    BackendConfig.customServerUrl = null;
+  });
+
   group('canonical enum parsing', () {
     test('parses every canonical enum value', () {
       expect(FoodImageType.fromWire('MEAL'), FoodImageType.meal);
@@ -224,6 +229,474 @@ void main() {
       expect(ready.confidenceLevel, AnalysisConfidenceLevel.medium);
       expect(ready.calculationSummary, contains('cơm'));
     });
+
+    test('rejects extra keys at every parsed object boundary', () {
+      final cases = <Map<String, Object?> Function()>[
+        () => _mealReviewJson()..['extra'] = true,
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json)['extra'] = true;
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _suggestedPortion(json)['extra'] = true;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['extra'] = true;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _observedFacts(json)['extra'] = true;
+          return json;
+        },
+        () => _readyJson()..['extra'] = true,
+        () {
+          final json = _readyJson();
+          _estimate(json)['extra'] = true;
+          return json;
+        },
+        () {
+          final json = _readyJson();
+          _range(json, 'calories')['extra'] = true;
+          return json;
+        },
+      ];
+
+      for (final createJson in cases) {
+        expect(
+          () {
+            final json = createJson();
+            if (json['status'] == 'READY') {
+              FoodAnalysisReady.fromJson(json);
+            } else {
+              FoodAnalysisReview.fromJson(json);
+            }
+          },
+          throwsA(isA<FoodAnalysisFormatException>()),
+        );
+      }
+    });
+
+    test('requires every canonical nullable key to be present', () {
+      final cases = <Map<String, Object?> Function()>[
+        () => _mealReviewJson()..remove('labelFacts'),
+        () => _labelReviewJson()..remove('components'),
+        () => _unknownReviewJson()..remove('labelFacts'),
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json).remove('matchedFoodId');
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json).remove('suggestedPortion');
+          return json;
+        },
+        for (final key in [
+          'servingSizeGrams',
+          'servingsPerContainer',
+          'netWeightGrams',
+        ])
+          () {
+            final json = _labelReviewJson();
+            _labelFacts(json).remove(key);
+            return json;
+          },
+        for (final key in [
+          'calories',
+          'proteinGrams',
+          'carbsGrams',
+          'fatGrams',
+        ])
+          () {
+            final json = _labelReviewJson();
+            _observedFacts(json).remove(key);
+            return json;
+          },
+      ];
+
+      for (final createJson in cases) {
+        expect(
+          () => FoodAnalysisReview.fromJson(createJson()),
+          throwsA(isA<FoodAnalysisFormatException>()),
+        );
+      }
+    });
+
+    test('mirrors backend response limits', () {
+      final cases = <Map<String, Object?> Function()>[
+        () => _mealReviewJson()..['components'] = <Object?>[],
+        () => _mealReviewJson()
+          ..['components'] =
+              List<Object?>.generate(21, (_) => _validMealComponent()),
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json)['id'] = _text(101);
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json)['nameVi'] = _text(161);
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json)['matchedFoodId'] = _text(101);
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _suggestedPortion(json)['quantity'] = 20.01;
+          return json;
+        },
+        () {
+          final json = _mealReviewJson();
+          _mealComponent(json)['suggestedPortion'] = {
+            'kind': 'GRAMS',
+            'grams': 5000.01,
+          };
+          return json;
+        },
+        () => _mealReviewJson()
+          ..['uncertaintyReasons'] = [
+            'HIDDEN_OIL',
+            'SAUCE',
+            'OVERLAP',
+            'WEAK_DATABASE_MATCH',
+            'HIDDEN_OIL',
+          ],
+        () => _mealReviewJson()..['uncertaintyReasons'] = ['UNBOUNDED_REASON'],
+        () {
+          final json = _labelReviewJson();
+          _observedFacts(json)['calories'] = 1000.01;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _observedFacts(json)['proteinGrams'] = 100.01;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['servingSizeGrams'] = 5000.01;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['servingsPerContainer'] = 100.01;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['netWeightGrams'] = 5000.01;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['missingFields'] =
+              List<String>.filled(10, 'CALORIES');
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['missingFields'] = ['RAW_PROVIDER_TEXT'];
+          return json;
+        },
+      ];
+
+      for (final createJson in cases) {
+        expect(
+          () => FoodAnalysisReview.fromJson(createJson()),
+          throwsA(isA<FoodAnalysisFormatException>()),
+        );
+      }
+    });
+
+    test('enforces label missingFields consistency', () {
+      final cases = <Map<String, Object?> Function()>[
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['basis'] = 'UNKNOWN';
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _observedFacts(json)['calories'] = null;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)
+            ..['basis'] = 'PER_SERVING'
+            ..['servingSizeGrams'] = null;
+          return json;
+        },
+        () {
+          final json = _labelReviewJson();
+          _labelFacts(json)['netWeightGrams'] = null;
+          return json;
+        },
+      ];
+
+      for (final createJson in cases) {
+        expect(
+          () => FoodAnalysisReview.fromJson(createJson()),
+          throwsA(isA<FoodAnalysisFormatException>()),
+        );
+      }
+
+      final validMissing = _labelReviewJson();
+      _labelFacts(validMissing)
+        ..['basis'] = 'UNKNOWN'
+        ..['netWeightGrams'] = null
+        ..['missingFields'] = ['BASIS', 'CONSUMED_AMOUNT'];
+      expect(
+          FoodAnalysisReview.fromJson(validMissing), isA<FoodAnalysisReview>());
+    });
+
+    test('rejects invalid discriminator and status combinations', () {
+      final cases = [
+        _mealReviewJson()..['status'] = 'UNRECOGNIZED',
+        _labelReviewJson()..['status'] = 'UNRECOGNIZED',
+        _unknownReviewJson()..['status'] = 'NEEDS_CONFIRMATION',
+        _mealReviewJson()..['status'] = 'READY',
+      ];
+
+      for (final json in cases) {
+        expect(
+          () => FoodAnalysisReview.fromJson(json),
+          throwsA(isA<FoodAnalysisFormatException>()),
+        );
+      }
+    });
+
+    test('requires label READY results to have no meal uncertainty codes', () {
+      final json = _readyJson()
+        ..['imageType'] = 'NUTRITION_LABEL'
+        ..['uncertaintyReasons'] = ['HIDDEN_OIL'];
+
+      expect(
+        () => FoodAnalysisReady.fromJson(json),
+        throwsA(isA<FoodAnalysisFormatException>()),
+      );
+    });
+
+    test('does not invent limits absent from backend session responses', () {
+      final review = _mealReviewJson()..['analysisId'] = _text(201);
+      final ready = _readyJson()
+        ..['analysisId'] = _text(201)
+        ..['calculationSummary'] = _text(1001);
+
+      expect(FoodAnalysisReview.fromJson(review), isA<FoodAnalysisReview>());
+      expect(FoodAnalysisReady.fromJson(ready), isA<FoodAnalysisReady>());
+    });
+  });
+
+  group('strict confirmation serialization', () {
+    test('rejects portions the backend rejects with typed format errors', () {
+      final cases = <Object? Function()>[
+        () => HouseholdPortion(
+              unit: HouseholdPortionUnit.bowl,
+              quantity: double.nan,
+              size: HouseholdPortionSize.medium,
+            ),
+        () => HouseholdPortion(
+              unit: HouseholdPortionUnit.bowl,
+              quantity: 0,
+              size: HouseholdPortionSize.medium,
+            ),
+        () => HouseholdPortion(
+              unit: HouseholdPortionUnit.bowl,
+              quantity: 20.01,
+              size: HouseholdPortionSize.medium,
+            ),
+        () => GramPortion(grams: double.infinity),
+        () => GramPortion(grams: 0),
+        () => GramPortion(grams: 5000.01),
+      ];
+
+      for (final create in cases) {
+        expect(create, throwsA(isA<FoodAnalysisFormatException>()));
+      }
+    });
+
+    test('rejects invalid meal confirmation fields and counts', () {
+      final portion = HouseholdPortion(
+        unit: HouseholdPortionUnit.bowl,
+        quantity: 1,
+        size: HouseholdPortionSize.medium,
+      );
+      final validComponent = ConfirmedFoodComponent(
+        observationId: 'component-1',
+        foodId: 'white-rice',
+        nameVi: 'Cơm trắng',
+        portion: portion,
+      );
+      final cases = <Object? Function()>[
+        () => ConfirmedFoodComponent(
+              observationId: '',
+              foodId: 'white-rice',
+              nameVi: 'Cơm',
+              portion: portion,
+            ),
+        () => ConfirmedFoodComponent(
+              observationId: _text(101),
+              foodId: 'white-rice',
+              nameVi: 'Cơm',
+              portion: portion,
+            ),
+        () => ConfirmedFoodComponent(
+              observationId: 'component-1',
+              foodId: '',
+              nameVi: 'Cơm',
+              portion: portion,
+            ),
+        () => ConfirmedFoodComponent(
+              observationId: 'component-1',
+              foodId: 'white-rice',
+              nameVi: _text(161),
+              portion: portion,
+            ),
+        () => MealConfirmation(nameVi: '', components: [validComponent]),
+        () => MealConfirmation(nameVi: 'Cơm', components: []),
+        () => MealConfirmation(
+              nameVi: 'Cơm',
+              components: List.filled(21, validComponent),
+            ),
+      ];
+
+      for (final create in cases) {
+        expect(create, throwsA(isA<FoodAnalysisFormatException>()));
+      }
+    });
+
+    test('rejects nutrient and label confirmation values outside schemas', () {
+      final validFacts = _nutrientFacts();
+      final grams = LabelConsumedAmount(
+        kind: LabelConsumedKind.grams,
+        amount: 57,
+      );
+      final servings = LabelConsumedAmount(
+        kind: LabelConsumedKind.servings,
+        amount: 1,
+      );
+      final cases = <Object? Function()>[
+        () => NutrientFacts(
+              calories: 1000.01,
+              proteinGrams: 4,
+              carbsGrams: 5,
+              fatGrams: 6,
+            ),
+        () => NutrientFacts(
+              calories: 100,
+              proteinGrams: 100.01,
+              carbsGrams: 5,
+              fatGrams: 6,
+            ),
+        () => LabelConsumedAmount(
+              kind: LabelConsumedKind.grams,
+              amount: 5000.01,
+            ),
+        () => LabelConsumedAmount(
+              kind: LabelConsumedKind.servings,
+              amount: 20.01,
+            ),
+        () => LabelConsumedAmount(
+              kind: LabelConsumedKind.grams,
+              amount: double.nan,
+            ),
+        () => LabelConfirmation(
+              nameVi: 'Nhãn',
+              basis: LabelBasis.unknown,
+              facts: validFacts,
+              servingSizeGrams: null,
+              consumed: grams,
+            ),
+        () => LabelConfirmation(
+              nameVi: 'Nhãn',
+              basis: LabelBasis.perServing,
+              facts: validFacts,
+              servingSizeGrams: null,
+              consumed: servings,
+            ),
+        () => LabelConfirmation(
+              nameVi: 'Nhãn',
+              basis: LabelBasis.perServing,
+              facts: validFacts,
+              servingSizeGrams: 5000.01,
+              consumed: servings,
+            ),
+        () => LabelConfirmation(
+              nameVi: 'Nhãn',
+              basis: LabelBasis.per100g,
+              facts: validFacts,
+              servingSizeGrams: null,
+              consumed: servings,
+            ),
+      ];
+
+      for (final create in cases) {
+        expect(create, throwsA(isA<FoodAnalysisFormatException>()));
+      }
+    });
+
+    test('serializes only backend-valid meal and label confirmations', () {
+      final meal = MealConfirmation(
+        nameVi: 'Cơm',
+        components: [
+          ConfirmedFoodComponent(
+            observationId: 'component-1',
+            foodId: null,
+            nameVi: 'Cơm',
+            portion: GramPortion(grams: 150),
+          ),
+        ],
+      );
+      final label = LabelConfirmation(
+        nameVi: 'Sữa chua',
+        basis: LabelBasis.perServing,
+        facts: _nutrientFacts(),
+        servingSizeGrams: 100,
+        consumed: LabelConsumedAmount(
+          kind: LabelConsumedKind.servings,
+          amount: 1.5,
+        ),
+      );
+
+      expect(meal.toJson()['kind'], 'MEAL');
+      expect(
+        (meal.toJson()['components'] as List).single,
+        isNot(contains('foodId')),
+      );
+      expect(label.toJson(), {
+        'kind': 'NUTRITION_LABEL',
+        'nameVi': 'Sữa chua',
+        'basis': 'PER_SERVING',
+        'facts': <String, Object?>{
+          'calories': 120.0,
+          'proteinGrams': 5.0,
+          'carbsGrams': 18.0,
+          'fatGrams': 3.0,
+        },
+        'servingSizeGrams': 100.0,
+        'consumed': {'kind': 'SERVINGS', 'amount': 1.5},
+      });
+    });
+
+    test('NutritionRange validates direct construction without assertions', () {
+      expect(
+        () => NutritionRange(min: 2, mid: 1, max: 3),
+        throwsA(isA<FoodAnalysisFormatException>()),
+      );
+      expect(
+        () => NutritionRange(min: 0, mid: double.nan, max: 3),
+        throwsA(isA<FoodAnalysisFormatException>()),
+      );
+    });
   });
 
   group('DioFoodAnalysisClient', () {
@@ -281,7 +754,7 @@ void main() {
             observationId: 'component-1',
             foodId: 'white-rice',
             nameVi: 'Cơm trắng',
-            portion: const HouseholdPortion(
+            portion: HouseholdPortion(
               unit: HouseholdPortionUnit.bowl,
               quantity: 1,
               size: HouseholdPortionSize.medium,
@@ -316,7 +789,7 @@ void main() {
       await expectLater(
         client.confirmAnalysis(
           'analysis-1',
-          MealConfirmation(nameVi: 'Cơm', components: []),
+          _mealConfirmation(),
         ),
         throwsA(
           isA<FoodAnalysisApiException>()
@@ -356,13 +829,11 @@ void main() {
       );
     });
 
-    test('cancelPending cancels active photo calls', () async {
+    test('cancelPending exposes a distinct cancellation outcome', () async {
       final started = Completer<void>();
-      var adapterObservedCancellation = false;
       final adapter = _StubAdapter((options, _, cancelFuture) async {
         started.complete();
         await cancelFuture;
-        adapterObservedCancellation = true;
         throw DioException(
           requestOptions: options,
           type: DioExceptionType.cancel,
@@ -374,26 +845,358 @@ void main() {
       await started.future;
       client.cancelPending();
 
-      await expectLater(pending, throwsA(isA<FoodAnalysisApiException>()));
-      expect(adapterObservedCancellation, isTrue);
+      await expectLater(
+        pending,
+        throwsA(isA<FoodAnalysisCancelledException>()),
+      );
     });
 
-    test('legacy barcode and image methods remain callable', () {
-      final FoodAnalysisClient client = _client(
-        _StubAdapter((_, __, ___) async => _jsonResponse({}, 200)),
+    test('cancelPending cancels every concurrent photo call and then clears',
+        () async {
+      var started = 0;
+      final bothStarted = Completer<void>();
+      final adapter = _StubAdapter((options, _, cancelFuture) async {
+        started += 1;
+        if (started == 2) bothStarted.complete();
+        if (started <= 2) {
+          await cancelFuture;
+          throw DioException(
+            requestOptions: options,
+            type: DioExceptionType.cancel,
+          );
+        }
+        return _jsonResponse(_mealReviewJson(), 201);
+      });
+      final client = _client(adapter);
+
+      final first = client.startPhotoAnalysis(_upload('one.jpg'));
+      final second = client.startPhotoAnalysis(_upload('two.jpg'));
+      await bothStarted.future;
+      client.cancelPending();
+
+      await expectLater(
+        Future.wait([first, second]),
+        throwsA(isA<FoodAnalysisCancelledException>()),
       );
+      expect(
+        await client.startPhotoAnalysis(_upload('three.jpg')),
+        isA<FoodAnalysisReview>(),
+      );
+    });
 
-      final Future<ScanResult?> Function(Uint8List) analyze = client.analyze;
-      final Future<ScanResult?> Function(String) scanBarcode =
-          client.scanBarcode;
-      final Future<bool> Function(String, ScanResult) registerBarcode =
-          client.registerBarcode;
+    test('PreparedUpload snapshots bytes and validates the upload boundary',
+        () async {
+      final callerBytes = Uint8List.fromList([11, 22, 33, 44, 55]);
+      final upload = PreparedUpload(
+        bytes: callerBytes,
+        mimeType: 'image/jpeg',
+        filename: 'meal.jpg',
+      );
+      callerBytes.fillRange(0, callerBytes.length, 99);
+      final exposedBytes = upload.bytes;
+      exposedBytes.fillRange(0, exposedBytes.length, 88);
 
-      expect(analyze, isA<Function>());
-      expect(scanBarcode, isA<Function>());
-      expect(registerBarcode, isA<Function>());
+      late List<int> requestBody;
+      final adapter = _StubAdapter((_, requestStream, __) async {
+        requestBody = [
+          for (final chunk in await requestStream!.toList()) ...chunk,
+        ];
+        return _jsonResponse(_mealReviewJson(), 201);
+      });
+      final client = _client(adapter);
+      final pending = client.startPhotoAnalysis(upload);
+      exposedBytes.fillRange(0, exposedBytes.length, 77);
+      await pending;
+
+      expect(_containsSequence(requestBody, [11, 22, 33, 44, 55]), isTrue);
+      expect(upload.bytes, [11, 22, 33, 44, 55]);
+
+      final invalid = <Object? Function()>[
+        () => PreparedUpload(
+              bytes: Uint8List(0),
+              mimeType: 'image/jpeg',
+              filename: 'meal.jpg',
+            ),
+        () => PreparedUpload(
+              bytes: Uint8List.fromList([1]),
+              mimeType: 'image/gif',
+              filename: 'meal.gif',
+            ),
+        () => PreparedUpload(
+              bytes: Uint8List.fromList([1]),
+              mimeType: 'image/jpeg',
+              filename: ' ',
+            ),
+        () => PreparedUpload(
+              bytes: Uint8List(5 * 1024 * 1024 + 1),
+              mimeType: 'image/jpeg',
+              filename: 'large.jpg',
+            ),
+      ];
+      for (final create in invalid) {
+        expect(create, throwsA(isA<FoodAnalysisFormatException>()));
+      }
+    });
+
+    test('bounds and deep-freezes nested API error details', () async {
+      final nested = <String, Object?>{
+        'message': _text(200),
+        'list': [
+          {'secret': _text(200)},
+          2,
+          3,
+          4,
+          5,
+        ],
+        'nonFinite': double.infinity,
+        'unsupported': Object(),
+        'fifth': 'discarded',
+      };
+      final adapter = _StubAdapter((options, _, __) async {
+        throw DioException(
+          requestOptions: options,
+          response: Response(
+            requestOptions: options,
+            statusCode: 400,
+            data: {
+              'error': {
+                'code': 'INVALID_CONFIRMATION',
+                'message': 'Xác nhận không hợp lệ.',
+                'details': nested,
+              },
+            },
+          ),
+          type: DioExceptionType.badResponse,
+        );
+      });
+      final client = _client(adapter);
+
+      late FoodAnalysisApiException captured;
+      try {
+        await client.confirmAnalysis('analysis-1', _mealConfirmation());
+        fail('Expected a typed API error.');
+      } on FoodAnalysisApiException catch (error) {
+        captured = error;
+      }
+      nested['message'] = 'mutated';
+      (nested['list'] as List).clear();
+
+      expect(captured.details, hasLength(3));
+      expect(captured.details['message'], _text(120));
+      expect(captured.details['list'], hasLength(4));
+      expect(
+        () => (captured.details['list'] as List).add('mutate'),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => captured.details['new'] = 'mutate',
+        throwsUnsupportedError,
+      );
+    });
+
+    test('legacy analyze preserves URL, parsing, null, and error behavior',
+        () async {
+      late RequestOptions captured;
+      final successClient = _client(_StubAdapter((options, _, __) async {
+        captured = options;
+        return _jsonResponse(_scanResultJson(), 200);
+      }));
+
+      final parsed = await successClient.analyze(Uint8List.fromList([1, 2, 3]));
+      expect(captured.uri.toString(), 'https://backend.test/api/analyze-food');
+      expect((captured.data as FormData).files.single.key, 'image');
+      expect(parsed?.dishName, 'Cơm gà');
+
+      final nullClient = _client(
+        _StubAdapter((_, __, ___) async => _jsonResponse(<Object?>[], 200)),
+      );
+      expect(await nullClient.analyze(Uint8List.fromList([1])), isNull);
+
+      final errorClient = _client(
+        _StubAdapter(
+          (_, __, ___) async =>
+              _jsonResponse({'error': 'Ảnh không hợp lệ.'}, 400),
+        ),
+      );
+      await expectLater(
+        errorClient.analyze(Uint8List.fromList([1])),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Ảnh không hợp lệ.'),
+          ),
+        ),
+      );
+    });
+
+    test('legacy scanBarcode preserves URL, parsing, 404, and HTTP errors',
+        () async {
+      BackendConfig.customServerUrl = 'https://legacy.test';
+      late RequestOptions captured;
+      final successClient = _client(_StubAdapter((options, _, __) async {
+        captured = options;
+        return _jsonResponse(_scanResultJson(), 200);
+      }));
+
+      final parsed = await successClient.scanBarcode('893123');
+      expect(
+        captured.uri.toString(),
+        'https://legacy.test/api/scan-barcode?barcode=893123',
+      );
+      expect(parsed?.totalCalories, 420);
+
+      final notFoundClient = _client(
+        _StubAdapter(
+          (_, __, ___) async =>
+              _jsonResponse({'error': 'product_not_found'}, 404),
+        ),
+      );
+      expect(await notFoundClient.scanBarcode('missing'), isNull);
+
+      final errorClient = _client(
+        _StubAdapter(
+          (_, __, ___) async => _jsonResponse({'error': 'server'}, 500),
+        ),
+      );
+      await expectLater(
+        errorClient.scanBarcode('broken'),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Lỗi HTTP 500'),
+          ),
+        ),
+      );
+    });
+
+    test('legacy registerBarcode preserves body and bool return behavior',
+        () async {
+      BackendConfig.customServerUrl = 'https://legacy.test';
+      late RequestOptions captured;
+      final successClient = _client(_StubAdapter((options, _, __) async {
+        captured = options;
+        return _jsonResponse({'success': true}, 201);
+      }));
+      final result = _scanResult();
+
+      expect(await successClient.registerBarcode('893123', result), isTrue);
+      expect(
+          captured.uri.toString(), 'https://legacy.test/api/register-barcode');
+      expect(captured.data, {
+        'barcode': '893123',
+        'dishName': result.dishName,
+        'totalCalories': result.totalCalories,
+        'proteinGrams': result.proteinGrams,
+        'carbsGrams': result.carbsGrams,
+        'fatGrams': result.fatGrams,
+        'advice': result.advice,
+      });
+
+      final failureClient = _client(
+        _StubAdapter(
+          (_, __, ___) async => _jsonResponse({'error': 'server'}, 500),
+        ),
+      );
+      expect(await failureClient.registerBarcode('893123', result), isFalse);
     });
   });
+}
+
+Map<String, Object?> _mealComponent(Map<String, Object?> review) {
+  return (review['components'] as List).single as Map<String, Object?>;
+}
+
+Map<String, Object?> _suggestedPortion(Map<String, Object?> review) {
+  return _mealComponent(review)['suggestedPortion'] as Map<String, Object?>;
+}
+
+Map<String, Object?> _labelFacts(Map<String, Object?> review) {
+  return review['labelFacts'] as Map<String, Object?>;
+}
+
+Map<String, Object?> _observedFacts(Map<String, Object?> review) {
+  return _labelFacts(review)['facts'] as Map<String, Object?>;
+}
+
+Map<String, Object?> _estimate(Map<String, Object?> ready) {
+  return ready['estimate'] as Map<String, Object?>;
+}
+
+Map<String, Object?> _range(Map<String, Object?> ready, String nutrient) {
+  return _estimate(ready)[nutrient] as Map<String, Object?>;
+}
+
+Map<String, Object?> _validMealComponent() => {
+      'id': 'component-1',
+      'nameVi': 'Cơm trắng',
+      'matchedFoodId': 'white-rice',
+      'confidence': 0.91,
+      'isMajor': true,
+      'requiresManualPortion': false,
+      'suggestedPortion': {
+        'kind': 'HOUSEHOLD',
+        'unit': 'BOWL',
+        'quantity': 1,
+        'size': 'MEDIUM',
+      },
+    };
+
+NutrientFacts _nutrientFacts() => NutrientFacts(
+      calories: 120,
+      proteinGrams: 5,
+      carbsGrams: 18,
+      fatGrams: 3,
+    );
+
+MealConfirmation _mealConfirmation() => MealConfirmation(
+      nameVi: 'Cơm',
+      components: [
+        ConfirmedFoodComponent(
+          observationId: 'component-1',
+          foodId: 'white-rice',
+          nameVi: 'Cơm',
+          portion: GramPortion(grams: 150),
+        ),
+      ],
+    );
+
+Map<String, Object?> _scanResultJson() => {
+      'dishName': 'Cơm gà',
+      'totalCalories': 420,
+      'proteinGrams': 30,
+      'carbsGrams': 50,
+      'fatGrams': 10,
+      'fitnessScore': 7,
+      'advice': 'Ăn đủ rau.',
+      'constituents': <Object?>[],
+      'sweatPayment': null,
+      'calculationProcess': 'Tính từ khẩu phần.',
+      'confidence': 0.8,
+      'needsUserConfirmation': false,
+      'recommendations': <Object?>[],
+    };
+
+ScanResult _scanResult() => ScanResult.fromJson(
+      Map<String, dynamic>.from(_scanResultJson()),
+    );
+
+String _text(int length) => List.filled(length, 'x').join();
+
+bool _containsSequence(List<int> source, List<int> sequence) {
+  if (sequence.isEmpty) return true;
+  for (var start = 0; start <= source.length - sequence.length; start += 1) {
+    var matches = true;
+    for (var index = 0; index < sequence.length; index += 1) {
+      if (source[start + index] != sequence[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
 }
 
 DioFoodAnalysisClient _client(HttpClientAdapter adapter) {
@@ -446,7 +1249,7 @@ Map<String, Object?> _labelReviewJson() => {
       'labelFacts': {
         'nameVi': 'Tên sản phẩm',
         'basis': 'PER_100G',
-        'facts': {
+        'facts': <String, Object?>{
           'calories': 498,
           'proteinGrams': 4.4,
           'carbsGrams': 49.8,

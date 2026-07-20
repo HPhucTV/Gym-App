@@ -211,18 +211,90 @@ enum LabelMissingField {
             'missingFields contains an unknown value.',
           ),
       };
+
+  String get wireValue => switch (this) {
+        basis => 'BASIS',
+        calories => 'CALORIES',
+        proteinGrams => 'PROTEIN_GRAMS',
+        carbsGrams => 'CARBS_GRAMS',
+        fatGrams => 'FAT_GRAMS',
+        servingSizeGrams => 'SERVING_SIZE_GRAMS',
+        servingsPerContainer => 'SERVINGS_PER_CONTAINER',
+        netWeightGrams => 'NET_WEIGHT_GRAMS',
+        consumedAmount => 'CONSUMED_AMOUNT',
+      };
+}
+
+enum FoodUncertaintyReason {
+  hiddenOil,
+  sauce,
+  overlap,
+  weakDatabaseMatch;
+
+  static FoodUncertaintyReason fromWire(Object? value) => switch (value) {
+        'HIDDEN_OIL' => hiddenOil,
+        'SAUCE' => sauce,
+        'OVERLAP' => overlap,
+        'WEAK_DATABASE_MATCH' => weakDatabaseMatch,
+        _ => throw FoodAnalysisFormatException(
+            'uncertaintyReasons contains an unknown value.',
+          ),
+      };
+
+  String get wireValue => switch (this) {
+        hiddenOil => 'HIDDEN_OIL',
+        sauce => 'SAUCE',
+        overlap => 'OVERLAP',
+        weakDatabaseMatch => 'WEAK_DATABASE_MATCH',
+      };
 }
 
 final class PreparedUpload {
-  final Uint8List bytes;
+  static const int maxBytes = 5 * 1024 * 1024;
+  static const Set<String> supportedMimeTypes = {
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  };
+
+  final Uint8List _bytes;
   final String mimeType;
   final String filename;
 
-  const PreparedUpload({
-    required this.bytes,
+  factory PreparedUpload({
+    required Uint8List bytes,
+    required String mimeType,
+    required String filename,
+  }) {
+    if (bytes.isEmpty || bytes.length > maxBytes) {
+      throw const FoodAnalysisFormatException(
+        'Upload bytes must be between 1 byte and 5 MB.',
+      );
+    }
+    if (!supportedMimeTypes.contains(mimeType)) {
+      throw const FoodAnalysisFormatException(
+        'Upload MIME type must be JPEG, PNG, or WebP.',
+      );
+    }
+    final cleanFilename = _validatedText(
+      filename,
+      'upload.filename',
+      maxLength: 255,
+    );
+    return PreparedUpload._(
+      bytes: Uint8List.fromList(bytes),
+      mimeType: mimeType,
+      filename: cleanFilename,
+    );
+  }
+
+  PreparedUpload._({
+    required Uint8List bytes,
     required this.mimeType,
     required this.filename,
-  });
+  }) : _bytes = bytes;
+
+  Uint8List get bytes => Uint8List.fromList(_bytes);
 }
 
 final class NutritionRange {
@@ -230,14 +302,38 @@ final class NutritionRange {
   final double mid;
   final double max;
 
-  const NutritionRange({
+  factory NutritionRange({
+    required double min,
+    required double mid,
+    required double max,
+  }) {
+    final cleanMin = _finiteNonNegative(min, 'range.min');
+    final cleanMid = _finiteNonNegative(mid, 'range.mid');
+    final cleanMax = _finiteNonNegative(max, 'range.max');
+    if (cleanMin > cleanMid || cleanMid > cleanMax) {
+      throw const FoodAnalysisFormatException(
+        'Nutrition range must satisfy min <= mid <= max.',
+      );
+    }
+    return NutritionRange._(
+      min: cleanMin,
+      mid: cleanMid,
+      max: cleanMax,
+    );
+  }
+
+  const NutritionRange._({
     required this.min,
     required this.mid,
     required this.max,
-  }) : assert(min <= mid && mid <= max);
+  });
 
   factory NutritionRange.fromJson(Object? value) {
-    final json = _jsonMap(value, 'nutrition range');
+    final json = _strictJsonMap(
+      value,
+      'nutrition range',
+      const {'min', 'mid', 'max'},
+    );
     final min = _finiteNonNegative(json['min'], 'range.min');
     final mid = _finiteNonNegative(json['mid'], 'range.mid');
     final max = _finiteNonNegative(json['max'], 'range.max');
@@ -246,7 +342,7 @@ final class NutritionRange {
         'Nutrition range must satisfy min <= mid <= max.',
       );
     }
-    return NutritionRange(min: min, mid: mid, max: max);
+    return NutritionRange._(min: min, mid: mid, max: max);
   }
 
   Map<String, Object?> toJson() => {'min': min, 'mid': mid, 'max': max};
@@ -271,28 +367,47 @@ final class HouseholdPortion extends FoodPortion {
   final double quantity;
   final HouseholdPortionSize size;
 
-  const HouseholdPortion({
+  factory HouseholdPortion({
+    required HouseholdPortionUnit unit,
+    required double quantity,
+    required HouseholdPortionSize size,
+  }) {
+    final cleanQuantity = _finitePositive(
+      quantity,
+      'portion.quantity',
+      max: 20,
+    );
+    return HouseholdPortion._(
+      unit: unit,
+      quantity: cleanQuantity,
+      size: size,
+    );
+  }
+
+  const HouseholdPortion._({
     required this.unit,
     required this.quantity,
     required this.size,
-  }) : assert(quantity > 0 && quantity <= 20);
+  });
 
   factory HouseholdPortion.fromJson(Object? value) {
-    final json = _jsonMap(value, 'household portion');
+    final json = _strictJsonMap(
+      value,
+      'household portion',
+      const {'kind', 'unit', 'quantity', 'size'},
+    );
     if (FoodPortionKind.fromWire(json['kind']) != FoodPortionKind.household) {
       throw FoodAnalysisFormatException(
         'Household portion kind must be HOUSEHOLD.',
       );
     }
-    final quantity = _finitePositive(json['quantity'], 'portion.quantity');
-    if (quantity > 20) {
-      throw FoodAnalysisFormatException(
-        'portion.quantity exceeds the supported limit.',
-      );
-    }
-    return HouseholdPortion(
+    return HouseholdPortion._(
       unit: HouseholdPortionUnit.fromWire(json['unit']),
-      quantity: quantity,
+      quantity: _finitePositive(
+        json['quantity'],
+        'portion.quantity',
+        max: 20,
+      ),
       size: HouseholdPortionSize.fromWire(json['size']),
     );
   }
@@ -309,20 +424,34 @@ final class HouseholdPortion extends FoodPortion {
 final class GramPortion extends FoodPortion {
   final double grams;
 
-  const GramPortion({required this.grams}) : assert(grams > 0 && grams <= 5000);
+  factory GramPortion({required double grams}) {
+    return GramPortion._(
+      grams: _finitePositive(
+        grams,
+        'portion.grams',
+        max: 5000,
+      ),
+    );
+  }
+
+  const GramPortion._({required this.grams});
 
   factory GramPortion.fromJson(Object? value) {
-    final json = _jsonMap(value, 'gram portion');
+    final json = _strictJsonMap(
+      value,
+      'gram portion',
+      const {'kind', 'grams'},
+    );
     if (FoodPortionKind.fromWire(json['kind']) != FoodPortionKind.grams) {
       throw FoodAnalysisFormatException('Gram portion kind must be GRAMS.');
     }
-    final grams = _finitePositive(json['grams'], 'portion.grams');
-    if (grams > 5000) {
-      throw FoodAnalysisFormatException(
-        'portion.grams exceeds the supported limit.',
-      );
-    }
-    return GramPortion(grams: grams);
+    return GramPortion._(
+      grams: _finitePositive(
+        json['grams'],
+        'portion.grams',
+        max: 5000,
+      ),
+    );
   }
 
   @override
@@ -338,26 +467,70 @@ final class NutrientFacts {
   final double carbsGrams;
   final double fatGrams;
 
-  const NutrientFacts({
+  factory NutrientFacts({
+    required double calories,
+    required double proteinGrams,
+    required double carbsGrams,
+    required double fatGrams,
+  }) {
+    return NutrientFacts._(
+      calories: _finiteNonNegative(
+        calories,
+        'facts.calories',
+        max: 1000,
+      ),
+      proteinGrams: _finiteNonNegative(
+        proteinGrams,
+        'facts.proteinGrams',
+        max: 100,
+      ),
+      carbsGrams: _finiteNonNegative(
+        carbsGrams,
+        'facts.carbsGrams',
+        max: 100,
+      ),
+      fatGrams: _finiteNonNegative(
+        fatGrams,
+        'facts.fatGrams',
+        max: 100,
+      ),
+    );
+  }
+
+  const NutrientFacts._({
     required this.calories,
     required this.proteinGrams,
     required this.carbsGrams,
     required this.fatGrams,
-  }) : assert(
-          calories >= 0 &&
-              proteinGrams >= 0 &&
-              carbsGrams >= 0 &&
-              fatGrams >= 0,
-        );
+  });
 
   factory NutrientFacts.fromJson(Object? value) {
-    final json = _jsonMap(value, 'nutrient facts');
-    return NutrientFacts(
-      calories: _finiteNonNegative(json['calories'], 'facts.calories'),
-      proteinGrams:
-          _finiteNonNegative(json['proteinGrams'], 'facts.proteinGrams'),
-      carbsGrams: _finiteNonNegative(json['carbsGrams'], 'facts.carbsGrams'),
-      fatGrams: _finiteNonNegative(json['fatGrams'], 'facts.fatGrams'),
+    final json = _strictJsonMap(
+      value,
+      'nutrient facts',
+      const {'calories', 'proteinGrams', 'carbsGrams', 'fatGrams'},
+    );
+    return NutrientFacts._(
+      calories: _finiteNonNegative(
+        json['calories'],
+        'facts.calories',
+        max: 1000,
+      ),
+      proteinGrams: _finiteNonNegative(
+        json['proteinGrams'],
+        'facts.proteinGrams',
+        max: 100,
+      ),
+      carbsGrams: _finiteNonNegative(
+        json['carbsGrams'],
+        'facts.carbsGrams',
+        max: 100,
+      ),
+      fatGrams: _finiteNonNegative(
+        json['fatGrams'],
+        'facts.fatGrams',
+        max: 100,
+      ),
     );
   }
 
@@ -383,23 +556,31 @@ final class ObservedNutrientFacts {
   });
 
   factory ObservedNutrientFacts.fromJson(Object? value) {
-    final json = _jsonMap(value, 'observed nutrient facts');
+    final json = _strictJsonMap(
+      value,
+      'observed nutrient facts',
+      const {'calories', 'proteinGrams', 'carbsGrams', 'fatGrams'},
+    );
     return ObservedNutrientFacts(
       calories: _nullableFiniteNonNegative(
         json['calories'],
         'facts.calories',
+        max: 1000,
       ),
       proteinGrams: _nullableFiniteNonNegative(
         json['proteinGrams'],
         'facts.proteinGrams',
+        max: 100,
       ),
       carbsGrams: _nullableFiniteNonNegative(
         json['carbsGrams'],
         'facts.carbsGrams',
+        max: 100,
       ),
       fatGrams: _nullableFiniteNonNegative(
         json['fatGrams'],
         'facts.fatGrams',
+        max: 100,
       ),
     );
   }
@@ -425,7 +606,19 @@ final class ObservedFoodComponent {
   });
 
   factory ObservedFoodComponent.fromJson(Object? value) {
-    final json = _jsonMap(value, 'food component');
+    final json = _strictJsonMap(
+      value,
+      'food component',
+      const {
+        'id',
+        'nameVi',
+        'matchedFoodId',
+        'confidence',
+        'isMajor',
+        'requiresManualPortion',
+        'suggestedPortion',
+      },
+    );
     return ObservedFoodComponent(
       id: _requiredText(json['id'], 'component.id', maxLength: 100),
       nameVi: _requiredText(json['nameVi'], 'component.nameVi', maxLength: 160),
@@ -469,36 +662,79 @@ final class ObservedLabelFacts {
   }) : missingFields = List.unmodifiable(missingFields);
 
   factory ObservedLabelFacts.fromJson(Object? value) {
-    final json = _jsonMap(value, 'label facts');
-    final missingFields = _jsonList(
+    final json = _strictJsonMap(
+      value,
+      'label facts',
+      const {
+        'nameVi',
+        'basis',
+        'facts',
+        'servingSizeGrams',
+        'servingsPerContainer',
+        'netWeightGrams',
+        'confidence',
+        'missingFields',
+      },
+    );
+    final missingValues = _jsonList(
       json['missingFields'],
       'labelFacts.missingFields',
-    ).map(LabelMissingField.fromWire);
+    );
+    if (missingValues.length > 9) {
+      throw const FoodAnalysisFormatException(
+        'labelFacts.missingFields has too many values.',
+      );
+    }
+    final missingFields =
+        missingValues.map(LabelMissingField.fromWire).toList(growable: false);
+    final basis = LabelBasis.fromWire(json['basis']);
+    final facts = ObservedNutrientFacts.fromJson(json['facts']);
+    final servingSizeGrams = _nullableFinitePositive(
+      json['servingSizeGrams'],
+      'labelFacts.servingSizeGrams',
+      max: 5000,
+    );
+    final servingsPerContainer = _nullableFinitePositive(
+      json['servingsPerContainer'],
+      'labelFacts.servingsPerContainer',
+      max: 100,
+    );
+    final netWeightGrams = _nullableFinitePositive(
+      json['netWeightGrams'],
+      'labelFacts.netWeightGrams',
+      max: 5000,
+    );
+    final requiredMissingFields = <LabelMissingField>{
+      if (basis == LabelBasis.unknown) LabelMissingField.basis,
+      if (facts.calories == null) LabelMissingField.calories,
+      if (facts.proteinGrams == null) LabelMissingField.proteinGrams,
+      if (facts.carbsGrams == null) LabelMissingField.carbsGrams,
+      if (facts.fatGrams == null) LabelMissingField.fatGrams,
+      if (basis == LabelBasis.perServing && servingSizeGrams == null)
+        LabelMissingField.servingSizeGrams,
+      if (netWeightGrams == null) LabelMissingField.consumedAmount,
+    };
+    if (!missingFields.toSet().containsAll(requiredMissingFields)) {
+      throw const FoodAnalysisFormatException(
+        'labelFacts.missingFields is inconsistent with missing values.',
+      );
+    }
     return ObservedLabelFacts(
       nameVi: _requiredText(
         json['nameVi'],
         'labelFacts.nameVi',
         maxLength: 160,
       ),
-      basis: LabelBasis.fromWire(json['basis']),
-      facts: ObservedNutrientFacts.fromJson(json['facts']),
-      servingSizeGrams: _nullableFinitePositive(
-        json['servingSizeGrams'],
-        'labelFacts.servingSizeGrams',
-      ),
-      servingsPerContainer: _nullableFinitePositive(
-        json['servingsPerContainer'],
-        'labelFacts.servingsPerContainer',
-      ),
-      netWeightGrams: _nullableFinitePositive(
-        json['netWeightGrams'],
-        'labelFacts.netWeightGrams',
-      ),
+      basis: basis,
+      facts: facts,
+      servingSizeGrams: servingSizeGrams,
+      servingsPerContainer: servingsPerContainer,
+      netWeightGrams: netWeightGrams,
       confidence: _confidence(
         json['confidence'],
         'labelFacts.confidence',
       ),
-      missingFields: missingFields.toList(growable: false),
+      missingFields: missingFields,
     );
   }
 }
@@ -510,7 +746,7 @@ final class FoodAnalysisReview {
   final List<ObservedFoodComponent>? components;
   final ObservedLabelFacts? labelFacts;
   final double confidence;
-  final List<String> uncertaintyReasons;
+  final List<FoodUncertaintyReason> uncertaintyReasons;
   final DateTime expiresAt;
 
   FoodAnalysisReview._({
@@ -520,13 +756,26 @@ final class FoodAnalysisReview {
     required List<ObservedFoodComponent>? components,
     required this.labelFacts,
     required this.confidence,
-    required List<String> uncertaintyReasons,
+    required List<FoodUncertaintyReason> uncertaintyReasons,
     required this.expiresAt,
   })  : components = components == null ? null : List.unmodifiable(components),
         uncertaintyReasons = List.unmodifiable(uncertaintyReasons);
 
   factory FoodAnalysisReview.fromJson(Object? value) {
-    final json = _jsonMap(value, 'food analysis review');
+    final json = _strictJsonMap(
+      value,
+      'food analysis review',
+      const {
+        'analysisId',
+        'imageType',
+        'status',
+        'components',
+        'labelFacts',
+        'confidence',
+        'uncertaintyReasons',
+        'expiresAt',
+      },
+    );
     final imageType = FoodImageType.fromWire(json['imageType']);
     final status = FoodAnalysisStatus.fromWire(json['status']);
     if (status == FoodAnalysisStatus.ready) {
@@ -540,7 +789,9 @@ final class FoodAnalysisReview {
     switch (imageType) {
       case FoodImageType.meal:
         final values = _jsonList(json['components'], 'components');
-        if (values.isEmpty || json['labelFacts'] != null) {
+        if (values.isEmpty ||
+            values.length > 20 ||
+            json['labelFacts'] != null) {
           throw FoodAnalysisFormatException(
             'MEAL requires components and null labelFacts.',
           );
@@ -575,21 +826,14 @@ final class FoodAnalysisReview {
     }
 
     return FoodAnalysisReview._(
-      analysisId: _requiredText(
-        json['analysisId'],
-        'analysisId',
-        maxLength: 200,
-      ),
+      analysisId: _requiredNonEmptyText(json['analysisId'], 'analysisId'),
       imageType: imageType,
       status: status,
       components: components,
       labelFacts: labelFacts,
       confidence: _confidence(json['confidence'], 'confidence'),
-      uncertaintyReasons: _stringList(
+      uncertaintyReasons: _uncertaintyReasons(
         json['uncertaintyReasons'],
-        'uncertaintyReasons',
-        maxItems: 20,
-        maxItemLength: 240,
       ),
       expiresAt: _isoDateTime(json['expiresAt'], 'expiresAt'),
     );
@@ -608,7 +852,31 @@ final class ConfirmedFoodComponent {
   final String nameVi;
   final FoodPortion portion;
 
-  const ConfirmedFoodComponent({
+  factory ConfirmedFoodComponent({
+    required String observationId,
+    required String? foodId,
+    required String nameVi,
+    required FoodPortion portion,
+  }) {
+    return ConfirmedFoodComponent._(
+      observationId: _validatedText(
+        observationId,
+        'component.observationId',
+        maxLength: 100,
+      ),
+      foodId: foodId == null
+          ? null
+          : _validatedText(foodId, 'component.foodId', maxLength: 100),
+      nameVi: _validatedText(
+        nameVi,
+        'component.nameVi',
+        maxLength: 160,
+      ),
+      portion: portion,
+    );
+  }
+
+  const ConfirmedFoodComponent._({
     required this.observationId,
     required this.foodId,
     required this.nameVi,
@@ -627,10 +895,25 @@ final class MealConfirmation extends FoodAnalysisConfirmation {
   final String nameVi;
   final List<ConfirmedFoodComponent> components;
 
-  MealConfirmation({
-    required this.nameVi,
+  factory MealConfirmation({
+    required String nameVi,
     required List<ConfirmedFoodComponent> components,
-  }) : components = List.unmodifiable(components);
+  }) {
+    if (components.isEmpty || components.length > 20) {
+      throw const FoodAnalysisFormatException(
+        'Meal confirmation requires 1 to 20 components.',
+      );
+    }
+    return MealConfirmation._(
+      nameVi: _validatedText(nameVi, 'confirmation.nameVi', maxLength: 160),
+      components: List.unmodifiable(components),
+    );
+  }
+
+  MealConfirmation._({
+    required this.nameVi,
+    required this.components,
+  });
 
   @override
   Map<String, Object?> toJson() => {
@@ -645,10 +928,24 @@ final class LabelConsumedAmount {
   final LabelConsumedKind kind;
   final double amount;
 
-  const LabelConsumedAmount({
+  factory LabelConsumedAmount({
+    required LabelConsumedKind kind,
+    required double amount,
+  }) {
+    return LabelConsumedAmount._(
+      kind: kind,
+      amount: _finitePositive(
+        amount,
+        'consumed.amount',
+        max: kind == LabelConsumedKind.grams ? 5000 : 20,
+      ),
+    );
+  }
+
+  const LabelConsumedAmount._({
     required this.kind,
     required this.amount,
-  }) : assert(amount > 0);
+  });
 
   Map<String, Object?> toJson() => {
         'kind': kind.wireValue,
@@ -663,7 +960,46 @@ final class LabelConfirmation extends FoodAnalysisConfirmation {
   final double? servingSizeGrams;
   final LabelConsumedAmount consumed;
 
-  const LabelConfirmation({
+  factory LabelConfirmation({
+    required String nameVi,
+    required LabelBasis basis,
+    required NutrientFacts facts,
+    required double? servingSizeGrams,
+    required LabelConsumedAmount consumed,
+  }) {
+    if (basis == LabelBasis.unknown) {
+      throw const FoodAnalysisFormatException(
+        'Label confirmation basis cannot be UNKNOWN.',
+      );
+    }
+    final cleanServingSize = servingSizeGrams == null
+        ? null
+        : _finitePositive(
+            servingSizeGrams,
+            'confirmation.servingSizeGrams',
+            max: 5000,
+          );
+    if (basis == LabelBasis.perServing && cleanServingSize == null) {
+      throw const FoodAnalysisFormatException(
+        'PER_SERVING requires servingSizeGrams.',
+      );
+    }
+    if (basis == LabelBasis.per100g &&
+        consumed.kind == LabelConsumedKind.servings) {
+      throw const FoodAnalysisFormatException(
+        'PER_100G requires consumed grams.',
+      );
+    }
+    return LabelConfirmation._(
+      nameVi: _validatedText(nameVi, 'confirmation.nameVi', maxLength: 160),
+      basis: basis,
+      facts: facts,
+      servingSizeGrams: cleanServingSize,
+      consumed: consumed,
+    );
+  }
+
+  const LabelConfirmation._({
     required this.nameVi,
     required this.basis,
     required this.facts,
@@ -696,7 +1032,11 @@ final class NutritionEstimate {
   });
 
   factory NutritionEstimate.fromJson(Object? value) {
-    final json = _jsonMap(value, 'nutrition estimate');
+    final json = _strictJsonMap(
+      value,
+      'nutrition estimate',
+      const {'calories', 'proteinGrams', 'carbsGrams', 'fatGrams'},
+    );
     return NutritionEstimate(
       calories: NutritionRange.fromJson(json['calories']),
       proteinGrams: NutritionRange.fromJson(json['proteinGrams']),
@@ -713,7 +1053,7 @@ final class FoodAnalysisReady {
   final String nameVi;
   final NutritionEstimate estimate;
   final AnalysisConfidenceLevel confidenceLevel;
-  final List<String> uncertaintyReasons;
+  final List<FoodUncertaintyReason> uncertaintyReasons;
   final String calculationSummary;
 
   FoodAnalysisReady._({
@@ -723,12 +1063,25 @@ final class FoodAnalysisReady {
     required this.nameVi,
     required this.estimate,
     required this.confidenceLevel,
-    required List<String> uncertaintyReasons,
+    required List<FoodUncertaintyReason> uncertaintyReasons,
     required this.calculationSummary,
   }) : uncertaintyReasons = List.unmodifiable(uncertaintyReasons);
 
   factory FoodAnalysisReady.fromJson(Object? value) {
-    final json = _jsonMap(value, 'ready food analysis');
+    final json = _strictJsonMap(
+      value,
+      'ready food analysis',
+      const {
+        'analysisId',
+        'imageType',
+        'status',
+        'nameVi',
+        'estimate',
+        'confidenceLevel',
+        'uncertaintyReasons',
+        'calculationSummary',
+      },
+    );
     final status = FoodAnalysisStatus.fromWire(json['status']);
     final imageType = FoodImageType.fromWire(json['imageType']);
     if (status != FoodAnalysisStatus.ready ||
@@ -737,28 +1090,27 @@ final class FoodAnalysisReady {
         'Ready response requires READY and a recognized image type.',
       );
     }
+    final uncertaintyReasons = _uncertaintyReasons(
+      json['uncertaintyReasons'],
+    );
+    if (imageType == FoodImageType.nutritionLabel &&
+        uncertaintyReasons.isNotEmpty) {
+      throw const FoodAnalysisFormatException(
+        'NUTRITION_LABEL ready results cannot have meal uncertainty codes.',
+      );
+    }
     return FoodAnalysisReady._(
-      analysisId: _requiredText(
-        json['analysisId'],
-        'analysisId',
-        maxLength: 200,
-      ),
+      analysisId: _requiredNonEmptyText(json['analysisId'], 'analysisId'),
       imageType: imageType,
       status: status,
       nameVi: _requiredText(json['nameVi'], 'nameVi', maxLength: 160),
       estimate: NutritionEstimate.fromJson(json['estimate']),
       confidenceLevel:
           AnalysisConfidenceLevel.fromWire(json['confidenceLevel']),
-      uncertaintyReasons: _stringList(
-        json['uncertaintyReasons'],
-        'uncertaintyReasons',
-        maxItems: 20,
-        maxItemLength: 240,
-      ),
-      calculationSummary: _requiredText(
+      uncertaintyReasons: uncertaintyReasons,
+      calculationSummary: _requiredNonEmptyText(
         json['calculationSummary'],
         'calculationSummary',
-        maxLength: 1000,
       ),
     );
   }
@@ -779,6 +1131,17 @@ final class FoodAnalysisApiException implements Exception {
   String toString() => 'FoodAnalysisApiException($code): $message';
 }
 
+final class FoodAnalysisCancelledException implements Exception {
+  final String message;
+
+  const FoodAnalysisCancelledException([
+    this.message = 'Food photo analysis was cancelled.',
+  ]);
+
+  @override
+  String toString() => 'FoodAnalysisCancelledException: $message';
+}
+
 final class FoodAnalysisFormatException implements Exception {
   final String message;
 
@@ -786,6 +1149,23 @@ final class FoodAnalysisFormatException implements Exception {
 
   @override
   String toString() => 'FoodAnalysisFormatException: $message';
+}
+
+Map<String, Object?> _strictJsonMap(
+  Object? value,
+  String field,
+  Set<String> expectedKeys,
+) {
+  final json = _jsonMap(value, field);
+  final actualKeys = json.keys.toSet();
+  final missingKeys = expectedKeys.difference(actualKeys);
+  final extraKeys = actualKeys.difference(expectedKeys);
+  if (missingKeys.isNotEmpty || extraKeys.isNotEmpty) {
+    throw FoodAnalysisFormatException(
+      '$field has missing or unknown keys.',
+    );
+  }
+  return json;
 }
 
 Map<String, Object?> _jsonMap(Object? value, String field) {
@@ -802,6 +1182,16 @@ Map<String, Object?> _jsonMap(Object? value, String field) {
   return result;
 }
 
+List<FoodUncertaintyReason> _uncertaintyReasons(Object? value) {
+  final values = _jsonList(value, 'uncertaintyReasons');
+  if (values.length > 4) {
+    throw const FoodAnalysisFormatException(
+      'uncertaintyReasons has too many values.',
+    );
+  }
+  return values.map(FoodUncertaintyReason.fromWire).toList(growable: false);
+}
+
 List<Object?> _jsonList(Object? value, String field) {
   if (value is! List) {
     throw FoodAnalysisFormatException('$field must be a JSON array.');
@@ -809,38 +1199,32 @@ List<Object?> _jsonList(Object? value, String field) {
   return List<Object?>.from(value);
 }
 
-List<String> _stringList(
-  Object? value,
-  String field, {
-  required int maxItems,
-  required int maxItemLength,
-}) {
-  final values = _jsonList(value, field);
-  if (values.length > maxItems) {
-    throw FoodAnalysisFormatException('$field has too many values.');
-  }
-  return values
-      .map(
-        (item) => _requiredText(
-          item,
-          field,
-          maxLength: maxItemLength,
-        ),
-      )
-      .toList(growable: false);
-}
-
 String _requiredText(
   Object? value,
   String field, {
   required int maxLength,
 }) {
-  if (value is! String || value.trim().isEmpty || value.length > maxLength) {
+  if (value is! String) {
     throw FoodAnalysisFormatException(
       '$field must be a non-empty bounded string.',
     );
   }
-  return value;
+  return _validatedText(value, field, maxLength: maxLength);
+}
+
+String _requiredNonEmptyText(Object? value, String field) {
+  if (value is! String) {
+    throw FoodAnalysisFormatException(
+      '$field must be a non-empty string.',
+    );
+  }
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    throw FoodAnalysisFormatException(
+      '$field must be a non-empty string.',
+    );
+  }
+  return trimmed;
 }
 
 String? _nullableRequiredText(
@@ -859,31 +1243,64 @@ bool _requiredBool(Object? value, String field) {
   return value;
 }
 
-double _finiteNonNegative(Object? value, String field) {
-  if (value is! num || !value.isFinite || value < 0) {
+double _finiteNonNegative(
+  Object? value,
+  String field, {
+  double? max,
+}) {
+  if (value is! num ||
+      !value.isFinite ||
+      value < 0 ||
+      (max != null && value > max)) {
     throw FoodAnalysisFormatException(
-      '$field must be a finite non-negative number.',
+      '$field must be a finite non-negative number within its limit.',
     );
   }
   return value.toDouble();
 }
 
-double _finitePositive(Object? value, String field) {
-  final parsed = _finiteNonNegative(value, field);
+String _validatedText(
+  String value,
+  String field, {
+  required int maxLength,
+}) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty || trimmed.length > maxLength) {
+    throw FoodAnalysisFormatException(
+      '$field must be a non-empty bounded string.',
+    );
+  }
+  return trimmed;
+}
+
+double _finitePositive(
+  Object? value,
+  String field, {
+  double? max,
+}) {
+  final parsed = _finiteNonNegative(value, field, max: max);
   if (parsed <= 0) {
     throw FoodAnalysisFormatException('$field must be positive.');
   }
   return parsed;
 }
 
-double? _nullableFiniteNonNegative(Object? value, String field) {
+double? _nullableFiniteNonNegative(
+  Object? value,
+  String field, {
+  double? max,
+}) {
   if (value == null) return null;
-  return _finiteNonNegative(value, field);
+  return _finiteNonNegative(value, field, max: max);
 }
 
-double? _nullableFinitePositive(Object? value, String field) {
+double? _nullableFinitePositive(
+  Object? value,
+  String field, {
+  double? max,
+}) {
   if (value == null) return null;
-  return _finitePositive(value, field);
+  return _finitePositive(value, field, max: max);
 }
 
 double _confidence(Object? value, String field) {
