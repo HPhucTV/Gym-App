@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { NutritionEstimator } = require('../src/food-analysis/nutrition_estimator');
 const { FoodDatabase } = require('../src/food-analysis/food_database');
 
@@ -24,6 +26,11 @@ const database = new FoodDatabase([
   },
 ]);
 const estimator = new NutritionEstimator({ database });
+const curatedDatabase = new FoodDatabase(JSON.parse(fs.readFileSync(
+  path.join(__dirname, '..', 'data', 'vietnamese_foods.json'),
+  'utf8',
+)));
+const curatedEstimator = new NutritionEstimator({ database: curatedDatabase });
 
 test('calculates a per-100g label for consumed grams', () => {
   const result = estimator.estimateLabel({
@@ -169,4 +176,89 @@ test('does not fuzzy-match generic meat, fish, or egg names', () => {
   assert.equal(genericDatabase.match('trứng'), null);
   assert.equal(genericDatabase.match('thịt'), null);
   assert.equal(genericDatabase.match('cá'), null);
+});
+
+test('estimates shipped per-piece and per-serving legacy records exactly', () => {
+  const eggs = curatedEstimator.estimateMeal({
+    nameVi: 'Trứng',
+    components: [{
+      observationId: 'egg-1', foodId: 'boiled-egg', nameVi: 'Trứng luộc',
+      portion: { kind: 'HOUSEHOLD', unit: 'PIECE', quantity: 2, size: 'MEDIUM' },
+    }],
+    uncertaintyReasons: [],
+  });
+  const pho = curatedEstimator.estimateMeal({
+    nameVi: 'Phở',
+    components: [{
+      observationId: 'pho-1', foodId: 'beef-pho', nameVi: 'Phở bò',
+      portion: { kind: 'HOUSEHOLD', unit: 'SERVING', quantity: 1, size: 'MEDIUM' },
+    }],
+    uncertaintyReasons: [],
+  });
+
+  assert.deepEqual(eggs.estimate.calories, { min: 156, mid: 156, max: 156 });
+  assert.deepEqual(pho.estimate.calories, { min: 350, mid: 350, max: 350 });
+});
+
+test('uses the shipped gram and bowl paths and rejects unsupported curated combinations', () => {
+  const riceByGrams = curatedEstimator.estimateMeal({
+    nameVi: 'Cơm',
+    components: [{
+      observationId: 'rice-grams', foodId: 'white-rice', nameVi: 'Cơm trắng',
+      portion: { kind: 'GRAMS', grams: 100 },
+    }],
+    uncertaintyReasons: [],
+  });
+  const riceByBowl = curatedEstimator.estimateMeal({
+    nameVi: 'Cơm',
+    components: [{
+      observationId: 'rice-bowl', foodId: 'white-rice', nameVi: 'Cơm trắng',
+      portion: { kind: 'HOUSEHOLD', unit: 'BOWL', quantity: 1, size: 'MEDIUM' },
+    }],
+    uncertaintyReasons: [],
+  });
+
+  assert.equal(riceByGrams.estimate.calories.mid, 130);
+  assert.equal(riceByBowl.estimate.calories.mid, 195);
+  assert.throws(
+    () => curatedEstimator.estimateMeal({
+      nameVi: 'Trứng',
+      components: [{
+        observationId: 'egg-bowl', foodId: 'boiled-egg', nameVi: 'Trứng luộc',
+        portion: { kind: 'HOUSEHOLD', unit: 'BOWL', quantity: 1, size: 'MEDIUM' },
+      }],
+      uncertaintyReasons: [],
+    }),
+    (error) => error.code === 'UNSUPPORTED_PORTION',
+  );
+  assert.throws(
+    () => curatedEstimator.estimateMeal({
+      nameVi: 'Cơm',
+      components: [{
+        observationId: 'rice-piece', foodId: 'white-rice', nameVi: 'Cơm trắng',
+        portion: { kind: 'HOUSEHOLD', unit: 'PIECE', quantity: 1, size: 'MEDIUM' },
+      }],
+      uncertaintyReasons: [],
+    }),
+    (error) => error.code === 'UNSUPPORTED_PORTION',
+  );
+});
+
+test('summarizes only confirmed grams and household portions', () => {
+  const result = curatedEstimator.estimateMeal({
+    nameVi: 'Bữa ăn',
+    components: [
+      {
+        observationId: 'rice-grams', foodId: 'white-rice', nameVi: 'Cơm trắng',
+        portion: { kind: 'GRAMS', grams: 150 },
+      },
+      {
+        observationId: 'egg-piece', foodId: 'boiled-egg', nameVi: 'Trứng luộc',
+        portion: { kind: 'HOUSEHOLD', unit: 'PIECE', quantity: 1, size: 'MEDIUM' },
+      },
+    ],
+    uncertaintyReasons: [],
+  });
+
+  assert.equal(result.calculationSummaryVi, 'Ước tính từ Cơm trắng: 150 g; Trứng luộc: 1 cái vừa.');
 });

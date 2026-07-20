@@ -24,6 +24,7 @@
     "nameVi": "Trứng chiên",
     "aliases": ["trứng chiên"],
     "nutrientsPerUnit": { "calories": 98, "proteinGrams": 6.8, "carbsGrams": 0.5, "fatGrams": 7.5 },
+    "directUnit": "PIECE",
     "householdPortions": {}
   },
   {
@@ -31,6 +32,7 @@
     "nameVi": "Trứng luộc",
     "aliases": ["trứng luộc"],
     "nutrientsPerUnit": { "calories": 78, "proteinGrams": 6.3, "carbsGrams": 0.6, "fatGrams": 5.3 },
+    "directUnit": "PIECE",
     "householdPortions": {}
   },
   {
@@ -38,6 +40,7 @@
     "nameVi": "Trứng gà luộc",
     "aliases": ["trứng gà"],
     "nutrientsPerUnit": { "calories": 78, "proteinGrams": 6.3, "carbsGrams": 0.6, "fatGrams": 5.3 },
+    "directUnit": "PIECE",
     "householdPortions": {}
   },
   {
@@ -45,6 +48,7 @@
     "nameVi": "Trứng ốp la",
     "aliases": ["trứng ốp la"],
     "nutrientsPerUnit": { "calories": 98, "proteinGrams": 6.8, "carbsGrams": 0.5, "fatGrams": 7.5 },
+    "directUnit": "PIECE",
     "householdPortions": {}
   },
   {
@@ -73,6 +77,7 @@
     "nameVi": "Phở bò",
     "aliases": ["phở bò"],
     "nutrientsPerUnit": { "calories": 350, "proteinGrams": 18, "carbsGrams": 52, "fatGrams": 8 },
+    "directUnit": "SERVING",
     "householdPortions": {}
   },
   {
@@ -80,6 +85,7 @@
     "nameVi": "Bún bò Huế",
     "aliases": ["bún bò", "bún bò huế"],
     "nutrientsPerUnit": { "calories": 450, "proteinGrams": 22, "carbsGrams": 60, "fatGrams": 12 },
+    "directUnit": "SERVING",
     "householdPortions": {}
   },
   {
@@ -87,6 +93,7 @@
     "nameVi": "Bánh mì kẹp thịt",
     "aliases": ["bánh mì"],
     "nutrientsPerUnit": { "calories": 400, "proteinGrams": 15, "carbsGrams": 55, "fatGrams": 13 },
+    "directUnit": "SERVING",
     "householdPortions": {}
   },
   {
@@ -101,6 +108,7 @@
     "nameVi": "Mì gói",
     "aliases": ["mì gói"],
     "nutrientsPerUnit": { "calories": 350, "proteinGrams": 7, "carbsGrams": 50, "fatGrams": 13 },
+    "directUnit": "SERVING",
     "householdPortions": {}
   }
 ]

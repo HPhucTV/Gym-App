@@ -43,9 +43,8 @@ class NutritionEstimator {
     const total = Object.fromEntries(NUTRIENTS.map((nutrient) => [nutrient, zeroRange()]));
     for (const component of confirmation.components) {
       const record = this.database.require(component);
-      const grams = this.#gramsForPortion(record, component.portion);
       for (const nutrient of NUTRIENTS) {
-        const range = this.#nutrientRange(record, nutrient, grams);
+        const range = this.#portionNutrientRange(record, component.portion, nutrient);
         total[nutrient] = addRange(total[nutrient], range);
       }
     }
@@ -53,7 +52,7 @@ class NutritionEstimator {
     return {
       estimate: toEstimate(total),
       confidenceLevel: confirmation.uncertaintyReasons.length === 0 ? 'HIGH' : confirmation.uncertaintyReasons.length === 1 ? 'MEDIUM' : 'LOW',
-      calculationSummaryVi: `Ước tính từ ${confirmation.components.length} thành phần đã xác nhận.`,
+      calculationSummaryVi: `Ước tính từ ${confirmation.components.map((component) => this.#formatConfirmedPortion(component)).join('; ')}.`,
     };
   }
 
@@ -83,20 +82,37 @@ class NutritionEstimator {
     };
   }
 
-  #gramsForPortion(record, portion) {
-    if (portion.kind === 'GRAMS') return { min: portion.grams, mid: portion.grams, max: portion.grams };
+  #portionNutrientRange(record, portion, nutrient) {
+    if (portion.kind === 'GRAMS') {
+      if (!record.nutrientsPer100g) {
+        throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id });
+      }
+      return this.#per100gRange(record.nutrientsPer100g[nutrient], { min: portion.grams, mid: portion.grams, max: portion.grams });
+    }
+    if (record.nutrientsPerUnit && record.directUnit === portion.unit && portion.size === 'MEDIUM') {
+      const value = record.nutrientsPerUnit[nutrient] * portion.quantity;
+      return { min: value, mid: value, max: value };
+    }
     const weights = record.householdPortions?.[portion.unit]?.[portion.size];
     if (!weights) {
       throw new FoodAnalysisError('UNSUPPORTED_PORTION', 'Khẩu phần gia dụng chưa được hỗ trợ cho thực phẩm này.', 422, { unit: portion.unit });
     }
-    return Object.fromEntries(['min', 'mid', 'max'].map((bound) => [`${bound}`, weights[`${bound}Grams`] * portion.quantity]));
-  }
-
-  #nutrientRange(record, nutrient, grams) {
     if (!record.nutrientsPer100g) {
       throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id });
     }
-    return Object.fromEntries(['min', 'mid', 'max'].map((bound) => [bound, record.nutrientsPer100g[nutrient] * grams[bound] / 100]));
+    const grams = Object.fromEntries(['min', 'mid', 'max'].map((bound) => [bound, weights[`${bound}Grams`] * portion.quantity]));
+    return this.#per100gRange(record.nutrientsPer100g[nutrient], grams);
+  }
+
+  #per100gRange(value, grams) {
+    return Object.fromEntries(['min', 'mid', 'max'].map((bound) => [bound, value * grams[bound] / 100]));
+  }
+
+  #formatConfirmedPortion(component) {
+    if (component.portion.kind === 'GRAMS') return `${component.nameVi}: ${component.portion.grams} g`;
+    const unit = { BOWL: 'bát', PIECE: 'cái', SPOON: 'muỗng', SERVING: 'phần' }[component.portion.unit];
+    const size = { SMALL: 'nhỏ', MEDIUM: 'vừa', LARGE: 'lớn' }[component.portion.size];
+    return `${component.nameVi}: ${component.portion.quantity} ${unit} ${size}`;
   }
 
   #widen(total, reasons) {
