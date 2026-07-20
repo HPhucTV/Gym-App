@@ -67,7 +67,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần sử dụng camera để quét mã vạch sản phẩm dinh dưỡng.</string>
+	<string>Ứng dụng sử dụng camera để chụp món ăn hoặc nhãn dinh dưỡng nhằm hỗ trợ phân tích.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Ứng dụng cần truy cập thư viện ảnh để tải hình ảnh thực phẩm.</string>
 </dict>
