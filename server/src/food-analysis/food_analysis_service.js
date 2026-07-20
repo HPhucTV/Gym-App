@@ -1,5 +1,8 @@
 const {
   FoodAnalysisError,
+  labelConfirmationSchema,
+  mealConfirmationSchema,
+  parseConfirmation,
   providerObservationSchema,
 } = require('./contracts');
 const {
@@ -116,8 +119,14 @@ class FoodAnalysisService {
       const cleanConfirmation = this.#confirmationFor(session, confirmation);
       this.#requireManualComponents(session, cleanConfirmation);
 
+      const estimatorConfirmation = session.imageType === 'MEAL'
+        ? {
+          ...cleanConfirmation,
+          uncertaintyReasons: session.observation.uncertaintyReasons,
+        }
+        : cleanConfirmation;
       const result = session.imageType === 'MEAL'
-        ? this.estimator.estimateMeal(cleanConfirmation)
+        ? this.estimator.estimateMeal(estimatorConfirmation)
         : this.estimator.estimateLabel(cleanConfirmation);
       const response = {
         analysisId,
@@ -127,7 +136,7 @@ class FoodAnalysisService {
         estimate: result.estimate,
         confidenceLevel: result.confidenceLevel,
         uncertaintyReasons: session.imageType === 'MEAL'
-          ? cleanConfirmation.uncertaintyReasons
+          ? session.observation.uncertaintyReasons
           : [],
         calculationSummary: result.calculationSummary || result.calculationSummaryVi,
       };
@@ -138,7 +147,10 @@ class FoodAnalysisService {
         status: response.status,
         confidenceBucket: response.confidenceLevel,
         usedSecondImage: session.usedSecondImage,
-        ...confirmationCorrectionBuckets(session.observation, cleanConfirmation),
+        ...confirmationCorrectionBuckets(
+          this.#observationWithMatches(session.observation),
+          cleanConfirmation,
+        ),
         rangeWidthBucket: rangeWidthBucket(response.estimate),
         durationBucket: durationBucket(Date.now() - startedAt),
       });
@@ -215,7 +227,7 @@ class FoodAnalysisService {
       components: observation.imageType === 'MEAL'
         ? observation.components.map((component) => ({
           ...component,
-          matchedFoodId: this.estimator.database?.match(component.nameVi)?.id || null,
+          matchedFoodId: this.#matchedFoodId(component.nameVi),
           requiresManualPortion: session.usedSecondImage
             && component.isMajor
             && (component.confidence < SECOND_IMAGE_CONFIDENCE || component.suggestedPortion === null),
@@ -235,8 +247,26 @@ class FoodAnalysisService {
       throw invalidConfirmation();
     }
     const { kind, ...cleanConfirmation } = confirmation;
-    if (kind !== undefined && kind !== session.imageType) throw invalidConfirmation('kind');
-    return cleanConfirmation;
+    if (kind !== session.imageType) throw invalidConfirmation('kind');
+    return parseConfirmation(
+      session.imageType === 'MEAL' ? mealConfirmationSchema : labelConfirmationSchema,
+      cleanConfirmation,
+    );
+  }
+
+  #observationWithMatches(observation) {
+    if (!Array.isArray(observation.components)) return observation;
+    return {
+      ...observation,
+      components: observation.components.map((component) => ({
+        ...component,
+        matchedFoodId: this.#matchedFoodId(component.nameVi),
+      })),
+    };
+  }
+
+  #matchedFoodId(nameVi) {
+    return this.estimator.database?.match(nameVi)?.id || null;
   }
 
   #requireManualComponents(session, confirmation) {

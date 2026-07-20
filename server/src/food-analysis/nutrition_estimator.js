@@ -1,7 +1,7 @@
 const {
   FoodAnalysisError,
   labelConfirmationSchema,
-  mealConfirmationSchema,
+  mealEstimationSchema,
   parseConfirmation,
 } = require('./contracts');
 
@@ -39,7 +39,7 @@ class NutritionEstimator {
   }
 
   estimateMeal(input) {
-    const confirmation = parseConfirmation(mealConfirmationSchema, input);
+    const confirmation = parseConfirmation(mealEstimationSchema, input);
     const total = Object.fromEntries(NUTRIENTS.map((nutrient) => [nutrient, zeroRange()]));
     for (const component of confirmation.components) {
       const record = this.database.require(component);

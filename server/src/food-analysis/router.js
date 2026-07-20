@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const { randomUUID } = require('node:crypto');
-const { ApiError, sendApiError } = require('../http/api_error');
+const { ApiError, normalizedError, sendApiError } = require('../http/api_error');
 const { detectImageType } = require('../http/image_signature');
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -74,14 +74,14 @@ function createFoodAnalysisRouter({
       req.file.buffer.fill(0);
       req.file.buffer = null;
     }
-    if (error instanceof ApiError || error instanceof multer.MulterError) {
+    if (error instanceof ApiError
+      || error instanceof multer.MulterError
+      || error?.type === 'entity.parse.failed'
+      || error?.type === 'entity.too.large') {
+      const normalized = normalizedError(error);
       logger?.event?.('food_analysis_failed', {
         requestId: req.analysisRequestId,
-        errorCode: error.code === 'LIMIT_FILE_SIZE'
-          ? 'IMAGE_TOO_LARGE'
-          : error.code === 'INVALID_IMAGE'
-            ? 'INVALID_IMAGE'
-            : 'INVALID_UPLOAD',
+        errorCode: normalized.code,
       });
     }
     return sendApiError(res, error);

@@ -51,7 +51,6 @@ const barcodeLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.use(generalLimiter);
 app.use(cors());
 
 const approvedFoods = JSON.parse(
@@ -76,6 +75,7 @@ app.use('/api/food-analyses', createFoodAnalysisRouter({
   logger: photoAnalysisLogger,
 }));
 
+app.use(generalLimiter);
 app.use(express.json());
 
 const productsPath = path.join(__dirname, 'vietnam_products.json');

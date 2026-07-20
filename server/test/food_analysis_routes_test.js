@@ -43,7 +43,6 @@ function fakeService(overrides = {}) {
 
 function testApp(service = fakeService(), rateLimitOptions = { windowMs: 60_000, limit: 1_000 }) {
   const app = express();
-  app.use(express.json({ limit: '32kb' }));
   app.use('/api/food-analyses', createFoodAnalysisRouter({
     service,
     logger: { event() {} },
@@ -253,6 +252,40 @@ test('returns the standard error shape when the route rate limit is exhausted', 
     error: {
       code: 'RATE_LIMITED',
       message: 'Quá nhiều yêu cầu. Vui lòng thử lại sau.',
+      details: {},
+    },
+  });
+});
+
+test('maps malformed raw JSON to the canonical confirmation error', async () => {
+  const response = await request(testApp())
+    .post('/api/food-analyses/analysis-1/confirmations')
+    .set('Content-Type', 'application/json')
+    .send('{');
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, {
+    error: {
+      code: 'INVALID_CONFIRMATION',
+      message: 'Xác nhận dinh dưỡng không hợp lệ.',
+      details: {},
+    },
+  });
+});
+
+test('maps oversized confirmation JSON to a stable canonical 4xx error', async () => {
+  const response = await request(testApp())
+    .post('/api/food-analyses/analysis-1/confirmations')
+    .send({
+      kind: 'MEAL',
+      padding: 'x'.repeat(33 * 1024),
+    });
+
+  assert.equal(response.status, 413);
+  assert.deepEqual(response.body, {
+    error: {
+      code: 'INVALID_CONFIRMATION',
+      message: 'Xác nhận dinh dưỡng vượt quá giới hạn.',
       details: {},
     },
   });

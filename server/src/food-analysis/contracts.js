@@ -31,6 +31,8 @@ const mealComponentSchema = z.object({
 const mealConfirmationSchema = z.object({
   nameVi: z.string().trim().min(1).max(160),
   components: z.array(mealComponentSchema).min(1).max(20),
+}).strict();
+const mealEstimationSchema = mealConfirmationSchema.extend({
   uncertaintyReasons: z.array(uncertaintyReasonSchema).max(4),
 }).strict();
 
@@ -169,6 +171,7 @@ module.exports = {
   analysisStatusSchema,
   labelConfirmationSchema,
   mealConfirmationSchema,
+  mealEstimationSchema,
   nutrientFactsSchema,
   nutritionEstimateSchema,
   portionSchema,

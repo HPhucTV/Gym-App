@@ -33,6 +33,13 @@ function normalizedError(error) {
       httpStatus: 400,
     };
   }
+  if (error?.type === 'entity.too.large') {
+    return {
+      code: 'INVALID_CONFIRMATION',
+      message: 'Xác nhận dinh dưỡng vượt quá giới hạn.',
+      httpStatus: 413,
+    };
+  }
   if (error instanceof ZodError || error?.type === 'entity.parse.failed') {
     return {
       code: 'INVALID_CONFIRMATION',

@@ -32,6 +32,17 @@ function countBucket(count) {
   return count === 1 ? 'ONE' : 'MULTIPLE';
 }
 
+function portionsEqual(left, right) {
+  if (!left || !right || left.kind !== right.kind) return false;
+  if (left.kind === 'GRAMS') return left.grams === right.grams;
+  if (left.kind === 'HOUSEHOLD') {
+    return left.unit === right.unit
+      && left.quantity === right.quantity
+      && left.size === right.size;
+  }
+  return false;
+}
+
 function confirmationCorrectionBuckets(observation, confirmation) {
   const observed = new Map(
     (Array.isArray(observation?.components) ? observation.components : [])
@@ -50,8 +61,11 @@ function confirmationCorrectionBuckets(observation, confirmation) {
       portionCorrections += 1;
       continue;
     }
-    if (component.nameVi !== original.nameVi) componentCorrections += 1;
-    if (JSON.stringify(component.portion) !== JSON.stringify(original.suggestedPortion)) {
+    if (component.nameVi !== original.nameVi
+      || (component.foodId !== undefined && component.foodId !== original.matchedFoodId)) {
+      componentCorrections += 1;
+    }
+    if (!portionsEqual(component.portion, original.suggestedPortion)) {
       portionCorrections += 1;
     }
   }

@@ -123,3 +123,60 @@ test('counts an omitted observed component as a component correction', () => {
     portionCorrectionBucket: 'NONE',
   });
 });
+
+test('compares portion semantics independently of object key order', () => {
+  const observation = {
+    components: [{
+      id: 'one',
+      nameVi: 'Cơm',
+      matchedFoodId: 'white-rice',
+      suggestedPortion: {
+        kind: 'HOUSEHOLD',
+        unit: 'BOWL',
+        quantity: 1,
+        size: 'MEDIUM',
+      },
+    }],
+  };
+
+  assert.deepEqual(confirmationCorrectionBuckets(observation, {
+    components: [{
+      observationId: 'one',
+      foodId: 'white-rice',
+      nameVi: 'Cơm',
+      portion: {
+        size: 'MEDIUM',
+        quantity: 1,
+        unit: 'BOWL',
+        kind: 'HOUSEHOLD',
+      },
+    }],
+  }), {
+    componentCorrectionBucket: 'NONE',
+    portionCorrectionBucket: 'NONE',
+  });
+});
+
+test('counts a changed food ID as a component correction', () => {
+  const portion = { kind: 'GRAMS', grams: 100 };
+  const observation = {
+    components: [{
+      id: 'one',
+      nameVi: 'Cơm',
+      matchedFoodId: 'white-rice',
+      suggestedPortion: portion,
+    }],
+  };
+
+  assert.deepEqual(confirmationCorrectionBuckets(observation, {
+    components: [{
+      observationId: 'one',
+      foodId: 'fried-rice',
+      nameVi: 'Cơm',
+      portion,
+    }],
+  }), {
+    componentCorrectionBucket: 'ONE',
+    portionCorrectionBucket: 'NONE',
+  });
+});

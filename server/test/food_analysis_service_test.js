@@ -2,7 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { AnalysisSessionStore } = require('../src/food-analysis/analysis_session_store');
 const { FoodAnalysisService } = require('../src/food-analysis/food_analysis_service');
-const { providerObservationSchema } = require('../src/food-analysis/contracts');
+const {
+  mealConfirmationSchema,
+  providerObservationSchema,
+} = require('../src/food-analysis/contracts');
 
 function validJpeg() {
   return {
@@ -81,7 +84,6 @@ function validMealConfirmation(overrides = {}) {
         size: 'MEDIUM',
       },
     }],
-    uncertaintyReasons: [],
     ...overrides,
   };
 }
@@ -139,6 +141,11 @@ test('provider schema accepts the full strict observation and rejects provider t
     ...mealObservation(),
     totalCalories: 195,
   }).success, false);
+});
+
+test('meal confirmation schema accepts the canonical client body without uncertainty reasons', () => {
+  const { kind, ...canonicalBody } = validMealConfirmation();
+  assert.equal(mealConfirmationSchema.safeParse(canonicalBody).success, true);
 });
 
 test('provider schema requires null required label facts to be named as missing', () => {
@@ -425,4 +432,124 @@ test('emits bounded workflow telemetry including correction buckets and failures
   assert.equal(events[2].fields.errorCode, 'ANALYSIS_UNAVAILABLE');
   assert.equal(JSON.stringify(events).includes('Tên đã sửa'), false);
   assert.equal(JSON.stringify(events).includes('Tên thành phần đã sửa'), false);
+});
+
+test('accepts the canonical meal confirmation and derives uncertainty from the stored observation', async () => {
+  let estimated;
+  const estimator = {
+    database: { match: () => ({ id: 'white-rice' }) },
+    estimateMeal(confirmation) {
+      estimated = confirmation;
+      return {
+        estimate: { calories: { min: 100, mid: 120, max: 140 } },
+        confidenceLevel: 'MEDIUM',
+        calculationSummaryVi: 'ok',
+      };
+    },
+  };
+  const service = makeService({
+    observer: sequenceObserver([mealObservation(0.8, {
+      uncertaintyReasons: ['HIDDEN_OIL'],
+    })]),
+    estimator,
+  });
+  const started = await service.start(validJpeg());
+
+  const response = await service.confirm(started.analysisId, validMealConfirmation());
+
+  assert.equal(response.status, 'READY');
+  assert.deepEqual(estimated.uncertaintyReasons, ['HIDDEN_OIL']);
+  assert.deepEqual(response.uncertaintyReasons, ['HIDDEN_OIL']);
+});
+
+test('requires the confirmation kind and rejects client-controlled uncertainty reasons', async () => {
+  const missingKindService = makeService({
+    observer: sequenceObserver([mealObservation(0.8)]),
+  });
+  const missingKindStarted = await missingKindService.start(validJpeg());
+  const { kind, ...withoutKind } = validMealConfirmation();
+  await assert.rejects(
+    missingKindService.confirm(missingKindStarted.analysisId, withoutKind),
+    (error) => error.code === 'INVALID_CONFIRMATION',
+  );
+
+  const injectedService = makeService({
+    observer: sequenceObserver([mealObservation(0.8, {
+      uncertaintyReasons: ['HIDDEN_OIL'],
+    })]),
+  });
+  const injectedStarted = await injectedService.start(validJpeg());
+  await assert.rejects(
+    injectedService.confirm(injectedStarted.analysisId, {
+      ...validMealConfirmation(),
+      uncertaintyReasons: [],
+    }),
+    (error) => error.code === 'INVALID_CONFIRMATION',
+  );
+});
+
+test('keeps canonical nutrition-label confirmation working', async () => {
+  const service = makeService({ observer: sequenceObserver([labelObservation()]) });
+  const started = await service.start(validJpeg());
+
+  const response = await service.confirm(started.analysisId, {
+    kind: 'NUTRITION_LABEL',
+    nameVi: 'Snack',
+    basis: 'PER_100G',
+    facts: {
+      calories: 498,
+      proteinGrams: 4.4,
+      carbsGrams: 49.8,
+      fatGrams: 31.1,
+    },
+    consumed: { kind: 'GRAMS', amount: 57 },
+  });
+
+  assert.equal(response.status, 'READY');
+  assert.equal(response.imageType, 'NUTRITION_LABEL');
+  assert.deepEqual(response.uncertaintyReasons, []);
+});
+
+test('uses parsed confirmation values for semantic correction telemetry', async () => {
+  const events = [];
+  let estimated;
+  const estimator = {
+    database: { match: () => ({ id: 'white-rice' }) },
+    estimateMeal(confirmation) {
+      estimated = confirmation;
+      return {
+        estimate: { calories: { min: 100, mid: 100, max: 100 } },
+        confidenceLevel: 'HIGH',
+        calculationSummaryVi: 'ok',
+      };
+    },
+  };
+  const service = makeService({
+    observer: sequenceObserver([mealObservation(0.8)]),
+    estimator,
+  });
+  service.logger = { event: (name, fields) => events.push({ name, fields }) };
+  const started = await service.start(validJpeg());
+  const component = validMealConfirmation().components[0];
+
+  await service.confirm(started.analysisId, {
+    kind: 'MEAL',
+    nameVi: ' Cơm ',
+    components: [{
+      observationId: component.observationId,
+      foodId: component.foodId,
+      nameVi: ` ${component.nameVi} `,
+      portion: {
+        size: 'MEDIUM',
+        quantity: 1,
+        unit: 'BOWL',
+        kind: 'HOUSEHOLD',
+      },
+    }],
+  });
+
+  assert.equal(estimated.nameVi, 'Cơm');
+  const completed = events.find((event) => event.name === 'food_analysis_confirmation_completed');
+  assert.equal(completed.fields.componentCorrectionBucket, 'NONE');
+  assert.equal(completed.fields.portionCorrectionBucket, 'NONE');
 });
