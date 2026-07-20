@@ -1,0 +1,106 @@
+[
+  {
+    "id": "white-rice",
+    "nameVi": "Cơm trắng",
+    "aliases": ["cơm", "cơm trắng"],
+    "nutrientsPer100g": { "calories": 130, "proteinGrams": 2.7, "carbsGrams": 28, "fatGrams": 0.3 },
+    "householdPortions": {
+      "BOWL": {
+        "SMALL": { "minGrams": 90, "midGrams": 110, "maxGrams": 130 },
+        "MEDIUM": { "minGrams": 130, "midGrams": 150, "maxGrams": 170 },
+        "LARGE": { "minGrams": 170, "midGrams": 200, "maxGrams": 230 }
+      }
+    }
+  },
+  {
+    "id": "chicken-breast",
+    "nameVi": "Ức gà luộc/hấp",
+    "aliases": ["ức gà", "ức gà luộc", "ức gà hấp"],
+    "nutrientsPer100g": { "calories": 165, "proteinGrams": 31, "carbsGrams": 0, "fatGrams": 3.6 },
+    "householdPortions": {}
+  },
+  {
+    "id": "fried-egg",
+    "nameVi": "Trứng chiên",
+    "aliases": ["trứng chiên"],
+    "nutrientsPerUnit": { "calories": 98, "proteinGrams": 6.8, "carbsGrams": 0.5, "fatGrams": 7.5 },
+    "householdPortions": {}
+  },
+  {
+    "id": "boiled-egg",
+    "nameVi": "Trứng luộc",
+    "aliases": ["trứng luộc"],
+    "nutrientsPerUnit": { "calories": 78, "proteinGrams": 6.3, "carbsGrams": 0.6, "fatGrams": 5.3 },
+    "householdPortions": {}
+  },
+  {
+    "id": "chicken-egg",
+    "nameVi": "Trứng gà luộc",
+    "aliases": ["trứng gà"],
+    "nutrientsPerUnit": { "calories": 78, "proteinGrams": 6.3, "carbsGrams": 0.6, "fatGrams": 5.3 },
+    "householdPortions": {}
+  },
+  {
+    "id": "fried-egg-sunny-side",
+    "nameVi": "Trứng ốp la",
+    "aliases": ["trứng ốp la"],
+    "nutrientsPerUnit": { "calories": 98, "proteinGrams": 6.8, "carbsGrams": 0.5, "fatGrams": 7.5 },
+    "householdPortions": {}
+  },
+  {
+    "id": "braised-pork",
+    "nameVi": "Thịt heo kho",
+    "aliases": ["thịt heo kho"],
+    "nutrientsPer100g": { "calories": 260, "proteinGrams": 16.5, "carbsGrams": 1.5, "fatGrams": 21.5 },
+    "householdPortions": {}
+  },
+  {
+    "id": "fried-fish",
+    "nameVi": "Cá chiên",
+    "aliases": ["cá chiên"],
+    "nutrientsPer100g": { "calories": 200, "proteinGrams": 18, "carbsGrams": 0, "fatGrams": 14 },
+    "householdPortions": {}
+  },
+  {
+    "id": "boiled-vegetables",
+    "nameVi": "Rau luộc",
+    "aliases": ["rau luộc", "rau xanh"],
+    "nutrientsPer100g": { "calories": 35, "proteinGrams": 1.5, "carbsGrams": 7, "fatGrams": 0.2 },
+    "householdPortions": {}
+  },
+  {
+    "id": "beef-pho",
+    "nameVi": "Phở bò",
+    "aliases": ["phở bò"],
+    "nutrientsPerUnit": { "calories": 350, "proteinGrams": 18, "carbsGrams": 52, "fatGrams": 8 },
+    "householdPortions": {}
+  },
+  {
+    "id": "bun-bo-hue",
+    "nameVi": "Bún bò Huế",
+    "aliases": ["bún bò", "bún bò huế"],
+    "nutrientsPerUnit": { "calories": 450, "proteinGrams": 22, "carbsGrams": 60, "fatGrams": 12 },
+    "householdPortions": {}
+  },
+  {
+    "id": "meat-banh-mi",
+    "nameVi": "Bánh mì kẹp thịt",
+    "aliases": ["bánh mì"],
+    "nutrientsPerUnit": { "calories": 400, "proteinGrams": 15, "carbsGrams": 55, "fatGrams": 13 },
+    "householdPortions": {}
+  },
+  {
+    "id": "sticky-rice",
+    "nameVi": "Xôi",
+    "aliases": ["xôi"],
+    "nutrientsPer100g": { "calories": 344, "proteinGrams": 6.5, "carbsGrams": 75, "fatGrams": 1.5 },
+    "householdPortions": {}
+  },
+  {
+    "id": "instant-noodles",
+    "nameVi": "Mì gói",
+    "aliases": ["mì gói"],
+    "nutrientsPerUnit": { "calories": 350, "proteinGrams": 7, "carbsGrams": 50, "fatGrams": 13 },
+    "householdPortions": {}
+  }
+]
