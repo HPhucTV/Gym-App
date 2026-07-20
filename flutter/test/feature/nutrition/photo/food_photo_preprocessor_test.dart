@@ -38,6 +38,66 @@ void main() {
     expect(result.issues, contains(PhotoQualityIssue.majorOcclusion));
   });
 
+  test('accepts clear black-on-white label content away from the frame',
+      () async {
+    final image = _solidImage(900, 800, 120);
+    for (var y = 150; y < 550; y++) {
+      for (var x = 100; x < 800; x++) {
+        image.setPixelRgb(x, y, 0, 0, 0);
+      }
+    }
+
+    final result = await preprocessor.prepare(_encode(image));
+
+    expect(result.accepted, isTrue);
+  });
+
+  test('accepts a clear bright plate against a neutral background', () async {
+    final image = _solidImage(900, 800, 100);
+    for (var y = 160; y < 640; y++) {
+      for (var x = 180; x < 760; x++) {
+        image.setPixelRgb(x, y, 255, 255, 255);
+      }
+    }
+
+    final result = await preprocessor.prepare(_encode(image));
+
+    expect(result.accepted, isTrue);
+  });
+
+  test('accepts a legitimate thin dark frame', () async {
+    final image = _solidImage(900, 800, 140);
+    for (var x = 0; x < 40; x++) {
+      for (var y = 0; y < image.height; y++) {
+        image.setPixelRgb(x, y, 0, 0, 0);
+        image.setPixelRgb(image.width - 1 - x, y, 0, 0, 0);
+      }
+    }
+    final result = await preprocessor.prepare(_encode(image));
+
+    expect(result.accepted, isTrue);
+  });
+
+  test('rejects an oversized PNG header before pixel allocation', () async {
+    final result = await preprocessor.prepare(_oversizedPngHeader());
+
+    expect(result.upload, isNull);
+    expect(result.issues, contains(PhotoQualityIssue.tooSmall));
+  });
+
+  test('rejects animated input instead of decoding multiple frames', () async {
+    final animated = img.Image(width: 800, height: 800);
+    animated.setPixelRgb(0, 0, 120, 120, 120);
+    final second = img.Image(width: 800, height: 800);
+    second.setPixelRgb(0, 0, 130, 130, 130);
+    animated.addFrame(second);
+
+    final result = await preprocessor.prepare(img.encodeGif(animated));
+
+    expect(result.upload, isNull);
+    expect(result.issues, contains(PhotoQualityIssue.tooSmall));
+  });
+
   test('accepts a clear lit image as metadata-free JPEG under 5 MB', () async {
     final result =
         await preprocessor.prepare(_fixture(1200, 900, detailed: true));
@@ -71,6 +131,8 @@ void main() {
     final outputAfterReplacement = result.upload!.bytes;
     expect(outputAfterReplacement, orderedEquals(outputBeforeReplacement));
     expect(img.decodeJpg(outputAfterReplacement)!.exif.isEmpty, isTrue);
+    expect(img.decodeJpg(outputAfterReplacement)!.width, 800);
+    expect(img.decodeJpg(outputAfterReplacement)!.height, 900);
   });
 
   test('caps the output long edge at 1600 px', () async {
@@ -110,4 +172,68 @@ Uint8List _fixture(
     }
   }
   return Uint8List.fromList(img.encodeJpg(image, quality: 90));
+}
+
+img.Image _solidImage(int width, int height, int color) {
+  final image = img.Image(width: width, height: height);
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      image.setPixelRgb(x, y, color, color, color);
+    }
+  }
+  return image;
+}
+
+Uint8List _encode(img.Image image) =>
+    Uint8List.fromList(img.encodeJpg(image, quality: 90));
+
+Uint8List _oversizedPngHeader() {
+  final bytes = Uint8List.fromList([
+    137,
+    80,
+    78,
+    71,
+    13,
+    10,
+    26,
+    10,
+    0,
+    0,
+    0,
+    13,
+    73,
+    72,
+    68,
+    82,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    8,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    73,
+    69,
+    78,
+    68,
+    0,
+    0,
+    0,
+    0,
+  ]);
+  return bytes;
 }

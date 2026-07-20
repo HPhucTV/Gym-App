@@ -77,7 +77,6 @@ final class _FoodCaptureScreenState extends State<FoodCaptureScreen>
     try {
       await widget.gateway.initialize();
       if (!mounted || generation != _lifecycleGeneration) {
-        await widget.gateway.dispose();
         return;
       }
       setState(() {

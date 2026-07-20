@@ -37,13 +37,17 @@ final class DeterministicFoodPhotoPreprocessor
   static const int minimumDimensionPixels = 640;
   static const int maximumLongEdgePixels = 1600;
   static const int maximumSourceBytes = 30 * 1024 * 1024;
+  static const int maximumDecodedDimensionPixels = 12000;
+  static const int maximumDecodedPixels = 20 * 1000 * 1000;
   static const int analysisLongEdgePixels = 256;
   static const double minimumMeanLuminance = 35;
   static const double minimumLaplacianVariance = 18;
   static const int clippedDarkLuminance = 6;
   static const int clippedLightLuminance = 249;
-  static const double maximumContiguousClippedRatio = 0.20;
+  static const double minimumClippedComponentRatio = 0.12;
   static const int jpegQuality = 85;
+  static const List<int> jpegFallbackQualities = [75, 65, 55];
+  static const List<int> jpegFallbackLongEdges = [1440, 1280, 1024];
 
   @override
   Future<PhotoPreparationResult> prepare(Uint8List sourceBytes) async {
@@ -93,7 +97,7 @@ final class _PreparedPixels {
 }
 
 _PreparedPixels _preparePixels(Uint8List sourceBytes) {
-  final decoded = img.decodeImage(sourceBytes);
+  final decoded = _decodeBounded(sourceBytes);
   if (decoded == null) {
     return const _PreparedPixels(
       jpegBytes: null,
@@ -131,20 +135,105 @@ _PreparedPixels _preparePixels(Uint8List sourceBytes) {
 
   final resized = _resizeForUpload(pixels);
   final sanitized = _freshPixelImage(resized);
-  final encoded = Uint8List.fromList(
-    img.encodeJpg(
-      sanitized,
-      quality: DeterministicFoodPhotoPreprocessor.jpegQuality,
-      chroma: img.JpegChroma.yuv420,
-    ),
-  );
-  if (encoded.length > PreparedUpload.maxBytes) {
+  final encoded = _encodeUnderUploadLimit(sanitized);
+  if (encoded == null) {
     return const _PreparedPixels(
       jpegBytes: null,
-      issues: {PhotoQualityIssue.tooBlurry},
+      issues: {PhotoQualityIssue.tooSmall},
     );
   }
   return _PreparedPixels(jpegBytes: encoded, issues: const {});
+}
+
+Uint8List? _encodeUnderUploadLimit(img.Image source) {
+  final first = _encodeJpeg(
+    source,
+    DeterministicFoodPhotoPreprocessor.jpegQuality,
+  );
+  if (first.length <= PreparedUpload.maxBytes) return first;
+
+  for (final longEdge
+      in DeterministicFoodPhotoPreprocessor.jpegFallbackLongEdges) {
+    final resized = _resizeToLongEdge(source, longEdge);
+    for (final quality
+        in DeterministicFoodPhotoPreprocessor.jpegFallbackQualities) {
+      final encoded = _encodeJpeg(resized, quality);
+      if (encoded.length <= PreparedUpload.maxBytes) return encoded;
+    }
+  }
+  return null;
+}
+
+Uint8List _encodeJpeg(img.Image source, int quality) {
+  return Uint8List.fromList(
+    img.encodeJpg(
+      source,
+      quality: quality,
+      chroma: img.JpegChroma.yuv420,
+    ),
+  );
+}
+
+img.Image _resizeToLongEdge(img.Image source, int longEdge) {
+  final currentLongEdge = math.max(source.width, source.height);
+  if (currentLongEdge <= longEdge) return source;
+  final scale = longEdge / currentLongEdge;
+  return _freshPixelImage(
+    img.copyResize(
+      source,
+      width: math.max(1, (source.width * scale).round()),
+      height: math.max(1, (source.height * scale).round()),
+      interpolation: img.Interpolation.linear,
+    ),
+  );
+}
+
+img.Image? _decodeBounded(Uint8List sourceBytes) {
+  final decoder = _decoderForSupportedFormat(sourceBytes);
+  if (decoder == null) return null;
+  final info = decoder.startDecode(sourceBytes);
+  if (info == null ||
+      info.numFrames != 1 ||
+      info.width <= 0 ||
+      info.height <= 0 ||
+      info.width >
+          DeterministicFoodPhotoPreprocessor.maximumDecodedDimensionPixels ||
+      info.height >
+          DeterministicFoodPhotoPreprocessor.maximumDecodedDimensionPixels ||
+      info.width * info.height >
+          DeterministicFoodPhotoPreprocessor.maximumDecodedPixels) {
+    return null;
+  }
+  return decoder.decodeFrame(0);
+}
+
+img.Decoder? _decoderForSupportedFormat(Uint8List bytes) {
+  if (bytes.length >= 2 && bytes[0] == 0xff && bytes[1] == 0xd8) {
+    return img.JpegDecoder();
+  }
+  const pngSignature = <int>[137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length >= pngSignature.length && _startsWith(bytes, pngSignature)) {
+    return img.PngDecoder();
+  }
+  if (bytes.length >= 12 &&
+      bytes[0] == 0x52 &&
+      bytes[1] == 0x49 &&
+      bytes[2] == 0x46 &&
+      bytes[3] == 0x46 &&
+      bytes[8] == 0x57 &&
+      bytes[9] == 0x45 &&
+      bytes[10] == 0x42 &&
+      bytes[11] == 0x50) {
+    return img.WebPDecoder();
+  }
+  return null;
+}
+
+bool _startsWith(Uint8List bytes, List<int> signature) {
+  for (var index = 0; index < signature.length; index++) {
+    if (bytes[index] != signature[index]) return false;
+  }
+  return true;
 }
 
 img.Image _freshPixelImage(img.Image source) {
@@ -154,7 +243,14 @@ img.Image _freshPixelImage(img.Image source) {
     numChannels: 3,
   );
   for (final pixel in source) {
-    fresh.setPixelRgb(pixel.x, pixel.y, pixel.r, pixel.g, pixel.b);
+    final alpha = pixel.a / 255;
+    fresh.setPixelRgb(
+      pixel.x,
+      pixel.y,
+      (pixel.r * alpha) + (255 * (1 - alpha)),
+      (pixel.g * alpha) + (255 * (1 - alpha)),
+      (pixel.b * alpha) + (255 * (1 - alpha)),
+    );
   }
   return fresh;
 }
@@ -222,20 +318,30 @@ double _laplacianVariance(List<double> values, int width, int height) {
 }
 
 bool _hasMajorClippedRegion(List<double> values, int width, int height) {
-  final total = values.length;
-  final clipped = List<bool>.generate(
-    total,
+  final dark = List<bool>.generate(
+    values.length,
     (index) =>
         values[index] <=
-            DeterministicFoodPhotoPreprocessor.clippedDarkLuminance ||
-        values[index] >=
-            DeterministicFoodPhotoPreprocessor.clippedLightLuminance,
+        DeterministicFoodPhotoPreprocessor.clippedDarkLuminance,
     growable: false,
   );
+  final light = List<bool>.generate(
+    values.length,
+    (index) =>
+        values[index] >=
+        DeterministicFoodPhotoPreprocessor.clippedLightLuminance,
+    growable: false,
+  );
+  return _hasFramingComponent(dark, width, height) ||
+      _hasFramingComponent(light, width, height);
+}
+
+bool _hasFramingComponent(List<bool> clipped, int width, int height) {
+  final total = clipped.length;
   final visited = Uint8List(total);
   final queue = List<int>.filled(total, 0);
   final required =
-      (total * DeterministicFoodPhotoPreprocessor.maximumContiguousClippedRatio)
+      (total * DeterministicFoodPhotoPreprocessor.minimumClippedComponentRatio)
           .ceil();
 
   for (var start = 0; start < total; start++) {
@@ -243,14 +349,25 @@ bool _hasMajorClippedRegion(List<double> values, int width, int height) {
     var head = 0;
     var tail = 0;
     var componentSize = 0;
+    var minX = width;
+    var minY = height;
+    var maxX = -1;
+    var maxY = -1;
+    var borderCount = 0;
     queue[tail++] = start;
     visited[start] = 1;
     while (head < tail) {
       final index = queue[head++];
       componentSize++;
-      if (componentSize >= required) return true;
       final x = index % width;
       final y = index ~/ width;
+      minX = math.min(minX, x);
+      minY = math.min(minY, y);
+      maxX = math.max(maxX, x);
+      maxY = math.max(maxY, y);
+      if (x == 0 || x == width - 1 || y == 0 || y == height - 1) {
+        borderCount++;
+      }
       if (x > 0) {
         tail = _enqueue(index - 1, clipped, visited, queue, tail);
       }
@@ -264,6 +381,18 @@ bool _hasMajorClippedRegion(List<double> values, int width, int height) {
         tail = _enqueue(index + width, clipped, visited, queue, tail);
       }
     }
+    if (componentSize < required || borderCount == 0) continue;
+    final componentRatio = componentSize / total;
+    final componentWidthRatio = (maxX - minX + 1) / width;
+    final componentHeightRatio = (maxY - minY + 1) / height;
+    final fillsWholeFrame =
+        componentWidthRatio > 0.92 && componentHeightRatio > 0.92;
+    if (fillsWholeFrame || componentRatio > 0.75) continue;
+    final touchesCorner =
+        (minX == 0 || maxX == width - 1) && (minY == 0 || maxY == height - 1);
+    final isBorderBand =
+        componentWidthRatio >= 0.30 || componentHeightRatio >= 0.30;
+    if (touchesCorner || isBorderBand) return true;
   }
   return false;
 }

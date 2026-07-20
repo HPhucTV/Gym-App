@@ -24,6 +24,18 @@ void main() {
     expect(find.byKey(const Key('food-camera-preview')), findsNothing);
   });
 
+  testWidgets('shows retry guidance for a generic initialization failure',
+      (tester) async {
+    final gateway = _FakeGateway(initializeError: StateError('unavailable'));
+
+    await tester.pumpWidget(_app(gateway: gateway));
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('khởi động camera'), findsOneWidget);
+    expect(find.text('Thử lại'), findsOneWidget);
+  });
+
   testWidgets('returns only a PreparedUpload after a valid capture',
       (tester) async {
     final gateway = _FakeGateway();
@@ -113,6 +125,73 @@ void main() {
     expect(result, isNull);
     expect(gateway.disposeCalls, 1);
   });
+
+  testWidgets('close while initialization is pending cannot pop later',
+      (tester) async {
+    final pendingInitialize = Completer<void>();
+    final gateway = _FakeGateway(pendingInitialize: pendingInitialize);
+
+    await tester.pumpWidget(_app(gateway: gateway));
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const Key('close-food-camera')));
+    await tester.pumpAndSettle();
+
+    pendingInitialize.complete();
+    await tester.pumpAndSettle();
+
+    expect(gateway.disposeCalls, 1);
+    expect(find.text('Open'), findsOneWidget);
+  });
+
+  testWidgets('close while capture is pending cannot pop later',
+      (tester) async {
+    final pendingCapture = Completer<Uint8List>();
+    final gateway = _FakeGateway(pendingCapture: pendingCapture);
+    Object? result = 'not closed';
+
+    await tester.pumpWidget(
+      _app(gateway: gateway, onResult: (value) => result = value),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('capture-food-photo')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('close-food-camera')));
+    await tester.pumpAndSettle();
+
+    pendingCapture.complete(Uint8List.fromList([1, 2, 3]));
+    await tester.pumpAndSettle();
+
+    expect(result, isNull);
+    expect(gateway.disposeCalls, 1);
+    expect(find.text('Open'), findsOneWidget);
+  });
+
+  testWidgets('pause and resume during initialize keeps the newest lifecycle',
+      (tester) async {
+    final pendingInitialize = Completer<void>();
+    final gateway = _FakeGateway(pendingInitialize: pendingInitialize);
+
+    await tester.pumpWidget(_app(gateway: gateway));
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(gateway.disposeCalls, 1);
+    expect(gateway.initializeCalls, 2);
+
+    pendingInitialize.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('food-camera-preview')), findsOneWidget);
+    expect(gateway.disposeCalls, 1);
+  });
 }
 
 Widget _app({
@@ -148,15 +227,23 @@ Widget _app({
 
 final class _FakeGateway implements FoodCameraGateway {
   final Object? initializeError;
+  final Completer<void>? pendingInitialize;
   final Completer<Uint8List>? pendingCapture;
   int captureCalls = 0;
   int disposeCalls = 0;
+  int initializeCalls = 0;
 
-  _FakeGateway({this.initializeError, this.pendingCapture});
+  _FakeGateway({
+    this.initializeError,
+    this.pendingInitialize,
+    this.pendingCapture,
+  });
 
   @override
   Future<void> initialize() async {
+    initializeCalls++;
     if (initializeError != null) throw initializeError!;
+    if (pendingInitialize != null) await pendingInitialize!.future;
   }
 
   @override
