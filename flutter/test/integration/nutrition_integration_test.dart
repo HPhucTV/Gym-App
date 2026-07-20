@@ -117,7 +117,6 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
-
     // 1. Launch app and perform onboarding with database override
     await app.main(
       overrides: [
@@ -136,7 +135,7 @@ void main() {
     await performOnboarding(tester);
 
     // Navigate to Nutrition screen
-    await tester.tap(find.text('🥗 Dinh dưỡng'));
+    await tester.tap(find.text('Dinh dưỡng'));
     await tester.pumpAndSettle();
 
     // Verify Nutrition Screen is shown

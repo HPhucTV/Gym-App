@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/theme/colors.dart';
 import '../../ui/theme/theme.dart';
+import '../../ui/theme/spacing.dart';
+import '../../ui/theme/radius.dart';
+import '../../ui/theme/typography.dart';
+import '../../ui/components/gym_card.dart';
+import '../../ui/components/gym_button.dart';
+import '../../ui/components/stat_pill.dart';
+import '../../ui/components/section_header.dart';
+import '../../ui/components/gym_progress_indicator.dart';
 import 'home_ui_state.dart';
 import 'home_view_model.dart';
 
@@ -26,41 +34,35 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uiStateAsync = ref.watch(homeUiStateProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? AppColors.darkBg
-          : AppColors.white,
+      backgroundColor: isDark ? AppColors.darkBg : AppColors.white,
       body: uiStateAsync.when(
         data: (state) => _buildContent(context, state),
-        loading: () => Center(
+        loading: () => const Center(
           child: CircularProgressIndicator(
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.energyOrange),
           ),
         ),
         error: (error, stackTrace) => Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(GymSpacing.xxl),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text("⚠️", style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 12),
+                GymGap.md,
                 Text(
                   "Đã xảy ra lỗi khi tải dữ liệu",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
+                  style: GymTypography.titleMedium.bold.copyWith(
                     color: context.customColors.primaryText,
-                    fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 6),
+                GymGap.xs,
                 Text(
                   error.toString(),
-                  style: TextStyle(
-                    color: context.customColors.mutedText,
-                    fontSize: 12,
-                  ),
+                  style: GymTypography.bodySmall.muted,
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -72,80 +74,43 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Widget _buildContent(BuildContext context, HomeUiState state) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 18.0),
+        padding: const EdgeInsets.symmetric(
+          horizontal: GymSpacing.screenHorizontal,
+          vertical: GymSpacing.screenVertical,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(context, state.epochDay),
-            const SizedBox(height: 18),
+            GymGap.lg,
+
+            // Workout Hero Card (Navy theme)
+            _buildWorkoutHero(context, state),
+            GymGap.lg,
+
+            // Status Metric Pills Row
+            _buildStatusRow(context, state),
+            GymGap.xl,
+
+            // Quick Actions Grid (2x2 Grid)
+            const SectionHeader(
+              title: "Tiếp theo cho bạn",
+              subtitle: "Lối tắt nhanh",
+            ),
+            GymGap.sm,
+            _buildQuickActionsGrid(context, state),
+            GymGap.xl,
 
             // Daily Motivation Quote
             if (state.dailyQuote.isNotEmpty) ...[
               _buildMotivationCard(context, state.dailyQuote),
-              const SizedBox(height: 18),
+              GymGap.lg,
             ],
-
-            _buildWorkoutHero(context, state),
-            const SizedBox(height: 18),
-
-            _buildStatusRow(context, state),
-            const SizedBox(height: 24),
-
-            Text(
-              "TIẾP THEO CHO BẠN",
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            _buildDashboardActionCard(
-              context: context,
-              eyebrow: "LỘ TRÌNH CHƯƠNG TRÌNH",
-              title: "Lộ trình tập luyện",
-              supporting: "Xem tổng quan các buổi tập và tiến trình của bạn",
-              accent: AppColors.navy,
-              onTap: onNavigateToRoadmap,
-            ),
-            _buildDashboardActionCard(
-              context: context,
-              eyebrow: "DINH DƯỠNG HÔM NAY",
-              title: _nutritionTitle(state),
-              supporting: _nutritionSupporting(state),
-              accent: AppColors.successGreen,
-              onTap: onNavigateToNutrition,
-            ),
-            _buildDashboardActionCard(
-              context: context,
-              eyebrow: "PHẢN HỒI HẰNG TUẦN",
-              title: "Check-in cơ thể",
-              supporting: "Ghi cân nặng, năng lượng và khả năng phục hồi",
-              accent: AppColors.navy,
-              onTap: onNavigateToCheckIn,
-            ),
-            _buildDashboardActionCard(
-              context: context,
-              eyebrow: "CÁ NHÂN HÓA",
-              title: "Đề xuất dành cho bạn",
-              supporting:
-                  "Xem điều chỉnh dựa trên lịch sử và check-in gần nhất",
-              accent: AppColors.energyOrange,
-              onTap: onNavigateToRecommendations,
-            ),
-            _buildDashboardActionCard(
-              context: context,
-              eyebrow: "THÀNH TỰU",
-              title: "Huy hiệu của bạn 🏆",
-              supporting: "Xem các thành tựu đã mở khóa và thử thách mới",
-              accent: const Color(0xFFEAB308),
-              onTap: onNavigateToAchievements,
-            ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -153,8 +118,8 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, int epochDay) {
-    final date =
-        DateTime.fromMillisecondsSinceEpoch(epochDay * 24 * 60 * 60 * 1000);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final date = DateTime.fromMillisecondsSinceEpoch(epochDay * 24 * 60 * 60 * 1000);
 
     final weekdays = {
       DateTime.monday: 'thứ hai',
@@ -166,17 +131,26 @@ class HomeScreen extends ConsumerWidget {
       DateTime.sunday: 'chủ nhật',
     };
     final weekday = weekdays[date.weekday] ?? '';
-    String formattedDate = "$weekday, ${date.day} tháng ${date.month}";
+    String formattedDate = "$weekday, ngày ${date.day} tháng ${date.month}";
     if (formattedDate.isNotEmpty) {
-      formattedDate =
-          formattedDate[0].toUpperCase() + formattedDate.substring(1);
+      formattedDate = formattedDate[0].toUpperCase() + formattedDate.substring(1);
+    }
+
+    final hour = DateTime.now().hour;
+    String greeting = "Chào ngày mới!";
+    if (hour >= 5 && hour < 12) {
+      greeting = "Chào buổi sáng, bạn! 👋";
+    } else if (hour >= 12 && hour < 18) {
+      greeting = "Chào buổi chiều, bạn! 👋";
+    } else {
+      greeting = "Chào buổi tối, bạn! 👋";
     }
 
     return Row(
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           decoration: const BoxDecoration(
             color: AppColors.navy,
             shape: BoxShape.circle,
@@ -187,72 +161,54 @@ class HomeScreen extends ConsumerWidget {
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w900,
-              fontSize: 18,
+              fontSize: 20,
             ),
           ),
         ),
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "SMARTGYM",
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-            ),
-            Text(
-              formattedDate,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 14,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                greeting,
+                style: GymTypography.titleMedium.bold.copyWith(
+                  color: isDark ? AppColors.white : AppColors.navy,
+                ),
               ),
-            ),
-          ],
+              Text(
+                formattedDate,
+                style: isDark ? GymTypography.bodySmall.mutedDark : GymTypography.bodySmall.muted,
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
   Widget _buildMotivationCard(BuildContext context, String quote) {
-    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
+    return GymCard(
+      variant: GymCardVariant.flat,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.surfaceGray.withOpacity(0.5),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("✨", style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 6),
-              const Text(
-                "ĐỘNG LỰC HẰNG NGÀY",
-                style: TextStyle(
-                  color: AppColors.energyOrange,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                ),
+              Text(
+                "✨  ĐỘNG LỰC HẰNG NGÀY  ✨",
+                style: GymTypography.labelSmall.orange.bold,
               ),
-              const SizedBox(width: 6),
-              Text("✨", style: TextStyle(fontSize: 18)),
             ],
           ),
-          const SizedBox(height: 8),
+          GymGap.sm,
           Text(
             "“$quote”",
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+            style: (isDark ? GymTypography.bodyMedium.mutedDark : GymTypography.bodyMedium.muted).copyWith(
+              fontStyle: FontStyle.italic,
               height: 1.4,
             ),
             textAlign: TextAlign.center,
@@ -268,110 +224,69 @@ class HomeScreen extends ConsumerWidget {
         ? state.completedExercises / state.totalExercises
         : 0.0;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppColors.navy,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return GymCard(
+      variant: GymCardVariant.flat,
+      backgroundColor: AppColors.navy,
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "BUỔI TẬP HÔM NAY",
-            style: TextStyle(
-              color: AppColors.energyOrange,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 10),
           Text(
-            state.workoutTitle ?? "Chưa có buổi tập hiện tại",
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-            ),
+            "BUỔI TẬP HÔM NAY",
+            style: GymTypography.labelLarge.orange,
           ),
-          if (hasWorkout) ...[
-            const SizedBox(height: 4),
-            Text(
-              [
-                if (state.workoutFocus != null) state.workoutFocus,
-                if (state.durationMinutes != null)
-                  "${state.durationMinutes} phút"
-              ].join("  •  "),
-              style: const TextStyle(
-                color: Color(0xFFCBD5E1),
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Tiến độ bài tập",
-                  style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+          GymGap.sm,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      state.workoutTitle ?? "Chưa có buổi tập hiện tại",
+                      style: GymTypography.displayMedium.white,
+                    ),
+                    if (hasWorkout) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        [
+                          if (state.workoutFocus != null) state.workoutFocus,
+                          if (state.durationMinutes != null) "${state.durationMinutes} phút"
+                        ].join("  •  "),
+                        style: GymTypography.bodyMedium.copyWith(color: const Color(0xFFCBD5E1)),
+                      ),
+                    ],
+                  ],
                 ),
-                Text(
-                  "${state.completedExercises}/${state.totalExercises}",
-                  style: const TextStyle(
-                    color: AppColors.successGreen,
-                    fontWeight: FontWeight.bold,
+              ),
+              if (hasWorkout && state.totalExercises > 0) ...[
+                const SizedBox(width: 16),
+                GymCircularProgress(
+                  value: progress,
+                  size: 54,
+                  strokeWidth: 5,
+                  color: AppColors.successGreen,
+                  backgroundColor: const Color(0xFF243047),
+                  centerWidget: Text(
+                    "${state.completedExercises}/${state.totalExercises}",
+                    style: GymTypography.labelSmall.white.bold,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 7,
-                backgroundColor: const Color(0xFF243047),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppColors.successGreen),
-              ),
-            ),
-          ] else ...[
-            const SizedBox(height: 8),
+            ],
+          ),
+          if (!hasWorkout) ...[
+            GymGap.sm,
             const Text(
               "Kế hoạch sẽ xuất hiện khi có buổi tập đang hoạt động.",
-              style: TextStyle(
-                color: Color(0xFFCBD5E1),
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 14),
             ),
           ],
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: hasWorkout ? onNavigateToWorkouts : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.energyOrange,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFF334155),
-                disabledForegroundColor: const Color(0xFFCBD5E1),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                state.completedExercises > 0
-                    ? "TIẾP TỤC BUỔI TẬP"
-                    : "BẮT ĐẦU BUỔI TẬP",
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
+          GymGap.xl,
+          GymButton.primary(
+            text: state.completedExercises > 0 ? "TIẾP TỤC TẬP  ➤" : "BẮT ĐẦU TẬP  ➤",
+            onPressed: hasWorkout ? onNavigateToWorkouts : null,
           ),
         ],
       ),
@@ -385,175 +300,148 @@ class HomeScreen extends ConsumerWidget {
 
     return Row(
       children: [
-        Expanded(
-          child: _buildStatusMetric(
-            context: context,
-            value: state.completedThisWeek.toString(),
-            label: "Buổi tuần này",
-            accent: AppColors.navy,
-          ),
+        StatPill(
+          value: state.completedThisWeek.toString(),
+          label: "Buổi tuần này",
+          icon: const Icon(Icons.calendar_today_rounded, color: AppColors.recoveryBlue, size: 20),
+          valueColor: AppColors.recoveryBlue,
         ),
         const SizedBox(width: 10),
-        Expanded(
-          child: _buildStatusMetric(
-            context: context,
-            value: state.streakDays.toString(),
-            label: "Ngày liên tiếp",
-            accent: AppColors.successGreen,
-          ),
+        StatPill(
+          value: state.streakDays.toString(),
+          label: "Ngày liên tiếp",
+          icon: const Icon(Icons.local_fire_department_rounded, color: AppColors.energyOrange, size: 20),
+          valueColor: AppColors.energyOrange,
         ),
         const SizedBox(width: 10),
-        Expanded(
-          child: _buildStatusMetric(
-            context: context,
-            value: nutritionPct,
-            label: "Dinh dưỡng",
-            accent: AppColors.energyOrange,
-          ),
+        StatPill(
+          value: nutritionPct,
+          label: "Dinh dưỡng",
+          icon: const Icon(Icons.restaurant_rounded, color: AppColors.successGreen, size: 20),
+          valueColor: AppColors.successGreen,
         ),
       ],
     );
   }
 
-  Widget _buildStatusMetric({
-    required BuildContext context,
-    required String value,
-    required String label,
-    required Color accent,
-  }) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 94),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
-        border:
-            Border.all(color: Theme.of(context).colorScheme.outline, width: 1),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 14.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              color: accent,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 11,
-            ),
-            maxLines: 2,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDashboardActionCard({
-    required BuildContext context,
-    required String eyebrow,
-    required String title,
-    required String supporting,
-    required Color accent,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildQuickActionsGrid(BuildContext context, HomeUiState state) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = Theme.of(context).colorScheme;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      constraints: const BoxConstraints(minHeight: 96),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline, width: 1),
+    final items = [
+      _QuickActionItem(
+        title: "Dinh dưỡng",
+        subtitle: state.caloriesTarget != null
+            ? "${state.caloriesConsumed}/${state.caloriesTarget} kcal"
+            : "Ghi chép ăn uống",
+        emoji: "🍎",
+        color: AppColors.successGreen,
+        onTap: onNavigateToNutrition,
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    shape: BoxShape.circle,
+      _QuickActionItem(
+        title: "Check-in tuần",
+        subtitle: "Cân nặng & Phục hồi",
+        emoji: "📋",
+        color: AppColors.recoveryBlue,
+        onTap: onNavigateToCheckIn,
+      ),
+      _QuickActionItem(
+        title: "Lộ trình tập",
+        subtitle: "Tiến trình chương trình",
+        emoji: "🗺️",
+        color: AppColors.navy,
+        onTap: onNavigateToRoadmap,
+      ),
+      _QuickActionItem(
+        title: "Đề xuất",
+        subtitle: "Cá nhân hóa cho bạn",
+        emoji: "🎯",
+        color: AppColors.energyOrange,
+        onTap: onNavigateToRecommendations,
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.25,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return GymCard(
+          variant: GymCardVariant.outlined,
+          onTap: item.onTap,
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      item.emoji,
+                      style: const TextStyle(fontSize: 16),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        eyebrow,
-                        style: TextStyle(
-                          color: accent,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: colors.onSurface,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        supporting,
-                        style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
+                    color: AppColors.mutedText,
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  "›",
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w300,
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: GymTypography.titleSmall.copyWith(
+                      color: isDark ? AppColors.white : AppColors.navy,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.subtitle,
+                    style: GymTypography.bodySmall.muted.copyWith(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
 
-  String _nutritionTitle(HomeUiState state) {
-    if (state.caloriesTarget != null) {
-      return "${state.caloriesConsumed} / ${state.caloriesTarget} kcal";
-    }
-    return "${state.caloriesConsumed} kcal đã ghi";
-  }
+class _QuickActionItem {
+  final String title;
+  final String subtitle;
+  final String emoji;
+  final Color color;
+  final VoidCallback onTap;
 
-  String _nutritionSupporting(HomeUiState state) {
-    if (state.caloriesTarget == null) {
-      return "Chưa có mục tiêu calories — hoàn thiện hồ sơ để cá nhân hóa";
-    }
-    return "Mở nhật ký để cập nhật bữa ăn hôm nay";
-  }
+  const _QuickActionItem({
+    required this.title,
+    required this.subtitle,
+    required this.emoji,
+    required this.color,
+    required this.onTap,
+  });
 }

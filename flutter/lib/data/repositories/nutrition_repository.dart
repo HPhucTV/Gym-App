@@ -1,4 +1,5 @@
 import '../../core/model/nutrition_models.dart';
+import '../local/database.dart';
 
 class NutritionData {
   final int caloriesEaten;

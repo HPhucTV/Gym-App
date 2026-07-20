@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 
 @DataClassName('FoodCatalogData')
+@TableIndex(name: 'idx_food_catalog_name', columns: {#name})
+@TableIndex(name: 'idx_food_catalog_fav_name', columns: {#isFavorite, #name})
 class FoodCatalog extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();

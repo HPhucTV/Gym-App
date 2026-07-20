@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../ui/theme/colors.dart';
+import '../../ui/theme/theme.dart';
 import 'nutrition_ui_state.dart';
 
 class LoggedMealsSection extends StatelessWidget {
@@ -16,20 +18,23 @@ class LoggedMealsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           "Bữa ăn hôm nay 🍽️",
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 18,
-            color: Color(0xFF14213D),
+            color: customColors.primaryText,
           ),
         ),
         const SizedBox(height: 12),
         if (state.loggedFoods.isNotEmpty) ...[
-          _buildTotalSummaryCard(),
+          _buildTotalSummaryCard(context),
           const SizedBox(height: 12),
         ],
         OutlinedButton(
@@ -51,7 +56,7 @@ class LoggedMealsSection extends StatelessWidget {
         const SizedBox(height: 12),
         if (state.loggedFoods.isEmpty)
           Card(
-            color: const Color(0xFFF3F4F6),
+            color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
             elevation: 0,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.0)),
@@ -70,7 +75,7 @@ class LoggedMealsSection extends StatelessWidget {
     );
   }
 
-  Widget _buildTotalSummaryCard() {
+  Widget _buildTotalSummaryCard(BuildContext context) {
     final totalCal =
         state.loggedFoods.fold(0, (sum, item) => sum + item.calories);
     final totalP =
@@ -79,9 +84,11 @@ class LoggedMealsSection extends StatelessWidget {
         state.loggedFoods.fold(0, (sum, item) => sum + item.carbsGrams);
     final totalF =
         state.loggedFoods.fold(0, (sum, item) => sum + item.fatGrams);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
 
     return Card(
-      color: const Color(0xFFF3F4F6).withValues(alpha: 0.5),
+      color: isDark ? AppColors.darkSurface.withValues(alpha: 0.5) : AppColors.surfaceGray.withValues(alpha: 0.5),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
       child: Padding(
@@ -92,11 +99,11 @@ class LoggedMealsSection extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   "Tổng dinh dưỡng đã nạp:",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF14213D),
+                    color: customColors.primaryText,
                   ),
                 ),
                 Text(
@@ -131,6 +138,8 @@ class LoggedMealsSection extends StatelessWidget {
       "SNACK": "Bữa phụ 🍎",
     };
     const mealTimes = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
 
     return Column(
       children: mealTimes.map((time) {
@@ -148,7 +157,7 @@ class LoggedMealsSection extends StatelessWidget {
         final totalF = foodsInMeal.fold(0, (sum, item) => sum + item.fatGrams);
 
         return Card(
-          color: const Color(0xFFF3F4F6),
+          color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
           elevation: 0,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
@@ -163,10 +172,10 @@ class LoggedMealsSection extends StatelessWidget {
                   children: [
                     Text(
                       mealNames[time] ?? time,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
-                        color: Color(0xFF14213D),
+                        color: customColors.primaryText,
                       ),
                     ),
                     Text(
@@ -192,9 +201,9 @@ class LoggedMealsSection extends StatelessWidget {
                             children: [
                               Text(
                                 logged.name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF14213D),
+                                  color: customColors.primaryText,
                                 ),
                               ),
                               Text(

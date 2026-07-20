@@ -7068,6 +7068,12 @@ abstract class _$GymDatabase extends GeneratedDatabase {
       $UserFoodOverridesTable(this);
   late final $FoodCatalogTable foodCatalog = $FoodCatalogTable(this);
   late final $LoggedFoodsTable loggedFoods = $LoggedFoodsTable(this);
+  late final Index idxFoodCatalogName = Index('idx_food_catalog_name',
+      'CREATE INDEX idx_food_catalog_name ON food_catalog (name)');
+  late final Index idxFoodCatalogFavName = Index('idx_food_catalog_fav_name',
+      'CREATE INDEX idx_food_catalog_fav_name ON food_catalog (is_favorite, name)');
+  late final Index idxLoggedFoodsDayTime = Index('idx_logged_foods_day_time',
+      'CREATE INDEX idx_logged_foods_day_time ON logged_foods (epoch_day, timestamp)');
   late final WorkoutDao workoutDao = WorkoutDao(this as GymDatabase);
   late final PersonalizationDao personalizationDao =
       PersonalizationDao(this as GymDatabase);
@@ -7096,7 +7102,10 @@ abstract class _$GymDatabase extends GeneratedDatabase {
         mealTemplates,
         userFoodOverrides,
         foodCatalog,
-        loggedFoods
+        loggedFoods,
+        idxFoodCatalogName,
+        idxFoodCatalogFavName,
+        idxLoggedFoodsDayTime
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(

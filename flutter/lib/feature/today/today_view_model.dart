@@ -386,7 +386,7 @@ class TodayNotifier extends Notifier<TodayUiState> {
   void dismissSubstitution() {
     final currentState = state;
     if (currentState is TodayUiStateWorkout) {
-      state = currentState.copyWith(substitution: null);
+      state = currentState.copyWith(clearSubstitution: true);
     }
   }
 

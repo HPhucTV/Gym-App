@@ -1,5 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../ui/theme/colors.dart';
+import '../../ui/theme/theme.dart';
 import 'nutrition_ui_state.dart';
 
 class CalorieCard extends StatelessWidget {
@@ -12,9 +14,11 @@ class CalorieCard extends StatelessWidget {
     final progress =
         state.calorieLimit > 0 ? state.caloriesEaten / state.calorieLimit : 0.0;
     final isOverLimit = state.caloriesEaten > state.calorieLimit;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
 
     return Card(
-      color: const Color(0xFFF3F4F6),
+      color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
       child: Padding(
@@ -25,22 +29,22 @@ class CalorieCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     "Ngân sách calo hôm nay",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: Color(0xFF14213D),
+                      color: customColors.primaryText,
                     ),
                   ),
                 ),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF14213D).withValues(alpha: 0.08),
+                    color: customColors.primaryText.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12.0),
                     border: Border.all(
-                        color: const Color(0xFF14213D).withValues(alpha: 0.2)),
+                        color: customColors.primaryText.withValues(alpha: 0.2)),
                   ),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8.0, vertical: 4.0),
@@ -52,9 +56,9 @@ class CalorieCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         "Score: ${state.nutritionScore}",
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF14213D),
+                          color: customColors.primaryText,
                           fontSize: 12,
                         ),
                       ),
@@ -62,7 +66,7 @@ class CalorieCard extends StatelessWidget {
                       Text(
                         "(${state.nutritionScoreLabel})",
                         style: TextStyle(
-                          color: const Color(0xFF14213D).withValues(alpha: 0.8),
+                          color: customColors.primaryText.withValues(alpha: 0.8),
                           fontSize: 10,
                         ),
                       ),
@@ -121,11 +125,11 @@ class CalorieCard extends StatelessWidget {
                         strokeCap: StrokeCap.round,
                       ),
                     ),
-                    Text(
+                     Text(
                       "${(progress * 100).toInt()}%",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF14213D),
+                        color: customColors.primaryText,
                       ),
                     ),
                   ],
@@ -178,9 +182,11 @@ class WaterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const targetWater = 2000;
     final progress = (state.waterIntakeMl / targetWater).clamp(0.0, 1.0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
 
     return Card(
-      color: const Color(0xFFF3F4F6),
+      color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
       child: Padding(
@@ -188,129 +194,136 @@ class WaterCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               "Theo dõi Nước uống 💧",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: Color(0xFF14213D),
+                color: customColors.primaryText,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Đã nạp",
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "${state.waterIntakeMl} / $targetWater ml",
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3B82F6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 50,
-                      height: 36,
-                      child: OutlinedButton(
-                        onPressed: state.waterIntakeMl >= 250
-                            ? () => onAddWater(-250)
-                            : null,
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                          side: const BorderSide(color: Color(0xFFF97316)),
-                        ),
-                        child: const Text("-250",
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFF97316))),
-                      ),
+                    const Text(
+                      "Đã nạp",
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
-                    const SizedBox(width: 4),
-                    SizedBox(
-                      width: 50,
-                      height: 36,
-                      child: ElevatedButton(
-                        onPressed: () => onAddWater(100),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF97316),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.zero,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text("+100",
-                            style: TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    SizedBox(
-                      width: 50,
-                      height: 36,
-                      child: ElevatedButton(
-                        onPressed: () => onAddWater(250),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF97316),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.zero,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text("+250",
-                            style: TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    SizedBox(
-                      width: 50,
-                      height: 36,
-                      child: ElevatedButton(
-                        onPressed: () => onAddWater(500),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF97316),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.zero,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text("+500",
-                            style: TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(
+                      "${state.waterIntakeMl} / $targetWater ml",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkRecoveryBlue : const Color(0xFF3B82F6),
                       ),
                     ),
                   ],
                 ),
+                Icon(
+                  Icons.water_drop,
+                  size: 32,
+                  color: isDark ? AppColors.darkRecoveryBlue : const Color(0xFF3B82F6),
+                ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 38,
+                    child: OutlinedButton(
+                      onPressed: state.waterIntakeMl >= 250
+                          ? () => onAddWater(-250)
+                          : null,
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        side: const BorderSide(color: Color(0xFFF97316)),
+                      ),
+                      child: const Text("-250",
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFF97316))),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 38,
+                    child: ElevatedButton(
+                      onPressed: () => onAddWater(100),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF97316),
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text("+100",
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 38,
+                    child: ElevatedButton(
+                      onPressed: () => onAddWater(250),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF97316),
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text("+250",
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 38,
+                    child: ElevatedButton(
+                      onPressed: () => onAddWater(500),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF97316),
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text("+500",
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 6,
-                color: const Color(0xFF3B82F6),
+                color: isDark ? AppColors.darkRecoveryBlue : const Color(0xFF3B82F6),
                 backgroundColor: Colors.grey.withValues(alpha: 0.2),
               ),
             ),
@@ -340,6 +353,7 @@ class MacroRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fraction = limit > 0 ? eaten / limit : 0.0;
+    final customColors = context.customColors;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -351,8 +365,8 @@ class MacroRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF14213D),
+                style: TextStyle(
+                  color: customColors.primaryText,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -388,8 +402,11 @@ class SweatPaymentStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return Card(
-      color: const Color(0xFFF97316).withValues(alpha: 0.08),
+      color: isDark ? AppColors.darkOrangeLight : const Color(0xFFF97316).withValues(alpha: 0.08),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16.0),
@@ -405,11 +422,11 @@ class SweatPaymentStatusCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     "Nhiệm vụ bù đắp (Sweat Payment)",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF14213D),
+                      color: customColors.primaryText,
                     ),
                   ),
                   Text(
@@ -437,23 +454,26 @@ class ScanningCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return Card(
-      color: const Color(0xFFF3F4F6),
+      color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-      child: const Padding(
-        padding: EdgeInsets.all(24.0),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            CircularProgressIndicator(
+            const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF97316))),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Text(
               "Đang phân tích món ăn bằng Gemini AI...",
               style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Color(0xFF14213D)),
+                  fontWeight: FontWeight.bold, color: customColors.primaryText),
             ),
-            Text(
+            const Text(
               "Dịch vụ chạy offline kết nối server",
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),

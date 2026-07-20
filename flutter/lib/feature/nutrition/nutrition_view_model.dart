@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/model/goal_models.dart';
@@ -66,6 +67,7 @@ class NutritionNotifier extends Notifier<NutritionUiState> {
   StreamSubscription? _recentSub;
   StreamSubscription? _countSub;
   StreamSubscription? _catalogSub;
+  Timer? _searchDebounce;
 
   EntrySource _draftEntrySource = EntrySource.manual;
   String? _scannedBarcode;
@@ -127,6 +129,7 @@ class NutritionNotifier extends Notifier<NutritionUiState> {
       _recentSub?.cancel();
       _countSub?.cancel();
       _catalogSub?.cancel();
+      _searchDebounce?.cancel();
     });
 
     return NutritionLoading();
@@ -771,14 +774,18 @@ class NutritionNotifier extends Notifier<NutritionUiState> {
 
   void searchFoodsCatalog(String query) {
     _updateWith(searchQuery: query);
-    _catalogSub?.cancel();
-    final db = ref.read(gymDatabaseProvider);
-    final stream = query.isEmpty
-        ? db.foodCatalogDao.observeAll()
-        : db.foodCatalogDao.searchByName(query);
+    _searchDebounce?.cancel();
+    
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _catalogSub?.cancel();
+      final db = ref.read(gymDatabaseProvider);
+      final stream = query.isEmpty
+          ? db.foodCatalogDao.observeAll()
+          : db.foodCatalogDao.searchByName(query);
 
-    _catalogSub = stream.listen((items) {
-      _updateWith(foodCatalogItems: items.map(mapCatalogEntityToDomain).toList());
+      _catalogSub = stream.listen((items) {
+        _updateWith(foodCatalogItems: items.map(mapCatalogEntityToDomain).toList());
+      });
     });
   }
 
@@ -919,14 +926,14 @@ class NutritionNotifier extends Notifier<NutritionUiState> {
 
     try {
       final batchId = DateTime.now().millisecondsSinceEpoch.toString();
-      final parseResult = await () async {
+      final parseResult = await Isolate.run(() {
         if (fileName.toLowerCase().endsWith(".xlsx")) {
           return NutritionXlsxParser.parse(Uint8List.fromList(fileData), batchId: batchId);
         } else {
           final csvText = String.fromCharCodes(fileData);
           return NutritionCsvParser.parse(csvText, batchId: batchId);
         }
-      }();
+      });
 
       if (parseResult.items.isEmpty) {
         _updateWith(

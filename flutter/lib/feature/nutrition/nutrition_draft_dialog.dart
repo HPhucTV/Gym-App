@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/model/nutrition_models.dart';
+import '../../ui/theme/colors.dart';
+import '../../ui/theme/theme.dart';
 import 'nutrition_ui_state.dart';
 
 class NutritionDraftDialog extends StatelessWidget {
@@ -33,14 +35,16 @@ class NutritionDraftDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final customColors = context.customColors;
+    final isDark = theme.brightness == Brightness.dark;
+
     return AlertDialog(
-      backgroundColor: Colors.white,
       shape: RoundedCornerShape(20.0),
-      title: const Text(
+      title: Text(
         "Kiểm tra món ăn",
         style: TextStyle(
           fontWeight: FontWeight.bold,
-          color: Color(0xFF14213D),
+          color: customColors.primaryText,
         ),
       ),
       content: SingleChildScrollView(
@@ -109,10 +113,10 @@ class NutritionDraftDialog extends StatelessWidget {
                   onChanged: saving ? null : onSaveAsTemplate,
                   activeColor: const Color(0xFFF97316),
                 ),
-                const Text(
+                Text(
                   "Lưu làm bữa ăn mẫu",
                   style: TextStyle(
-                    color: Color(0xFF14213D),
+                    color: customColors.primaryText,
                     fontSize: 14,
                   ),
                 ),
@@ -127,9 +131,9 @@ class NutritionDraftDialog extends StatelessWidget {
             ],
             if (saving) ...[
               const SizedBox(height: 12),
-              const LinearProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF97316)),
-                backgroundColor: Color(0xFFF3F4F6),
+              LinearProgressIndicator(
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF97316)),
+                backgroundColor: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
               ),
             ],
           ],
@@ -138,7 +142,7 @@ class NutritionDraftDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: saving ? null : onDiscard,
-          child: const Text("Hủy", style: TextStyle(color: Color(0xFF14213D))),
+          child: Text("Hủy", style: TextStyle(color: customColors.primaryText)),
         ),
         TextButton(
           onPressed: saving ? null : onAccept,
@@ -168,21 +172,24 @@ class _DraftField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return TextFormField(
       initialValue: value,
       onChanged: onValueChange,
       enabled: !saving,
       keyboardType: numeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-      style: const TextStyle(color: Color(0xFF14213D)),
+      style: TextStyle(color: customColors.primaryText),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Color(0xFF14213D)),
+        labelStyle: TextStyle(color: customColors.primaryText.withValues(alpha: 0.7)),
         errorText: error,
         focusedBorder: const OutlineInputBorder(
           borderSide: BorderSide(color: Color(0xFFF97316)),
         ),
-        enabledBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: Color(0xFFF3F4F6)),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: isDark ? AppColors.darkSurface : AppColors.surfaceGray),
         ),
         border: const OutlineInputBorder(),
       ),
@@ -208,8 +215,11 @@ class MealTemplateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return Card(
-      color: const Color(0xFFF3F4F6),
+      color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
       elevation: 0,
       shape: RoundedCornerShape(14.0),
       margin: const EdgeInsets.symmetric(vertical: 6.0),
@@ -220,10 +230,10 @@ class MealTemplateCard extends StatelessWidget {
           children: [
             Text(
               template.nameVi,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: Color(0xFF14213D),
+                color: customColors.primaryText,
               ),
             ),
             const SizedBox(height: 6),
@@ -252,7 +262,7 @@ class MealTemplateCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: enabled ? onRename : null,
-                  child: const Text("Sửa tên", style: TextStyle(color: Color(0xFF14213D))),
+                  child: Text("Sửa tên", style: TextStyle(color: customColors.primaryText)),
                 ),
                 const SizedBox(width: 8),
                 TextButton(

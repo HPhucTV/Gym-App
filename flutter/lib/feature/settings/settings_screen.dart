@@ -549,6 +549,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildGoalActionConfirmationDialog(SettingsUiStateContent state) {
     final deleting = state.confirmation == PendingConfirmation.delete;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       color: Colors.black45,
       alignment: Alignment.center,
@@ -563,7 +564,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 : () => ref
                     .read(settingsNotifierProvider.notifier)
                     .cancelConfirmation(),
-            child: const Text("Hủy", style: TextStyle(color: AppColors.navy)),
+            child: Text("Hủy", style: TextStyle(color: isDark ? AppColors.darkText : AppColors.navy)),
           ),
           TextButton(
             onPressed: state.saving
@@ -587,6 +588,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildScheduleChangePreviewDialog(SettingsUiStateContent state) {
     final preview = state.schedulePreview!;
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     String formatEpoch(int day) {
       final d = DateTime.fromMillisecondsSinceEpoch(day * 24 * 60 * 60 * 1000,
@@ -636,7 +638,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 : () => ref
                     .read(settingsNotifierProvider.notifier)
                     .cancelSchedulePreview(),
-            child: const Text("Hủy", style: TextStyle(color: AppColors.navy)),
+            child: Text("Hủy", style: TextStyle(color: isDark ? AppColors.darkText : AppColors.navy)),
           ),
           TextButton(
             onPressed: state.saving

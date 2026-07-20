@@ -19,6 +19,7 @@ import 'feature/roadmap/roadmap_screen.dart';
 import 'feature/catalog/exercise_catalog_screen.dart';
 import 'feature/checkin/weekly_checkin_screen.dart';
 import 'feature/nutrition/nutrition_screen.dart';
+import 'ui/components/gym_bottom_nav.dart';
 
 Future<void> main({
   List<dynamic> overrides = const [],
@@ -105,11 +106,18 @@ class CurrentShellTabNotifier extends Notifier<int> {
 
 final currentShellTabProvider = NotifierProvider<CurrentShellTabNotifier, int>(CurrentShellTabNotifier.new);
 
-class AppRouterRoot extends ConsumerWidget {
+class AppRouterRoot extends ConsumerStatefulWidget {
   const AppRouterRoot({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppRouterRoot> createState() => _AppRouterRootState();
+}
+
+class _AppRouterRootState extends ConsumerState<AppRouterRoot> {
+  DateTime? _lastPressedAt;
+
+  @override
+  Widget build(BuildContext context) {
     final activeGoalAsync = ref.watch(progressActiveGoalProvider);
     final activeGoal = activeGoalAsync.value;
     final subRoute = ref.watch(currentSubRouteProvider);
@@ -124,9 +132,10 @@ class AppRouterRoot extends ConsumerWidget {
       );
     }
 
-    // 1. If no active goal is set, show Onboarding
+    // Determine the child widget based on routing state
+    Widget child;
     if (activeGoal == null) {
-      return OnboardingScreen(
+      child = OnboardingScreen(
         replacementMode: false,
         onCancel: () {},
         onGoalCreated: () {
@@ -134,11 +143,8 @@ class AppRouterRoot extends ConsumerWidget {
           ref.read(currentShellTabProvider.notifier).state = 0;
         },
       );
-    }
-
-    // 2. Route to sub-pages if requested
-    if (subRoute == 'onboarding_replace') {
-      return OnboardingScreen(
+    } else if (subRoute == 'onboarding_replace') {
+      child = OnboardingScreen(
         replacementMode: true,
         onCancel: () {
           ref.read(currentSubRouteProvider.notifier).state = null;
@@ -148,47 +154,63 @@ class AppRouterRoot extends ConsumerWidget {
           ref.read(currentShellTabProvider.notifier).state = 0;
         },
       );
-    }
-
-    if (subRoute == 'profile') {
-      return ProfileScreen(
+    } else if (subRoute == 'profile') {
+      child = ProfileScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
       );
-    }
-
-    if (subRoute == 'checkin') {
-      return WeeklyCheckInScreen(
+    } else if (subRoute == 'checkin') {
+      child = WeeklyCheckInScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
         onNavigateToProfile: () => ref.read(currentSubRouteProvider.notifier).state = 'profile',
       );
-    }
-
-    if (subRoute == 'recommendations') {
-      return RecommendationScreen(
+    } else if (subRoute == 'recommendations') {
+      child = RecommendationScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
       );
-    }
-
-    if (subRoute == 'roadmap') {
-      return RoadmapScreen(
+    } else if (subRoute == 'roadmap') {
+      child = RoadmapScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
       );
-    }
-
-    if (subRoute == 'catalog') {
-      return ExerciseCatalogScreen(
+    } else if (subRoute == 'catalog') {
+      child = ExerciseCatalogScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
       );
-    }
-
-    if (subRoute == 'nutrition') {
-      return NutritionScreen(
+    } else if (subRoute == 'nutrition') {
+      child = NutritionScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
       );
+    } else {
+      child = const MainNavigationShell();
     }
 
-    // 3. Otherwise show Main Navigation Shell
-    return const MainNavigationShell();
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        // 1. If in a sub-page, navigate back to main shell
+        if (subRoute != null) {
+          ref.read(currentSubRouteProvider.notifier).state = null;
+          return;
+        }
+
+        // 2. If already in main shell, exit on double back press
+        final now = DateTime.now();
+        if (_lastPressedAt == null ||
+            now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
+          _lastPressedAt = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nhấn trở lại một lần nữa để thoát ứng dụng'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          await SystemNavigator.pop();
+        }
+      },
+      child: child,
+    );
   }
 }
 
@@ -205,7 +227,7 @@ class MainNavigationShell extends ConsumerWidget {
           ref.read(currentSubRouteProvider.notifier).state = 'catalog';
         },
         onNavigateToNutrition: () {
-          ref.read(currentSubRouteProvider.notifier).state = 'nutrition';
+          ref.read(currentShellTabProvider.notifier).state = 2; // Jump to tab 2
         },
       ),
       ProgressScreen(
@@ -213,10 +235,10 @@ class MainNavigationShell extends ConsumerWidget {
           ref.read(currentSubRouteProvider.notifier).state = 'catalog';
         },
         onNavigateToRoadmap: () {
-          // Route or highlight progress roadmap
           ref.read(currentSubRouteProvider.notifier).state = 'recommendations';
         },
       ),
+      const NutritionScreen(),
       SettingsScreen(
         onNavigateToProfile: () {
           ref.read(currentSubRouteProvider.notifier).state = 'profile';
@@ -241,28 +263,11 @@ class MainNavigationShell extends ConsumerWidget {
         index: selectedTab,
         children: screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedTab,
-        onDestinationSelected: (index) {
+      bottomNavigationBar: GymBottomNav(
+        currentIndex: selectedTab,
+        onTap: (index) {
           ref.read(currentShellTabProvider.notifier).state = index;
         },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.today),
-            selectedIcon: Icon(Icons.today, color: Colors.orange),
-            label: 'Hôm nay',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart),
-            selectedIcon: Icon(Icons.bar_chart, color: Colors.orange),
-            label: 'Tiến độ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings),
-            selectedIcon: Icon(Icons.settings, color: Colors.orange),
-            label: 'Cài đặt',
-          ),
-        ],
       ),
     );
   }

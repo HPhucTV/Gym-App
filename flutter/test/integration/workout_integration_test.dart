@@ -11,6 +11,7 @@ import 'package:gym_app/data/local/database.dart';
 import 'package:gym_app/feature/today/today_screen.dart';
 import 'package:gym_app/feature/today/today_view_model.dart';
 import 'package:gym_app/feature/today/today_ui_state.dart';
+import 'package:gym_app/ui/components/gym_checkbox.dart';
 import 'package:gym_app/main.dart' as app;
 
 void main() {
@@ -156,7 +157,7 @@ void main() {
     }
 
     // Find all Checkboxes (which represent exercise sets)
-    final checkboxFinder = find.byType(Checkbox);
+    final checkboxFinder = find.byType(GymCheckbox);
     final count = checkboxFinder.evaluate().length;
     print("CHECKBOX_COUNT: $count");
     final checkboxes = checkboxFinder.evaluate().toList();
@@ -174,7 +175,7 @@ void main() {
     // Tap every checkbox to complete all exercises
     for (int i = 0; i < count; i++) {
       print("TAPPING_CHECKBOX_$i");
-      final checkbox = find.byType(Checkbox).at(i);
+      final checkbox = find.byType(GymCheckbox).at(i);
       await tester.ensureVisible(checkbox);
       await tester.pump(const Duration(milliseconds: 200));
 

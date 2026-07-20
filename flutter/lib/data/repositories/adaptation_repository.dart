@@ -1,4 +1,5 @@
 import '../../core/model/adaptation_models.dart';
+import '../local/database.dart';
 
 abstract class DecisionActionResult {}
 

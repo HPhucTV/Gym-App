@@ -117,6 +117,7 @@ class TodayUiStateWorkout extends TodayUiState {
     int? goalId,
     ProgramPhase? phase,
     ExerciseSubstitutionUi? substitution,
+    bool clearSubstitution = false,
     List<int?>? timeBudgetChoices,
     int? selectedTimeBudgetMinutes,
     int? omittedExerciseCount,
@@ -142,7 +143,7 @@ class TodayUiStateWorkout extends TodayUiState {
       isRefreshingCoach: isRefreshingCoach ?? this.isRefreshingCoach,
       goalId: goalId ?? this.goalId,
       phase: phase ?? this.phase,
-      substitution: substitution ?? this.substitution,
+      substitution: clearSubstitution ? null : (substitution ?? this.substitution),
       timeBudgetChoices: timeBudgetChoices ?? this.timeBudgetChoices,
       selectedTimeBudgetMinutes:
           selectedTimeBudgetMinutes ?? this.selectedTimeBudgetMinutes,

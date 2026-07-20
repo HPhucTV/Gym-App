@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 @DataClassName('LoggedFoodData')
+@TableIndex(name: 'idx_logged_foods_day_time', columns: {#epochDay, #timestamp})
 class LoggedFoods extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get epochDay => integer()();

@@ -6,6 +6,12 @@ import '../../core/program/program_phase_planner.dart';
 import '../../core/model/catalog_models.dart';
 import '../../ui/theme/colors.dart';
 import '../../ui/theme/theme.dart';
+import '../../ui/theme/spacing.dart';
+import '../../ui/theme/radius.dart';
+import '../../ui/theme/typography.dart';
+import '../../ui/components/gym_card.dart';
+import '../../ui/components/gym_button.dart';
+import '../../ui/components/gym_progress_indicator.dart';
 import 'today_ui_state.dart';
 import 'today_view_model.dart';
 import 'widgets/exercise_card.dart';
@@ -99,7 +105,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 
   Widget _buildWorkoutContent(TodayUiStateWorkout state) {
     final customColors = context.customColors;
-    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final musclesInWorkout =
         state.rows.map((r) => r.primaryMuscleGroup).toSet().toList();
@@ -110,17 +116,35 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           child: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(
-                  left: 20.0, right: 20.0, top: 20.0, bottom: 140.0),
+                left: GymSpacing.screenHorizontal,
+                right: GymSpacing.screenHorizontal,
+                top: GymSpacing.screenVertical,
+                bottom: 120.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Top Actions Bar (Tra cứu & Dinh dưỡng)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Tập luyện",
+                        style: isDark ? GymTypography.displayMedium.white : GymTypography.displayMedium.navy,
+                      ),
+                      GymButton.text(
+                        text: "Tra cứu 📚",
+                        onPressed: widget.onNavigateToCatalog,
+                      ),
+                    ],
+                  ),
+                  GymGap.md,
+
                   // Header Card
                   _TodayHeaderCard(
                     state: state,
-                    onNavigateToCatalog: widget.onNavigateToCatalog,
-                    onNavigateToNutrition: widget.onNavigateToNutrition,
                   ),
-                  const SizedBox(height: 18),
+                  GymGap.lg,
 
                   // Time Budget Choices
                   Column(
@@ -128,29 +152,29 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                     children: [
                       Text(
                         "Thời lượng buổi tập",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: customColors.primaryText,
+                        style: GymTypography.titleSmall.copyWith(
+                          color: isDark ? AppColors.white : AppColors.navy,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      GymGap.sm,
                       Row(
                         children: state.timeBudgetChoices.map((minutes) {
                           final isSelected =
                               state.selectedTimeBudgetMinutes == minutes;
                           return Expanded(
                             child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 3.0),
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
                               child: ChoiceChip(
-                                label: Text(
-                                  minutes != null ? "$minutes phút" : "Đầy đủ",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
+                                showCheckmark: false,
+                                label: Center(
+                                  child: Text(
+                                    minutes != null ? "$minutes phút" : "Đầy đủ",
+                                    style: GymTypography.labelSmall.copyWith(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : (isDark ? AppColors.darkText : AppColors.navy),
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
                                   ),
                                 ),
                                 selected: isSelected,
@@ -159,24 +183,27 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                         .read(todayNotifierProvider.notifier)
                                         .applyTimeBudget(minutes)
                                     : null,
+                                selectedColor: AppColors.energyOrange,
+                                backgroundColor: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                side: BorderSide.none,
                               ),
                             ),
                           );
                         }).toList(),
                       ),
                       if (state.omittedExerciseCount > 0) ...[
-                        const SizedBox(height: 4),
+                        GymGap.xs,
                         Text(
                           "${state.omittedExerciseCount} bài phụ được lược bớt",
-                          style: TextStyle(
-                            color: customColors.mutedText,
-                            fontSize: 11,
-                          ),
+                          style: GymTypography.bodySmall.muted,
                         ),
                       ]
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  GymGap.lg,
 
                   // Sore Muscles Toggles
                   if (musclesInWorkout.isNotEmpty) ...[
@@ -185,49 +212,52 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                       children: [
                         Text(
                           "Hôm nay bạn mỏi nhóm cơ nào? (Tập nhẹ giảm 50% hiệp 💡)",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: customColors.primaryText,
+                          style: GymTypography.titleSmall.copyWith(
+                            color: isDark ? AppColors.white : AppColors.navy,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        GymGap.sm,
                         Wrap(
                           spacing: 8,
-                          runSpacing: 6,
+                          runSpacing: 8,
                           children: musclesInWorkout.map((muscle) {
                             final isSelected =
                                 state.soreMuscles.contains(muscle.name);
                             return FilterChip(
+                              showCheckmark: false,
                               selected: isSelected,
                               label: Text(
                                 _muscleLabelVi(muscle),
-                                style: const TextStyle(fontSize: 12),
+                                style: GymTypography.labelSmall.copyWith(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : (isDark ? AppColors.darkText : AppColors.navy),
+                                ),
                               ),
                               onSelected: (_) => ref
                                   .read(todayNotifierProvider.notifier)
                                   .toggleSoreMuscle(muscle.name),
-                              selectedColor: AppColors.energyOrange
-                                  .withValues(alpha: 0.15),
-                              checkmarkColor: AppColors.energyOrange,
-                              labelStyle: TextStyle(
-                                color: isSelected
-                                    ? AppColors.energyOrange
-                                    : customColors.primaryText,
+                              selectedColor: AppColors.energyOrange,
+                              backgroundColor: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
+                              side: BorderSide.none,
                             );
                           }).toList(),
                         )
                       ],
                     ),
-                    const SizedBox(height: 18),
+                    GymGap.lg,
                   ],
 
                   // Warmup Card
                   if (state.warmUp != null) ...[
                     AdvisoryMovementBlockCard(
-                        sectionLabel: "Khởi động", block: state.warmUp!),
-                    const SizedBox(height: 14),
+                      sectionLabel: "Khởi động",
+                      block: state.warmUp!,
+                    ),
+                    GymGap.md,
                   ],
 
                   // AI Coach Tip
@@ -239,13 +269,22 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                           .read(todayNotifierProvider.notifier)
                           .refreshCoachTip(),
                     ),
-                    const SizedBox(height: 14),
+                    GymGap.md,
                   ],
+
+                  // Section title for exercises
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      "DANH SÁCH BÀI TẬP",
+                      style: GymTypography.labelLarge.muted,
+                    ),
+                  ),
 
                   // Exercises list
                   ...state.rows.map((row) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 7.0),
+                      padding: const EdgeInsets.symmetric(vertical: 6.0),
                       child: ExerciseCard(
                         sessionId: state.sessionId,
                         row: row,
@@ -271,70 +310,50 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 
                   // Cooldown Card
                   if (state.coolDown != null) ...[
-                    const SizedBox(height: 14),
+                    GymGap.md,
                     AdvisoryMovementBlockCard(
-                        sectionLabel: "Thả lỏng", block: state.coolDown!),
+                      sectionLabel: "Thả lỏng",
+                      block: state.coolDown!,
+                    ),
                   ],
 
                   // Interaction errors
                   if (state.interactionError != null) ...[
-                    const SizedBox(height: 12),
+                    GymGap.md,
                     Text(
                       state.interactionError!,
-                      style: TextStyle(
-                          color: colors.error, fontWeight: FontWeight.bold),
+                      style: GymTypography.bodyMedium.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
 
-                  // Complete Buutton Section
-                  const SizedBox(height: 24),
+                  // Complete Button Section
+                  GymGap.xxl,
                   Center(
                     child: Column(
                       children: [
                         Text(
                           _getCompleteStatusText(state),
-                          style: TextStyle(
+                          style: GymTypography.bodyMedium.copyWith(
                             color: (state.total - state.checkedCount == 0)
                                 ? AppColors.successGreen
                                 : customColors.mutedText,
-                            fontSize: 14,
                             fontWeight: (state.total - state.checkedCount == 0)
                                 ? FontWeight.bold
                                 : FontWeight.normal,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed:
-                                (state.canComplete && !state.isCompleting)
-                                    ? () => ref
-                                        .read(todayNotifierProvider.notifier)
-                                        .completeWorkout()
-                                    : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.energyOrange,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  colors.outline.withValues(alpha: 0.3),
-                              disabledForegroundColor: customColors.mutedText,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Text(
-                              state.isCompleting
-                                  ? "Đang hoàn thành…"
-                                  : "Hoàn thành buổi tập ✓",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        )
+                        GymGap.sm,
+                        GymButton.primary(
+                          text: state.isCompleting ? "Đang hoàn thành…" : "Hoàn thành buổi tập ✓",
+                          onPressed: (state.canComplete && !state.isCompleting)
+                              ? () => ref
+                                  .read(todayNotifierProvider.notifier)
+                                  .completeWorkout()
+                              : null,
+                        ),
                       ],
                     ),
                   )
@@ -465,15 +484,12 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                const Text(
+                Text(
                   "Tuyệt vời! Bạn đã hoàn thành buổi tập hôm nay! 💪🎉",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: GymTypography.titleMedium.white.bold,
                 ),
-                const SizedBox(height: 12),
+                GymGap.md,
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -493,10 +509,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text("Chia sẻ 🔗",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
+                      child: Text(
+                        "Chia sẻ 🔗",
+                        style: GymTypography.titleSmall.white.bold,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
@@ -510,8 +526,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text("Đóng",
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: Text(
+                        "Đóng",
+                        style: GymTypography.titleSmall.green.bold,
+                      ),
                     )
                   ],
                 )
@@ -547,6 +565,7 @@ class GoalCompleteScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final customColors = context.customColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Center(
       child: SingleChildScrollView(
@@ -555,37 +574,31 @@ class GoalCompleteScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text("🏆", style: TextStyle(fontSize: 72)),
-            const SizedBox(height: 20),
+            GymGap.lg,
             Text(
               "Hoàn thành mục tiêu!",
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: customColors.primaryText,
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: GymTypography.displayMedium.copyWith(
+                color: customColors.primaryText,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            GymGap.sm,
             Text(
               "Bạn đã hoàn thành tất cả buổi tập trong chương trình. Tuyệt vời! 🎉",
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: customColors.mutedText,
-                  ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: customColors.greenLight,
-                borderRadius: BorderRadius.circular(16),
+              style: GymTypography.bodyLarge.copyWith(
+                color: customColors.mutedText,
               ),
-              padding: const EdgeInsets.all(20.0),
+            ),
+            GymGap.xl,
+            GymCard(
+              variant: GymCardVariant.flat,
+              backgroundColor: isDark ? AppColors.darkSurface : AppColors.greenLight,
               child: Text(
                 "Hãy vào Cài đặt để tạo mục tiêu mới!",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: customColors.primaryText,
-                  fontWeight: FontWeight.bold,
+                style: GymTypography.titleMedium.bold.copyWith(
+                  color: isDark ? AppColors.white : AppColors.navy,
                 ),
               ),
             ),
@@ -617,34 +630,25 @@ class ErrorScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text("⚠️", style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 16),
+            GymGap.md,
             Text(
               "Đã có lỗi",
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: customColors.primaryText,
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: GymTypography.displayMedium.copyWith(
+                color: customColors.primaryText,
+              ),
             ),
-            const SizedBox(height: 12),
+            GymGap.sm,
             Text(
               state.message,
-              style: TextStyle(
-                color: customColors.mutedText,
-              ),
+              style: GymTypography.bodyMedium.muted,
               textAlign: TextAlign.center,
             ),
             if (state.canRetry) ...[
-              const SizedBox(height: 20),
-              ElevatedButton(
+              GymGap.lg,
+              GymButton.primary(
+                text: "Thử lại",
                 onPressed: onRetry,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.energyOrange,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text("Thử lại"),
+                fullWidth: false,
               ),
             ]
           ],
@@ -667,6 +671,7 @@ class RecoveryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final customColors = context.customColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final emoji = state.kind == RecoveryKind.fullRest ? "🧘" : "🚶";
     final title = state.kind == RecoveryKind.fullRest
@@ -687,61 +692,56 @@ class RecoveryScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(emoji, style: const TextStyle(fontSize: 64)),
-            const SizedBox(height: 20),
+            GymGap.lg,
             Text(
               title,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: customColors.primaryText,
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: GymTypography.displayMedium.copyWith(
+                color: customColors.primaryText,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            GymGap.sm,
             Text(
               supporting,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: customColors.mutedText,
-                  ),
+              style: GymTypography.bodyLarge.copyWith(
+                color: customColors.mutedText,
+              ),
             ),
-            const SizedBox(height: 24),
+            GymGap.xl,
 
             // Next Workout Card
-            Container(
-              decoration: BoxDecoration(
-                color: customColors.recoveryBlueBg,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              padding: const EdgeInsets.all(20),
+            GymCard(
+              variant: GymCardVariant.flat,
+              backgroundColor: isDark ? AppColors.darkSurface : AppColors.recoveryBlueBg,
               child: Row(
                 children: [
                   const Text("📅", style: TextStyle(fontSize: 28)),
                   const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Buổi tập tiếp theo",
-                        style: TextStyle(
-                          color: customColors.primaryText,
-                          fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Buổi tập tiếp theo",
+                          style: GymTypography.titleSmall.copyWith(
+                            color: customColors.primaryText,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        dateStr,
-                        style: TextStyle(
-                          color: customColors.recoveryBlue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      )
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          dateStr,
+                          style: GymTypography.titleLarge.copyWith(
+                            color: AppColors.recoveryBlue,
+                          ),
+                        )
+                      ],
+                    ),
                   )
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            GymGap.lg,
 
             // AI Coach Tip
             if (state.coachTip != null)
@@ -772,18 +772,11 @@ class AICoachTipCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (tip == null || tip!.isEmpty) return const SizedBox.shrink();
-
-    final colors = Theme.of(context).colorScheme;
     final customColors = context.customColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
+    return GymCard(
+      variant: GymCardVariant.flat,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -796,10 +789,8 @@ class AICoachTipCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     "Trợ lý AI Coach",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                    style: GymTypography.titleMedium.bold.copyWith(
                       color: customColors.primaryText,
-                      fontSize: 16,
                     ),
                   ),
                 ],
@@ -831,12 +822,11 @@ class AICoachTipCard extends StatelessWidget {
                 )
             ],
           ),
-          const SizedBox(height: 10),
+          GymGap.sm,
           Text(
             tip!,
-            style: TextStyle(
+            style: GymTypography.bodyMedium.copyWith(
               color: customColors.primaryText,
-              fontSize: 14,
               height: 1.4,
             ),
           )
@@ -866,103 +856,86 @@ class _AdvisoryMovementBlockCardState extends State<AdvisoryMovementBlockCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final customColors = context.customColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline, width: 1),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              _expanded = !_expanded;
-            });
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    return GymCard(
+      variant: GymCardVariant.flat,
+      onTap: () {
+        setState(() {
+          _expanded = !_expanded;
+        });
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.sectionLabel,
-                            style: const TextStyle(
-                              color: AppColors.energyOrange,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.block.titleVi,
-                            style: TextStyle(
-                              color: customColors.primaryText,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "${widget.block.estimatedMinutes} phút · Không tính vào tiến độ",
-                            style: TextStyle(
-                              color: customColors.mutedText,
-                              fontSize: 12,
-                            ),
-                          )
-                        ],
+                    Text(
+                      widget.sectionLabel.toUpperCase(),
+                      style: GymTypography.labelSmall.orange.bold,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.block.titleVi,
+                      style: GymTypography.titleMedium.bold.copyWith(
+                        color: customColors.primaryText,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      _expanded ? "▲" : "▼",
-                      style: const TextStyle(
-                        color: AppColors.energyOrange,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      "${widget.block.estimatedMinutes} phút · Không tính vào tiến độ",
+                      style: GymTypography.bodySmall.muted,
                     )
                   ],
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: _expanded
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 12),
-                            ...List.generate(widget.block.stepsVi.length,
-                                (index) {
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4.0),
+              ),
+              Icon(
+                _expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                color: AppColors.energyOrange,
+              )
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: _expanded
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GymGap.md,
+                      ...List.generate(widget.block.stepsVi.length,
+                          (index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "${index + 1}. ",
+                                style: GymTypography.bodyMedium.orange.bold,
+                              ),
+                              Expanded(
                                 child: Text(
-                                  "${index + 1}. ${widget.block.stepsVi[index]}",
-                                  style: TextStyle(
+                                  widget.block.stepsVi[index],
+                                  style: GymTypography.bodyMedium.copyWith(
                                     color: customColors.primaryText,
-                                    fontSize: 13,
                                   ),
                                 ),
-                              );
-                            })
-                          ],
-                        )
-                      : const SizedBox.shrink(),
-                )
-              ],
-            ),
-          ),
-        ),
+                              ),
+                            ],
+                          ),
+                        );
+                      })
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          )
+        ],
       ),
     );
   }
@@ -970,20 +943,10 @@ class _AdvisoryMovementBlockCardState extends State<AdvisoryMovementBlockCard> {
 
 class _TodayHeaderCard extends StatelessWidget {
   final TodayUiStateWorkout state;
-  final VoidCallback onNavigateToCatalog;
-  final VoidCallback onNavigateToNutrition;
 
   const _TodayHeaderCard({
     required this.state,
-    required this.onNavigateToCatalog,
-    required this.onNavigateToNutrition,
   });
-
-  String _greetingText(int hour) {
-    if (hour < 12) return "Chào buổi sáng! 🌅";
-    if (hour < 18) return "Chào buổi chiều! ☀️";
-    return "Chào buổi tối! 🌙";
-  }
 
   String _phaseLabelVi(ProgramPhase phase) {
     switch (phase) {
@@ -1000,17 +963,13 @@ class _TodayHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final customColors = context.customColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final progress = state.total > 0 ? state.checkedCount / state.total : 0.0;
-    final greeting = _greetingText(state.greetingHour);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return GymCard(
+      variant: GymCardVariant.flat,
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
@@ -1019,81 +978,25 @@ class _TodayHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  greeting,
-                  style: const TextStyle(
-                    color: AppColors.energyOrange,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+                  _phaseLabelVi(state.phase).toUpperCase(),
+                  style: GymTypography.labelSmall.orange.bold,
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: onNavigateToCatalog,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4.0),
-                        child: Text(
-                          "📚 Tra cứu",
-                          style: TextStyle(
-                            color: AppColors.energyOrange,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    GestureDetector(
-                      onTap: onNavigateToNutrition,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4.0),
-                        child: Text(
-                          "🥗 Dinh dưỡng",
-                          style: TextStyle(
-                            color: AppColors.successGreen,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
                 Text(
                   state.titleVi,
-                  style: TextStyle(
+                  style: GymTypography.titleLarge.bold.copyWith(
                     color: customColors.primaryText,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _phaseLabelVi(state.phase),
-                  style: const TextStyle(
-                    color: AppColors.energyOrange,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   "${state.focusVi} · ${state.estimatedMinutes} phút",
-                  style: TextStyle(
-                    color: customColors.mutedText,
-                    fontSize: 13,
-                  ),
+                  style: GymTypography.bodyMedium.muted,
                 ),
-                const SizedBox(height: 8),
+                GymGap.sm,
                 Text(
                   "${state.checkedCount}/${state.total} bài đã xong",
-                  style: const TextStyle(
-                    color: AppColors.successGreen,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+                  style: GymTypography.titleSmall.green.bold,
                 )
               ],
             ),
@@ -1101,45 +1004,16 @@ class _TodayHeaderCard extends StatelessWidget {
           const SizedBox(width: 16),
 
           // Circular progress ring
-          SizedBox(
-            width: 80,
-            height: 80,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: CircularProgressIndicator(
-                    value: 1.0,
-                    color: colors.outline.withValues(alpha: 0.3),
-                    strokeWidth: 8,
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: CircularProgressIndicator(
-                    value: progress,
-                    color: progress >= 1.0
-                        ? AppColors.successGreen
-                        : AppColors.energyOrange,
-                    strokeWidth: 8,
-                  ),
-                ),
-                Text(
-                  "${(progress * 100).toInt()}%",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: customColors.primaryText,
-                  ),
-                )
-              ],
-            ),
+          GymCircularProgress(
+            value: progress,
+            size: 80,
+            strokeWidth: 8,
+            color: progress >= 1.0 ? AppColors.successGreen : AppColors.energyOrange,
+            backgroundColor: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
           )
         ],
       ),
     );
   }
 }
+

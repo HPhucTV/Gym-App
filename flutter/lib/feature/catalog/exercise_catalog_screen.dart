@@ -5,6 +5,10 @@ import '../../data/providers/data_providers.dart';
 import '../../ui/theme/colors.dart';
 import '../../ui/theme/theme.dart';
 import '../../ui/components/exercise_3d_dialog.dart';
+import '../../ui/theme/spacing.dart';
+import '../../ui/theme/radius.dart';
+import '../../ui/theme/typography.dart';
+import '../../ui/components/gym_card.dart';
 
 extension EquipmentLabelVi on Equipment {
   String labelVi() {
@@ -320,24 +324,15 @@ class _CatalogExerciseCard extends StatefulWidget {
 
 class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
   bool _expanded = false;
-  bool _show3DDialog = false;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final customColors = context.customColors;
 
-    return Container(
-      width: double.infinity,
+    return GymCard(
+      variant: GymCardVariant.outlined,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.borderGray,
-          width: 1,
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -363,19 +358,14 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
                   children: [
                     Text(
                       widget.exercise.nameVi,
-                      style: TextStyle(
+                      style: GymTypography.titleMedium.bold.copyWith(
                         color: customColors.primaryText,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       "${widget.exercise.primaryMuscleGroup.labelVi()} · ${widget.exercise.equipment.map((e) => e.labelVi()).join(', ')}",
-                      style: TextStyle(
-                        color: customColors.mutedText,
-                        fontSize: 11,
-                      ),
+                      style: isDark ? GymTypography.bodySmall.mutedDark : GymTypography.bodySmall.muted,
                     ),
                   ],
                 ),
@@ -398,11 +388,7 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
                 children: [
                   Text(
                     _expanded ? "Ẩn hướng dẫn ▲" : "Xem hướng dẫn ▼",
-                    style: const TextStyle(
-                      color: AppColors.energyOrange,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+                    style: GymTypography.labelSmall.orange.bold,
                   ),
                 ],
               ),
@@ -415,8 +401,8 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkBg : AppColors.white,
-                borderRadius: BorderRadius.circular(12),
+                color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
+                borderRadius: GymRadius.mdBorder,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,19 +417,14 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
                         children: [
                           Text(
                             "${index + 1}.",
-                            style: const TextStyle(
-                              color: AppColors.energyOrange,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
+                            style: GymTypography.bodyMedium.orange.bold,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               instruction,
-                              style: TextStyle(
+                              style: GymTypography.bodyMedium.copyWith(
                                 color: customColors.primaryText,
-                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -454,12 +435,16 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
+                    height: 44,
                     child: ElevatedButton(
                       key: ValueKey("exercise-3d-btn-${widget.exercise.id}"),
                       onPressed: () {
-                        setState(() {
-                          _show3DDialog = true;
-                        });
+                        Exercise3DDialog.show(
+                          context: context,
+                          exerciseId: widget.exercise.id,
+                          exerciseName: widget.exercise.nameVi,
+                          instructions: widget.exercise.instructionsVi,
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.energyOrange,
@@ -468,10 +453,11 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         elevation: 0,
+                        padding: EdgeInsets.zero,
                       ),
-                      child: const Text(
+                      child: Text(
                         "Xem 3D trực quan 🔄",
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: GymTypography.titleSmall.white.bold,
                       ),
                     ),
                   ),
@@ -479,18 +465,6 @@ class _CatalogExerciseCardState extends State<_CatalogExerciseCard> {
               ),
             ),
           ],
-
-          if (_show3DDialog)
-            Exercise3DDialog(
-              exerciseId: widget.exercise.id,
-              exerciseName: widget.exercise.nameVi,
-              instructions: widget.exercise.instructionsVi,
-              onDismiss: () {
-                setState(() {
-                  _show3DDialog = false;
-                });
-              },
-            ),
         ],
       ),
     );

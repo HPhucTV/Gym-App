@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/model/nutrition_models.dart';
+import '../../ui/theme/colors.dart';
+import '../../ui/theme/theme.dart';
 import 'nutrition_ui_state.dart';
 import 'nutrition_view_model.dart';
 
@@ -43,15 +45,45 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
           await rootBundle.load('assets/catalog/thuc_pham_mau.xlsx');
       final bytes = byteData.buffer.asUint8List();
 
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/thuc_pham_mau.xlsx');
-      await file.writeAsBytes(bytes);
+      File file;
+      bool savedToPublicDownload = false;
+
+      if (Platform.isAndroid) {
+        final downloadDir = Directory('/storage/emulated/0/Download');
+        try {
+          if (downloadDir.existsSync()) {
+            final testFile = File('${downloadDir.path}/.test_write');
+            testFile.writeAsStringSync('test');
+            testFile.deleteSync();
+
+            file = File('${downloadDir.path}/thuc_pham_mau.xlsx');
+            file.writeAsBytesSync(bytes);
+            savedToPublicDownload = true;
+          } else {
+            final dir = await getApplicationDocumentsDirectory();
+            file = File('${dir.path}/thuc_pham_mau.xlsx');
+            file.writeAsBytesSync(bytes);
+          }
+        } catch (_) {
+          final dir = await getApplicationDocumentsDirectory();
+          file = File('${dir.path}/thuc_pham_mau.xlsx');
+          file.writeAsBytesSync(bytes);
+        }
+      } else {
+        final dir = await getApplicationDocumentsDirectory();
+        file = File('${dir.path}/thuc_pham_mau.xlsx');
+        file.writeAsBytesSync(bytes);
+      }
+
       final path = file.path;
 
       if (mounted) {
+        final message = savedToPublicDownload
+            ? 'Đã tải tệp mẫu "thuc_pham_mau.xlsx" vào thư mục Tải xuống (Download).'
+            : 'Đã tải tệp mẫu thành công tại: $path';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã tải tệp mẫu thành công tại: $path'),
+            content: Text(message),
             backgroundColor: const Color(0xFF22C55E),
           ),
         );
@@ -61,7 +93,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lỗi khi tải tệp mẫu: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
       }
@@ -142,22 +174,24 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = widget.state;
+    final isDark = theme.brightness == Brightness.dark;
+    final customColors = context.customColors;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           "Tra cứu & Nhập thực phẩm 📁",
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 18,
-            color: Color(0xFF14213D),
+            color: customColors.primaryText,
           ),
         ),
         const SizedBox(height: 12),
         if (state.foodCatalogCount == 0)
           Card(
-            color: const Color(0xFFF3F4F6),
+            color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
             elevation: 0,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.0)),
@@ -165,12 +199,12 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  const Text(
+                  Text(
                     "Hướng dẫn tự thêm thực phẩm 📝",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: Color(0xFF14213D),
+                      color: customColors.primaryText,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -261,7 +295,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
+              color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -277,16 +311,17 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
             onChanged: (val) => ref
                 .read(nutritionNotifierProvider.notifier)
                 .searchFoodsCatalog(val),
+            style: TextStyle(color: customColors.primaryText),
             decoration: InputDecoration(
               labelText: "Tìm kiếm thực phẩm...",
-              labelStyle: const TextStyle(color: Color(0xFF14213D)),
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF14213D)),
+              labelStyle: TextStyle(color: customColors.primaryText.withValues(alpha: 0.7)),
+              prefixIcon: Icon(Icons.search, color: customColors.primaryText),
               focusedBorder: OutlineInputBorder(
                 borderSide: const BorderSide(color: Color(0xFFF97316)),
                 borderRadius: BorderRadius.circular(12),
               ),
               enabledBorder: OutlineInputBorder(
-                borderSide: const BorderSide(color: Color(0xFFF3F4F6)),
+                borderSide: BorderSide(color: isDark ? AppColors.darkSurface : AppColors.surfaceGray),
                 borderRadius: BorderRadius.circular(12),
               ),
               border:
@@ -317,6 +352,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
 
   Widget _buildTab(int index, String title) {
     final isSelected = _selectedTab == index;
+    final customColors = context.customColors;
     return Expanded(
       child: GestureDetector(
         onTap: () {
@@ -335,7 +371,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
           child: Text(
             title,
             style: TextStyle(
-              color: isSelected ? Colors.white : const Color(0xFF14213D),
+              color: isSelected ? Colors.white : customColors.primaryText,
               fontWeight: FontWeight.bold,
               fontSize: 13,
             ),
@@ -347,6 +383,9 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
 
   Widget _buildFoodList(BuildContext context) {
     final state = widget.state;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     final List<FoodCatalogItem> displayedFoods = () {
       final query = state.searchQuery.toLowerCase();
       switch (_selectedTab) {
@@ -379,7 +418,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
         final isExpanded = _expandedFoodId == food.id;
 
         return Card(
-          color: const Color(0xFFF3F4F6),
+          color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
           elevation: 0,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -391,8 +430,8 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
                     const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
                 title: Text(
                   food.name,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, color: Color(0xFF14213D)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: customColors.primaryText),
                 ),
                 subtitle: Text(
                   "${food.caloriesPerServing.toInt()} kcal / ${food.gramsPerServing.toInt()}g  |  P: ${food.proteinPerServing.toInt()}g  C: ${food.carbsPerServing.toInt()}g  F: ${food.fatPerServing.toInt()}g",
@@ -467,6 +506,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
   }
 
   Widget _buildExpandedSection(FoodCatalogItem food) {
+    final customColors = context.customColors;
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -549,7 +589,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: isSel ? Colors.white : const Color(0xFF14213D),
+                        color: isSel ? Colors.white : customColors.primaryText,
                       ),
                     ),
                   ),
@@ -610,6 +650,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
 
   Widget _buildMealTimeButton(String timeVal, String timeLabel) {
     final isSelected = _inputMealTime == timeVal;
+    final customColors = context.customColors;
     return Expanded(
       child: isSelected
           ? ElevatedButton(
@@ -640,7 +681,7 @@ class _FoodCatalogSectionState extends ConsumerState<FoodCatalogSection> {
               ),
               child: Text(timeLabel,
                   style:
-                      const TextStyle(fontSize: 11, color: Color(0xFF14213D))),
+                      TextStyle(fontSize: 11, color: customColors.primaryText)),
             ),
     );
   }

@@ -118,21 +118,12 @@ class DecisionCard extends ConsumerWidget {
     final entity = uiDecision.entity;
     final customColors = context.customColors;
 
-    final Color statusColor;
-    switch (entity.status) {
-      case AdaptationStatus.applied:
-        statusColor = AppColors.successGreen;
-        break;
-      case AdaptationStatus.rejected:
-        statusColor = Colors.grey;
-        break;
-      case AdaptationStatus.undone:
-        statusColor = customColors.mutedText;
-        break;
-      case AdaptationStatus.proposed:
-        statusColor = AppColors.energyOrange;
-        break;
-    }
+    final statusColor = switch (entity.status) {
+      AdaptationStatus.applied => AppColors.successGreen,
+      AdaptationStatus.rejected => Colors.grey,
+      AdaptationStatus.undone => customColors.mutedText,
+      AdaptationStatus.proposed => AppColors.energyOrange,
+    };
 
     return Card(
       color: Theme.of(context).brightness == Brightness.dark

@@ -18,6 +18,12 @@ import 'tables/meal_templates.dart';
 import 'tables/user_food_overrides.dart';
 import 'tables/food_catalog.dart';
 import 'tables/logged_foods.dart';
+import 'converters.dart';
+
+import '../../core/model/profile_models.dart';
+import '../../core/model/goal_models.dart';
+import '../../core/model/adaptation_models.dart';
+import '../../core/model/feedback_models.dart';
 
 import 'daos/workout_dao.dart';
 import 'daos/personalization_dao.dart';
@@ -66,5 +72,19 @@ class GymDatabase extends _$GymDatabase {
   GymDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_logged_foods_day_time ON logged_foods (epoch_day, timestamp);');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_food_catalog_name ON food_catalog (name);');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_food_catalog_fav_name ON food_catalog (is_favorite, name);');
+          }
+        },
+      );
 }

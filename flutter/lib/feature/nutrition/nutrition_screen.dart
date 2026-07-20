@@ -11,11 +11,13 @@ import 'food_catalog_section.dart';
 import 'nutrition_draft_dialog.dart';
 import 'barcode_scanner_view.dart';
 import '../../core/nutrition/nutrition_score_calculator.dart';
+import '../../ui/theme/colors.dart';
+import '../../ui/theme/theme.dart';
 
 class NutritionScreen extends ConsumerStatefulWidget {
-  final VoidCallback onBack;
+  final VoidCallback? onBack;
 
-  const NutritionScreen({super.key, required this.onBack});
+  const NutritionScreen({super.key, this.onBack});
 
   @override
   ConsumerState<NutritionScreen> createState() => _NutritionScreenState();
@@ -34,6 +36,8 @@ class _FoodScanEntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final customColors = context.customColors;
+
     return Row(
       children: [
         Expanded(
@@ -64,14 +68,14 @@ class _FoodScanEntryRow extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16.0)),
-                side: const BorderSide(color: Color(0xFF14213D), width: 1),
+                side: BorderSide(color: customColors.primaryText, width: 1),
               ),
-              child: const Text(
+              child: Text(
                 "Nhập tay",
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF14213D)),
+                    color: customColors.primaryText),
               ),
             ),
           ),
@@ -94,18 +98,21 @@ class _ScanRecommendationsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return AlertDialog(
-      title: const Text("Gợi ý từ AI 📸",
+      title: Text("Gợi ý từ AI 📸",
           style:
-              TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF14213D))),
+              TextStyle(fontWeight: FontWeight.bold, color: customColors.primaryText)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               "AI phát hiện đĩa ăn của bạn có thể là một trong các món sau. Vui lòng chọn món đúng:",
-              style: TextStyle(color: Color(0xFF14213D), fontSize: 14),
+              style: TextStyle(color: customColors.primaryText, fontSize: 14),
             ),
             const SizedBox(height: 12),
             ...scanResult.recommendations.take(3).map((rec) {
@@ -115,7 +122,7 @@ class _ScanRecommendationsDialog extends StatelessWidget {
               return Card(
                 color: isLowConfidence
                     ? Colors.red.withValues(alpha: 0.08)
-                    : const Color(0xFFF3F4F6),
+                    : (isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -135,9 +142,9 @@ class _ScanRecommendationsDialog extends StatelessWidget {
                           Expanded(
                             child: Text(
                               rec.dishName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF14213D)),
+                                  color: customColors.primaryText),
                             ),
                           ),
                           Text(
@@ -194,7 +201,7 @@ class _ScanRecommendationsDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: onDiscard,
-          child: const Text("Hủy", style: TextStyle(color: Color(0xFF14213D))),
+          child: Text("Hủy", style: TextStyle(color: customColors.primaryText)),
         ),
       ],
     );
@@ -208,6 +215,9 @@ class _HistoryItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     final targetCalories = day.target?.calories ?? 2000;
     final caloriesEaten = day.consumed.calories;
     final progress = targetCalories > 0 ? caloriesEaten / targetCalories : 0.0;
@@ -252,7 +262,7 @@ class _HistoryItemCard extends StatelessWidget {
     );
 
     return Card(
-      color: const Color(0xFFF3F4F6),
+      color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
       margin: const EdgeInsets.symmetric(vertical: 6.0),
@@ -271,25 +281,26 @@ class _HistoryItemCard extends StatelessWidget {
                         children: [
                           Text(
                             dateText,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF14213D)),
+                                color: customColors.primaryText),
                           ),
                           const SizedBox(width: 6),
                           Container(
                             decoration: BoxDecoration(
-                              color: const Color(0xFF14213D)
-                                  .withValues(alpha: 0.08),
+                              color: isDark
+                                  ? AppColors.darkText.withValues(alpha: 0.08)
+                                  : const Color(0xFF14213D).withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(8.0),
                             ),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             child: Text(
                               "${scoreResult.emoji} ${scoreResult.score}đ",
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF14213D),
+                                color: customColors.primaryText,
                               ),
                             ),
                           ),
@@ -393,25 +404,32 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
       }
     });
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final customColors = context.customColors;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? AppColors.darkBg : AppColors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? AppColors.darkBg : AppColors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Text(
-            "◀",
-            style: TextStyle(
-                color: Color(0xFFF97316),
-                fontSize: 20,
-                fontWeight: FontWeight.bold),
-          ),
-          onPressed: widget.onBack,
-        ),
-        title: const Text(
+        leading: widget.onBack != null
+            ? IconButton(
+                icon: const Text(
+                  "◀",
+                  style: TextStyle(
+                      color: AppColors.energyOrange,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold),
+                ),
+                onPressed: widget.onBack,
+              )
+            : null,
+        title: Text(
           "Theo dõi Dinh dưỡng 🥗",
-          style:
-              TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF14213D)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? AppColors.white : AppColors.navy,
+          ),
         ),
       ),
       body: Stack(
@@ -479,12 +497,12 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                   const SizedBox(height: 16),
                   FoodCatalogSection(state: uiState),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     "Bữa ăn đã lưu",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: Color(0xFF14213D),
+                      color: customColors.primaryText,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -519,18 +537,18 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     "Lịch sử dinh dưỡng 📊",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: Color(0xFF14213D),
+                      color: customColors.primaryText,
                     ),
                   ),
                   const SizedBox(height: 12),
                   if (uiState.history.isEmpty)
                     Card(
-                      color: const Color(0xFFF3F4F6),
+                      color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16.0)),
@@ -594,17 +612,16 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
           if (uiState is NutritionContent &&
               uiState.pendingDeleteTemplateId != null)
             AlertDialog(
-              backgroundColor: Colors.white,
-              title: const Text("Xóa bữa ăn đã lưu?",
+              title: Text("Xóa bữa ăn đã lưu?",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Color(0xFF14213D))),
+                      fontWeight: FontWeight.bold, color: customColors.primaryText)),
               content:
                   const Text("Lịch sử dinh dưỡng đã ghi sẽ không bị thay đổi."),
               actions: [
                 TextButton(
                   onPressed: notifier.cancelDeleteTemplate,
-                  child: const Text("Hủy",
-                      style: TextStyle(color: Color(0xFF14213D))),
+                  child: Text("Hủy",
+                      style: TextStyle(color: customColors.primaryText)),
                 ),
                 TextButton(
                   onPressed: notifier.confirmDeleteTemplate,
@@ -618,10 +635,9 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
           // Rename Template Dialog
           if (uiState is NutritionContent && uiState.templateNameEdit != null)
             AlertDialog(
-              backgroundColor: Colors.white,
-              title: const Text("Sửa tên bữa ăn",
+              title: Text("Sửa tên bữa ăn",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Color(0xFF14213D))),
+                      fontWeight: FontWeight.bold, color: customColors.primaryText)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -630,16 +646,16 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                     controller: _renameController,
                     onChanged: notifier.updateTemplateName,
                     enabled: !uiState.savingDraft,
-                    style: const TextStyle(color: Color(0xFF14213D)),
+                    style: TextStyle(color: customColors.primaryText),
                     decoration: InputDecoration(
                       labelText: "Tên món",
-                      labelStyle: const TextStyle(color: Color(0xFF14213D)),
+                      labelStyle: TextStyle(color: customColors.primaryText.withValues(alpha: 0.7)),
                       errorText: uiState.templateNameEdit!.error,
                       focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Color(0xFFF97316)),
                       ),
-                      enabledBorder: const OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFF3F4F6)),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: isDark ? AppColors.darkSurface : AppColors.surfaceGray),
                       ),
                       border: const OutlineInputBorder(),
                     ),
@@ -649,8 +665,8 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
               actions: [
                 TextButton(
                   onPressed: notifier.cancelRenameTemplate,
-                  child: const Text("Hủy",
-                      style: TextStyle(color: Color(0xFF14213D))),
+                  child: Text("Hủy",
+                      style: TextStyle(color: customColors.primaryText)),
                 ),
                 TextButton(
                   onPressed: notifier.confirmRenameTemplate,
