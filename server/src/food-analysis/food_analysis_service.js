@@ -6,6 +6,14 @@ const {
 const FIRST_IMAGE_CONFIDENCE = 0.60;
 const SECOND_IMAGE_CONFIDENCE = 0.55;
 const REQUIRED_LABEL_FACTS = ['calories', 'proteinGrams', 'carbsGrams', 'fatGrams'];
+const REQUIRED_LABEL_MISSING_FIELDS = new Set([
+  'BASIS',
+  'CALORIES',
+  'PROTEIN_GRAMS',
+  'CARBS_GRAMS',
+  'FAT_GRAMS',
+  'CONSUMED_AMOUNT',
+]);
 
 function unavailable() {
   return new FoodAnalysisError(
@@ -119,10 +127,15 @@ class FoodAnalysisService {
   #labelNeedsMoreInformation(labelFacts) {
     const factsComplete = REQUIRED_LABEL_FACTS.every((field) => labelFacts.facts[field] !== null);
     const consumedAmountKnown = labelFacts.netWeightGrams !== null;
+    const requiredMissingFields = new Set(REQUIRED_LABEL_MISSING_FIELDS);
+    if (labelFacts.basis === 'PER_SERVING') {
+      requiredMissingFields.add('SERVING_SIZE_GRAMS');
+    }
     return labelFacts.basis === 'UNKNOWN'
       || !factsComplete
       || !consumedAmountKnown
-      || labelFacts.missingFields.length > 0;
+      || (labelFacts.basis === 'PER_SERVING' && labelFacts.servingSizeGrams === null)
+      || labelFacts.missingFields.some((field) => requiredMissingFields.has(field));
   }
 
   #reviewResponse(session) {

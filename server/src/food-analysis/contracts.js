@@ -94,6 +94,11 @@ const providerLabelFactsSchema = z.object({
     [value.facts.proteinGrams === null, 'PROTEIN_GRAMS', 'facts.proteinGrams'],
     [value.facts.carbsGrams === null, 'CARBS_GRAMS', 'facts.carbsGrams'],
     [value.facts.fatGrams === null, 'FAT_GRAMS', 'facts.fatGrams'],
+    [
+      value.basis === 'PER_SERVING' && value.servingSizeGrams === null,
+      'SERVING_SIZE_GRAMS',
+      'servingSizeGrams',
+    ],
     [value.netWeightGrams === null, 'CONSUMED_AMOUNT', 'netWeightGrams'],
   ];
   for (const [isMissing, code, path] of requiredMissingFields) {

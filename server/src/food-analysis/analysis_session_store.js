@@ -58,8 +58,7 @@ class AnalysisSessionStore {
         502,
       );
     }
-    const id = this.idFactory();
-    if (typeof id !== 'string' || !id.trim() || this.sessions.has(id)) throw unavailable();
+    const id = this.#nextId();
     const expiresAtMs = this.now() + this.ttlMs;
     const session = {
       id,
@@ -149,6 +148,19 @@ class AnalysisSessionStore {
     while (this.expiredIds.size > this.maxSessions) {
       this.expiredIds.delete(this.expiredIds.values().next().value);
     }
+  }
+
+  #nextId() {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const id = this.idFactory();
+      if (typeof id === 'string'
+        && id.trim()
+        && !this.sessions.has(id)
+        && !this.expiredIds.has(id)) {
+        return id;
+      }
+    }
+    throw unavailable();
   }
 
   #publicSession(session) {

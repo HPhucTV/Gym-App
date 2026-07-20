@@ -250,6 +250,24 @@ test('a label serving size without a consumed amount requests a second image', a
   assert.equal((await service.start(validJpeg())).status, 'NEEDS_SECOND_IMAGE');
 });
 
+test('provider schema rejects PER_SERVING observations without a serving size', () => {
+  const observation = labelObservation();
+  observation.labelFacts.basis = 'PER_SERVING';
+  observation.labelFacts.servingSizeGrams = null;
+  observation.labelFacts.missingFields = [];
+
+  assert.equal(providerObservationSchema.safeParse(observation).success, false);
+});
+
+test('PER_100G ignores optional serving-size missing fields when required facts are complete', async () => {
+  const observation = labelObservation();
+  observation.labelFacts.servingSizeGrams = null;
+  observation.labelFacts.missingFields = ['SERVING_SIZE_GRAMS'];
+  const service = makeService({ observer: sequenceObserver([observation]) });
+
+  assert.equal((await service.start(validJpeg())).status, 'NEEDS_CONFIRMATION');
+});
+
 test('after a second label image missing fields are exposed for manual correction without looping', async () => {
   const first = labelObservation();
   first.labelFacts.basis = 'UNKNOWN';

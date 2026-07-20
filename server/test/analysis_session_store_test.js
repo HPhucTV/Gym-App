@@ -128,3 +128,31 @@ test('sweeps expired sessions before enforcing the configured capacity', () => {
 
   assert.equal(replacement.id, 'analysis-2');
 });
+
+test('does not reuse an ID while its expired tombstone is retained', () => {
+  let now = 1_000;
+  const ids = ['analysis-1', 'analysis-1', 'analysis-2'];
+  const store = new AnalysisSessionStore({
+    now: () => now,
+    ttlMs: 100,
+    idFactory: () => ids.shift(),
+  });
+  store.create({
+    imageType: 'MEAL',
+    status: 'NEEDS_CONFIRMATION',
+    observation: mealObservation(),
+    usedSecondImage: false,
+  });
+  now = 1_101;
+
+  const replacement = store.create({
+    imageType: 'MEAL',
+    status: 'NEEDS_CONFIRMATION',
+    observation: mealObservation(),
+    usedSecondImage: false,
+  });
+
+  assert.equal(replacement.id, 'analysis-2');
+  assert.equal(store.get('analysis-2').status, 'NEEDS_CONFIRMATION');
+  assert.throws(() => store.get('analysis-1'), (error) => error.code === 'ANALYSIS_EXPIRED');
+});
