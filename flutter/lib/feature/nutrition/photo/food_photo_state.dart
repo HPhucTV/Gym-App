@@ -1,0 +1,315 @@
+import '../../../core/model/food_photo_analysis_models.dart';
+
+sealed class FoodPhotoState {
+  const FoodPhotoState();
+}
+
+final class FoodPhotoIdle extends FoodPhotoState {
+  const FoodPhotoIdle();
+}
+
+final class FoodPhotoCapturing extends FoodPhotoState {
+  final bool isSecondary;
+
+  const FoodPhotoCapturing({required this.isSecondary});
+}
+
+final class FoodPhotoUploading extends FoodPhotoState {
+  final bool isSecondary;
+
+  const FoodPhotoUploading({required this.isSecondary});
+}
+
+/// Public review metadata deliberately excludes the server analysis ID.
+final class FoodPhotoReviewSummary {
+  final FoodImageType imageType;
+  final double confidence;
+  final List<FoodUncertaintyReason> uncertaintyReasons;
+  final DateTime expiresAt;
+
+  FoodPhotoReviewSummary({
+    required this.imageType,
+    required this.confidence,
+    required List<FoodUncertaintyReason> uncertaintyReasons,
+    required this.expiresAt,
+  }) : uncertaintyReasons = List.unmodifiable(uncertaintyReasons);
+
+  factory FoodPhotoReviewSummary.fromReview(FoodAnalysisReview review) {
+    return FoodPhotoReviewSummary(
+      imageType: review.imageType,
+      confidence: review.confidence,
+      uncertaintyReasons: review.uncertaintyReasons,
+      expiresAt: review.expiresAt,
+    );
+  }
+}
+
+final class FoodPhotoNeedsSecondPhoto extends FoodPhotoState {
+  final FoodPhotoReviewSummary review;
+
+  const FoodPhotoNeedsSecondPhoto(this.review);
+}
+
+final class FoodPhotoMealComponentDraft {
+  final String observationId;
+  final String? foodId;
+  final String nameVi;
+  final FoodPortion? portion;
+  final bool requiresManualPortion;
+  final bool manualPortionCompleted;
+
+  const FoodPhotoMealComponentDraft({
+    required this.observationId,
+    required this.foodId,
+    required this.nameVi,
+    required this.portion,
+    required this.requiresManualPortion,
+    required this.manualPortionCompleted,
+  });
+
+  FoodPhotoMealComponentDraft copyWith({
+    String? nameVi,
+    FoodPortion? portion,
+    bool? manualPortionCompleted,
+  }) {
+    return FoodPhotoMealComponentDraft(
+      observationId: observationId,
+      foodId: foodId,
+      nameVi: nameVi ?? this.nameVi,
+      portion: portion ?? this.portion,
+      requiresManualPortion: requiresManualPortion,
+      manualPortionCompleted:
+          manualPortionCompleted ?? this.manualPortionCompleted,
+    );
+  }
+
+  ConfirmedFoodComponent toConfirmation() {
+    final selectedPortion = portion;
+    if (selectedPortion == null ||
+        (requiresManualPortion && !manualPortionCompleted)) {
+      throw const FoodAnalysisFormatException(
+        'A required meal portion is incomplete.',
+      );
+    }
+    return ConfirmedFoodComponent(
+      observationId: observationId,
+      foodId: foodId,
+      nameVi: nameVi,
+      portion: selectedPortion,
+    );
+  }
+}
+
+final class FoodPhotoMealDraft {
+  final String nameVi;
+  final List<FoodPhotoMealComponentDraft> components;
+
+  FoodPhotoMealDraft({
+    required this.nameVi,
+    required List<FoodPhotoMealComponentDraft> components,
+  }) : components = List.unmodifiable(components);
+
+  MealConfirmation toConfirmation() {
+    return MealConfirmation(
+      nameVi: nameVi,
+      components: components
+          .map((component) => component.toConfirmation())
+          .toList(growable: false),
+    );
+  }
+
+  bool get canConfirm {
+    try {
+      toConfirmation();
+      return true;
+    } on FoodAnalysisFormatException {
+      return false;
+    }
+  }
+}
+
+final class FoodPhotoLabelDraft {
+  final String nameVi;
+  final LabelBasis basis;
+  final double? calories;
+  final double? proteinGrams;
+  final double? carbsGrams;
+  final double? fatGrams;
+  final double? servingSizeGrams;
+  final LabelConsumedAmount? consumed;
+
+  const FoodPhotoLabelDraft({
+    required this.nameVi,
+    required this.basis,
+    required this.calories,
+    required this.proteinGrams,
+    required this.carbsGrams,
+    required this.fatGrams,
+    required this.servingSizeGrams,
+    required this.consumed,
+  });
+
+  FoodPhotoLabelDraft copyWith({
+    String? nameVi,
+    LabelBasis? basis,
+    double? calories,
+    double? proteinGrams,
+    double? carbsGrams,
+    double? fatGrams,
+    double? servingSizeGrams,
+    LabelConsumedAmount? consumed,
+  }) {
+    return FoodPhotoLabelDraft(
+      nameVi: nameVi ?? this.nameVi,
+      basis: basis ?? this.basis,
+      calories: calories ?? this.calories,
+      proteinGrams: proteinGrams ?? this.proteinGrams,
+      carbsGrams: carbsGrams ?? this.carbsGrams,
+      fatGrams: fatGrams ?? this.fatGrams,
+      servingSizeGrams: servingSizeGrams ?? this.servingSizeGrams,
+      consumed: consumed ?? this.consumed,
+    );
+  }
+
+  LabelConfirmation toConfirmation() {
+    final selectedCalories = calories;
+    final selectedProtein = proteinGrams;
+    final selectedCarbs = carbsGrams;
+    final selectedFat = fatGrams;
+    final selectedConsumed = consumed;
+    if (selectedCalories == null ||
+        selectedProtein == null ||
+        selectedCarbs == null ||
+        selectedFat == null ||
+        selectedConsumed == null) {
+      throw const FoodAnalysisFormatException(
+        'Required nutrition-label corrections are incomplete.',
+      );
+    }
+    return LabelConfirmation(
+      nameVi: nameVi,
+      basis: basis,
+      facts: NutrientFacts(
+        calories: selectedCalories,
+        proteinGrams: selectedProtein,
+        carbsGrams: selectedCarbs,
+        fatGrams: selectedFat,
+      ),
+      servingSizeGrams: servingSizeGrams,
+      consumed: selectedConsumed,
+    );
+  }
+
+  bool get canConfirm {
+    try {
+      toConfirmation();
+      return true;
+    } on FoodAnalysisFormatException {
+      return false;
+    }
+  }
+}
+
+final class FoodPhotoReviewingMeal extends FoodPhotoState {
+  final FoodPhotoReviewSummary review;
+  final FoodPhotoMealDraft draft;
+  final String? validationMessage;
+
+  const FoodPhotoReviewingMeal(
+    this.review,
+    this.draft, {
+    this.validationMessage,
+  });
+}
+
+final class FoodPhotoReviewingLabel extends FoodPhotoState {
+  final FoodPhotoReviewSummary review;
+  final FoodPhotoLabelDraft draft;
+  final String? validationMessage;
+
+  const FoodPhotoReviewingLabel(
+    this.review,
+    this.draft, {
+    this.validationMessage,
+  });
+}
+
+final class FoodPhotoConfirming extends FoodPhotoState {
+  const FoodPhotoConfirming();
+}
+
+/// Public estimate data deliberately excludes the server analysis ID.
+final class FoodPhotoEstimateResult {
+  final FoodImageType imageType;
+  final String nameVi;
+  final NutritionEstimate estimate;
+  final AnalysisConfidenceLevel confidenceLevel;
+  final List<FoodUncertaintyReason> uncertaintyReasons;
+  final String calculationSummary;
+
+  FoodPhotoEstimateResult({
+    required this.imageType,
+    required this.nameVi,
+    required this.estimate,
+    required this.confidenceLevel,
+    required List<FoodUncertaintyReason> uncertaintyReasons,
+    required this.calculationSummary,
+  }) : uncertaintyReasons = List.unmodifiable(uncertaintyReasons);
+
+  factory FoodPhotoEstimateResult.fromReady(FoodAnalysisReady ready) {
+    return FoodPhotoEstimateResult(
+      imageType: ready.imageType,
+      nameVi: ready.nameVi,
+      estimate: ready.estimate,
+      confidenceLevel: ready.confidenceLevel,
+      uncertaintyReasons: ready.uncertaintyReasons,
+      calculationSummary: ready.calculationSummary,
+    );
+  }
+}
+
+final class FoodPhotoReady extends FoodPhotoState {
+  final FoodPhotoEstimateResult result;
+
+  const FoodPhotoReady(this.result);
+}
+
+final class FoodPhotoSaving extends FoodPhotoState {
+  final FoodPhotoEstimateResult result;
+
+  const FoodPhotoSaving(this.result);
+}
+
+final class FoodPhotoSaved extends FoodPhotoState {
+  const FoodPhotoSaved();
+}
+
+final class FoodPhotoError extends FoodPhotoState {
+  final String code;
+  final String message;
+  final bool canRetry;
+  final bool requiresRecapture;
+
+  const FoodPhotoError({
+    required this.code,
+    required this.message,
+    required this.canRetry,
+    required this.requiresRecapture,
+  });
+}
+
+final class FoodPhotoConsentRequired extends FoodPhotoState {
+  final String message;
+
+  const FoodPhotoConsentRequired({
+    this.message = 'Hãy bật đồng ý AI đám mây trong Hồ sơ trước khi gửi ảnh.',
+  });
+}
+
+final class FoodPhotoManualEntryRequested extends FoodPhotoState {
+  const FoodPhotoManualEntryRequested();
+}
+
+final class FoodPhotoCancelled extends FoodPhotoState {
+  const FoodPhotoCancelled();
+}
