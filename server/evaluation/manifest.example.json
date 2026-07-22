@@ -11,9 +11,13 @@
       },
       "provenance": {
         "source": "REPLACE_WITH_CAPTURE_SOURCE",
-        "license": "REPLACE_WITH_LICENSE_OR_SIGNED_PERMISSION",
-        "licenseReference": "REPLACE_WITH_PRIVATE_RELEASE_OR_LICENSE_REFERENCE",
-        "collectedAt": "2026-07-22"
+        "collectedAt": "2026-07-22",
+        "rights": {
+          "basis": "EXPLICIT_PERMISSION",
+          "reference": "REPLACE_WITH_PRIVATE_RELEASE_OR_LICENSE_REFERENCE",
+          "reviewedBy": "REPLACE_WITH_HUMAN_REVIEWER",
+          "reviewedAt": "2026-07-22"
+        }
       },
       "groundTruth": {
         "majorComponentFoodIds": [
@@ -58,9 +62,13 @@
       "primaryImage": "images/label-001.jpg",
       "provenance": {
         "source": "REPLACE_WITH_CAPTURE_SOURCE",
-        "license": "REPLACE_WITH_LICENSE_OR_SIGNED_PERMISSION",
-        "licenseReference": "REPLACE_WITH_PRIVATE_RELEASE_OR_LICENSE_REFERENCE",
-        "collectedAt": "2026-07-22"
+        "collectedAt": "2026-07-22",
+        "rights": {
+          "basis": "OWNED",
+          "reference": "REPLACE_WITH_PRIVATE_OWNERSHIP_RECORD",
+          "reviewedBy": "REPLACE_WITH_HUMAN_REVIEWER",
+          "reviewedAt": "2026-07-22"
+        }
       },
       "groundTruth": {
         "clearLabel": true,

@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 const { AnalysisSessionStore } = require('../src/food-analysis/analysis_session_store');
 const {
@@ -20,12 +21,13 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CASES = 500;
 const MIN_MEAL_CASES = 30;
 const MIN_LABEL_CASES = 20;
-const REQUIRED_PROVENANCE_FIELDS = [
-  'source',
-  'license',
-  'licenseReference',
-  'collectedAt',
-];
+const AFFIRMATIVE_RIGHTS_BASES = new Set([
+  'OWNED',
+  'LICENSED',
+  'PUBLIC_DOMAIN',
+  'EXPLICIT_PERMISSION',
+]);
+const PLACEHOLDER_PATTERN = /(?:REPLACE_|PLACEHOLDER|\bTBD\b|\bTODO\b|\bUNKNOWN\b|\bUNVERIFIED\b|\bNONE\b|NO[ _-]?PERMISSION|PERMISSION[ _-]?DENIED|\bDENIED\b|\bDECLINED\b|NOT[ _-]?PERMITTED)/i;
 const NUTRIENTS = ['calories', 'proteinGrams', 'carbsGrams', 'fatGrams'];
 const RELEASE_TARGETS = Object.freeze({
   majorComponentIdentificationRatePercent: 90,
@@ -55,11 +57,35 @@ function requirePlainObject(value, field) {
   return value;
 }
 
+function requireAllowedKeys(value, allowedKeys, field) {
+  const unknown = Object.keys(value).find((key) => !allowedKeys.includes(key));
+  if (unknown) throw inputError(`${field}.${unknown} is not supported`);
+}
+
 function requireString(value, field, maxLength = 300) {
   if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
     throw inputError(`${field} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function requireVerifiedString(value, field, maxLength = 500) {
+  const entry = requireString(value, field, maxLength);
+  if (PLACEHOLDER_PATTERN.test(entry)) {
+    throw inputError(`${field} must contain verified metadata, not a placeholder or denial`);
+  }
+  return entry;
+}
+
+function requireIsoDate(value, field) {
+  const entry = requireString(value, field, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(entry)) {
+    throw inputError(`${field} must use YYYY-MM-DD`);
+  }
+  const [year, month, day] = entry.split('-').map(Number);
+  const canonical = new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
+  if (canonical !== entry) throw inputError(`${field} must be a valid calendar date`);
+  return entry;
 }
 
 function requireRelativeFilePath(value, field) {
@@ -94,12 +120,19 @@ function validateNutrition(value, field) {
 
 function validateProvenance(value, field) {
   const provenance = requirePlainObject(value, field);
-  for (const key of REQUIRED_PROVENANCE_FIELDS) {
-    const entry = requireString(provenance[key], `${field}.${key}`, 500);
-    if (/(?:REPLACE_|PLACEHOLDER|\bTBD\b|\bTODO\b|\bUNKNOWN\b|\bUNVERIFIED\b)/i.test(entry)) {
-      throw inputError(`${field}.${key} must contain verified provenance, not a placeholder`);
-    }
+  requireAllowedKeys(provenance, ['source', 'collectedAt', 'rights'], field);
+  requireVerifiedString(provenance.source, `${field}.source`);
+  requireIsoDate(provenance.collectedAt, `${field}.collectedAt`);
+  const rights = requirePlainObject(provenance.rights, `${field}.rights`);
+  requireAllowedKeys(rights, ['basis', 'reference', 'reviewedBy', 'reviewedAt'], `${field}.rights`);
+  if (!AFFIRMATIVE_RIGHTS_BASES.has(rights.basis)) {
+    throw inputError(`${field}.rights.basis must be an affirmative allowlisted value`);
   }
+  const reference = requireVerifiedString(rights.reference, `${field}.rights.reference`);
+  if (reference.length < 8) throw inputError(`${field}.rights.reference is too short to audit`);
+  const reviewedBy = requireVerifiedString(rights.reviewedBy, `${field}.rights.reviewedBy`, 200);
+  if (reviewedBy.length < 2) throw inputError(`${field}.rights.reviewedBy is too short`);
+  requireIsoDate(rights.reviewedAt, `${field}.rights.reviewedAt`);
 }
 
 function validateConfirmation(value, imageType, field) {
@@ -181,20 +214,20 @@ function isInside(root, candidate) {
   return relative !== '' && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
 }
 
-function resolvePrivateFile(evalRoot, relativePath, maxBytes) {
+function resolvePrivateFile(evalRoot, relativePath, maxBytes, descriptor = 'evaluation image') {
   const requested = path.resolve(evalRoot, relativePath);
-  if (!isInside(evalRoot, requested)) throw inputError('image path escapes FOOD_EVAL_DIR');
+  if (!isInside(evalRoot, requested)) throw inputError(`${descriptor} path escapes FOOD_EVAL_DIR`);
 
   let realPath;
   try {
     realPath = fs.realpathSync(requested);
   } catch {
-    throw inputError('evaluation image is missing or unreadable');
+    throw inputError(`${descriptor} is missing or unreadable`);
   }
-  if (!isInside(evalRoot, realPath)) throw inputError('evaluation image symlink escapes FOOD_EVAL_DIR');
+  if (!isInside(evalRoot, realPath)) throw inputError(`${descriptor} symlink escapes FOOD_EVAL_DIR`);
   const stat = fs.statSync(realPath);
   if (!stat.isFile() || stat.size <= 0 || stat.size > maxBytes) {
-    throw inputError('evaluation image has an invalid size');
+    throw inputError(`${descriptor} has an invalid size`);
   }
   return realPath;
 }
@@ -207,6 +240,10 @@ function readImage(evalRoot, relativePath) {
   return { bytes, mimeType: detected.mimeType };
 }
 
+function imageDigest(image) {
+  return createHash('sha256').update(image.bytes).digest('hex');
+}
+
 function loadPrivateManifest(evalDir) {
   let evalRoot;
   try {
@@ -215,7 +252,12 @@ function loadPrivateManifest(evalDir) {
     throw inputError('FOOD_EVAL_DIR is missing or unreadable');
   }
   if (!fs.statSync(evalRoot).isDirectory()) throw inputError('FOOD_EVAL_DIR must be a directory');
-  const manifestPath = resolvePrivateFile(evalRoot, 'manifest.json', MAX_MANIFEST_BYTES);
+  const manifestPath = resolvePrivateFile(
+    evalRoot,
+    'manifest.json',
+    MAX_MANIFEST_BYTES,
+    'manifest.json',
+  );
   let decoded;
   try {
     decoded = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -346,6 +388,7 @@ async function evaluateManifest({
   evalDir,
   manifest,
   observer,
+  serviceFactory = createService,
   nowMs = () => Date.now(),
   enforceMinimums = true,
   generatedAt = new Date().toISOString(),
@@ -370,6 +413,21 @@ async function evaluateManifest({
   }
   if (!fs.statSync(evalRoot).isDirectory()) throw inputError('FOOD_EVAL_DIR must be a directory');
   const sortedCases = [...manifest.cases].sort((left, right) => left.caseId.localeCompare(right.caseId));
+  const primaryDigests = new Map();
+  const primaryHashes = new Set();
+  for (const item of sortedCases) {
+    const image = readImage(evalRoot, item.primaryImage);
+    const digest = imageDigest(image);
+    image.bytes.fill(0);
+    if (primaryHashes.has(digest)) {
+      throw new EvaluationInputError(
+        'DUPLICATE_PRIMARY_IMAGE',
+        'Each evaluation case must use unique primary image content',
+      );
+    }
+    primaryHashes.add(digest);
+    primaryDigests.set(item.caseId, digest);
+  }
   const totals = {
     majorExpected: 0,
     majorIdentified: 0,
@@ -379,7 +437,7 @@ async function evaluateManifest({
     completed: 0,
     failed: 0,
   };
-  const calorieErrors = [];
+  const mealCalorieErrors = [];
   const latencies = [];
   const errorCodeCounts = new Map();
 
@@ -391,11 +449,27 @@ async function evaluateManifest({
         item.groundTruth.confirmation,
       );
     }
-    const startedAt = nowMs();
+    let startedAt;
+    let primaryImage;
     try {
-      const service = createService(observer);
-      let review = await service.start(readImage(evalRoot, item.primaryImage));
+      primaryImage = readImage(evalRoot, item.primaryImage);
+      if (imageDigest(primaryImage) !== primaryDigests.get(item.caseId)) {
+        throw new EvaluationInputError(
+          'EVALUATION_INPUT_CHANGED',
+          'Primary image content changed during evaluation',
+        );
+      }
+      const service = serviceFactory(observer);
+      startedAt = nowMs();
+      let review;
+      try {
+        review = await service.start(primaryImage);
+      } finally {
+        primaryImage.bytes.fill(0);
+        primaryImage = null;
+      }
       if (review.status === 'NEEDS_SECOND_IMAGE') {
+        totals.usedSecondImage += 1;
         if (!item.secondaryImage) {
           throw new FoodAnalysisError(
             'SECONDARY_IMAGE_REQUIRED',
@@ -403,11 +477,12 @@ async function evaluateManifest({
             422,
           );
         }
-        review = await service.addSecondaryImage(
-          review.analysisId,
-          readImage(evalRoot, item.secondaryImage.path),
-        );
-        totals.usedSecondImage += 1;
+        const secondaryImage = readImage(evalRoot, item.secondaryImage.path);
+        try {
+          review = await service.addSecondaryImage(review.analysisId, secondaryImage);
+        } finally {
+          secondaryImage.bytes.fill(0);
+        }
       }
       if (review.imageType !== item.imageType) {
         throw new FoodAnalysisError('IMAGE_TYPE_MISMATCH', 'Image type mismatch.', 422);
@@ -434,17 +509,20 @@ async function evaluateManifest({
         review.analysisId,
         item.groundTruth.confirmation,
       );
-      const expectedCalories = item.groundTruth.weighedNutrition.calories;
-      const calorieError = Math.abs(result.estimate.calories.mid - expectedCalories)
-        / expectedCalories * 100;
-      calorieErrors.push(calorieError);
+      if (item.imageType === 'MEAL') {
+        const expectedCalories = item.groundTruth.weighedNutrition.calories;
+        const calorieError = Math.abs(result.estimate.calories.mid - expectedCalories)
+          / expectedCalories * 100;
+        mealCalorieErrors.push(calorieError);
+      }
       totals.completed += 1;
     } catch (error) {
       const code = normalizedErrorCode(error);
       errorCodeCounts.set(code, (errorCodeCounts.get(code) || 0) + 1);
       totals.failed += 1;
     } finally {
-      const duration = nowMs() - startedAt;
+      primaryImage?.bytes?.fill(0);
+      const duration = startedAt === undefined ? 0 : nowMs() - startedAt;
       latencies.push(Math.max(0, Math.round(Number.isFinite(duration) ? duration : 0)));
     }
   }
@@ -461,10 +539,10 @@ async function evaluateManifest({
       totals.majorIdentified,
       totals.majorExpected,
     ),
-    medianAbsoluteCalorieErrorPercent: median(calorieErrors),
+    medianAbsoluteCalorieErrorPercent: median(mealCalorieErrors),
     within35PercentCalorieErrorPercent: percentage(
-      calorieErrors.filter((value) => value <= 35).length,
-      sortedCases.length,
+      mealCalorieErrors.filter((value) => value <= 35).length,
+      manifestMealCases,
     ),
     clearLabelRequiredFieldCompletenessPercent: percentage(
       totals.clearLabelFieldsComplete,
@@ -509,25 +587,42 @@ function writeAggregateReport(report, outputDir) {
   return outputPath;
 }
 
-async function runCli() {
-  require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-  const requestedDir = process.env.FOOD_EVAL_DIR;
+async function runCli(options = {}) {
+  if (options.env === undefined) {
+    require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+  }
+  const env = options.env || process.env;
+  const requestedDir = env.FOOD_EVAL_DIR;
   if (!requestedDir) throw inputError('FOOD_EVAL_DIR is required');
   const { evalRoot, manifest } = loadPrivateManifest(requestedDir);
-  const observer = new GeminiFoodObserver({
-    apiKey: process.env.GEMINI_API_KEY,
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+  const observer = options.observer || new GeminiFoodObserver({
+    apiKey: env.GEMINI_API_KEY,
+    model: env.GEMINI_MODEL || 'gemini-2.5-pro',
   });
-  const report = await evaluateManifest({ evalDir: evalRoot, manifest, observer });
-  writeAggregateReport(report, path.join(__dirname, 'results'));
-  process.stdout.write(`${JSON.stringify(aggregateReport(report), null, 2)}\n`);
-  return report.releaseGate.passed ? 0 : 1;
+  const report = await evaluateManifest({
+    evalDir: evalRoot,
+    manifest,
+    observer,
+    serviceFactory: options.serviceFactory,
+    nowMs: options.nowMs,
+    generatedAt: options.generatedAt,
+  });
+  const reportPath = writeAggregateReport(
+    report,
+    options.outputDir || path.join(__dirname, 'results'),
+  );
+  (options.stdout || process.stdout).write(`${JSON.stringify(aggregateReport(report), null, 2)}\n`);
+  return {
+    exitCode: report.releaseGate.passed ? 0 : 1,
+    report,
+    reportPath,
+  };
 }
 
 if (require.main === module) {
   runCli()
-    .then((exitCode) => {
-      process.exitCode = exitCode;
+    .then((result) => {
+      process.exitCode = result.exitCode;
     })
     .catch((error) => {
       const code = error instanceof EvaluationInputError
@@ -544,6 +639,7 @@ module.exports = {
   assessReleaseGate,
   evaluateManifest,
   loadPrivateManifest,
+  runCli,
   validateManifest,
   writeAggregateReport,
 };

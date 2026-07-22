@@ -7,6 +7,8 @@ const test = require('node:test');
 const {
   assessReleaseGate,
   evaluateManifest,
+  loadPrivateManifest,
+  runCli,
   validateManifest,
   writeAggregateReport,
 } = require('../evaluation/run_evaluation');
@@ -17,9 +19,13 @@ const jpeg = (marker) => Buffer.from([0xff, 0xd8, 0xff, marker]);
 function provenance() {
   return {
     source: 'Synthetic test fixture',
-    license: 'Project test fixture',
-    licenseReference: 'test://evaluation-fixture-license',
     collectedAt: '2026-07-22',
+    rights: {
+      basis: 'OWNED',
+      reference: 'test://evaluation-fixture-rights-record',
+      reviewedBy: 'Automated fixture reviewer',
+      reviewedAt: '2026-07-22',
+    },
   };
 }
 
@@ -179,8 +185,8 @@ test('evaluates synthetic cases through the real service and returns aggregate-o
   });
   // The unavailable meal counts as a missed identification, not as an excluded case.
   assert.equal(report.metrics.majorComponentIdentificationRatePercent, 50);
-  assert.equal(report.metrics.medianAbsoluteCalorieErrorPercent, 11.25);
-  assert.equal(report.metrics.within35PercentCalorieErrorPercent, 66.67);
+  assert.equal(report.metrics.medianAbsoluteCalorieErrorPercent, 2.5);
+  assert.equal(report.metrics.within35PercentCalorieErrorPercent, 50);
   assert.equal(report.metrics.clearLabelRequiredFieldCompletenessPercent, 100);
   assert.equal(report.metrics.secondImageRatePercent, 33.33);
   assert.deepEqual(report.metrics.errorCodeCounts, { ANALYSIS_UNAVAILABLE: 1 });
@@ -246,7 +252,7 @@ test('production evaluation fails minimum counts before invoking the provider', 
   assert.equal(providerCalls, 0);
 });
 
-test('failed clear-label cases remain in completeness and within-error denominators', async (t) => {
+test('failed clear-label cases remain in completeness denominator without affecting meal calories', async (t) => {
   const evalDir = createFixture();
   t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
   const failedLabel = labelCase({
@@ -267,29 +273,346 @@ test('failed clear-label cases remain in completeness and within-error denominat
   });
 
   assert.equal(report.metrics.clearLabelRequiredFieldCompletenessPercent, 50);
-  assert.equal(report.metrics.within35PercentCalorieErrorPercent, 50);
+  assert.equal(report.metrics.medianAbsoluteCalorieErrorPercent, null);
+  assert.equal(report.metrics.within35PercentCalorieErrorPercent, null);
 });
 
-test('manifest validation rejects missing license metadata and unsafe image paths', () => {
-  const missingLicense = mealCase();
-  delete missingLicense.provenance.license;
+test('manifest validation requires affirmative reviewed rights and real calendar dates', () => {
+  const missingRights = mealCase();
+  delete missingRights.provenance.rights;
   assert.throws(
-    () => validateManifest({ schemaVersion: 1, cases: [missingLicense] }),
-    /license/,
+    () => validateManifest({ schemaVersion: 1, cases: [missingRights] }),
+    /rights/,
   );
 
+  for (const basis of ['NO_PERMISSION', 'NONE', 'UNKNOWN']) {
+    const invalidBasis = mealCase();
+    invalidBasis.provenance.rights.basis = basis;
+    assert.throws(
+      () => validateManifest({ schemaVersion: 1, cases: [invalidBasis] }),
+      /basis/,
+    );
+  }
+
+  for (const basis of ['OWNED', 'LICENSED', 'PUBLIC_DOMAIN', 'EXPLICIT_PERMISSION']) {
+    const allowedBasis = mealCase();
+    allowedBasis.provenance.rights.basis = basis;
+    assert.doesNotThrow(
+      () => validateManifest({ schemaVersion: 1, cases: [allowedBasis] }),
+    );
+  }
+
+  for (const collectedAt of ['2026-7-22', '2026-02-30', 'not-a-date']) {
+    const invalidDate = mealCase();
+    invalidDate.provenance.collectedAt = collectedAt;
+    assert.throws(
+      () => validateManifest({ schemaVersion: 1, cases: [invalidDate] }),
+      /collectedAt/,
+    );
+  }
+
+  const invalidReviewDate = mealCase();
+  invalidReviewDate.provenance.rights.reviewedAt = '2026-13-01';
+  assert.throws(
+    () => validateManifest({ schemaVersion: 1, cases: [invalidReviewDate] }),
+    /reviewedAt/,
+  );
+
+  for (const reference of ['none', 'No permission', 'REPLACE_WITH_RELEASE']) {
+    const invalidReference = mealCase();
+    invalidReference.provenance.rights.reference = reference;
+    assert.throws(
+      () => validateManifest({ schemaVersion: 1, cases: [invalidReference] }),
+      /reference/,
+    );
+  }
+
+  const legacyLooseLicense = mealCase();
+  legacyLooseLicense.provenance.license = 'Unstructured claim';
+  assert.throws(
+    () => validateManifest({ schemaVersion: 1, cases: [legacyLooseLicense] }),
+    /not supported/,
+  );
+});
+
+test('manifest validation rejects unsafe image paths', () => {
   const unsafe = mealCase({ primaryImage: '../private-photo.jpg' });
   assert.throws(
     () => validateManifest({ schemaVersion: 1, cases: [unsafe] }),
     /relative path|traversal/i,
   );
+});
 
-  const placeholder = mealCase();
-  placeholder.provenance.licenseReference = 'REPLACE_WITH_RELEASE';
-  assert.throws(
-    () => validateManifest({ schemaVersion: 1, cases: [placeholder] }),
-    /placeholder/i,
+test('meal calorie gates cannot be masked by near-perfect labels', async (t) => {
+  const evalDir = createFixture();
+  const imagesDir = path.join(evalDir, 'images');
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  const cases = [];
+  for (let index = 0; index < 2; index += 1) {
+    const relativePath = `images/bad-meal-${index}.jpg`;
+    fs.writeFileSync(path.join(evalDir, relativePath), jpeg(10 + index));
+    const item = mealCase({
+      caseId: `bad-meal-${index}`,
+      primaryImage: relativePath,
+      secondaryImage: undefined,
+    });
+    item.groundTruth.weighedNutrition = nutrition(100);
+    cases.push(item);
+  }
+  for (let index = 0; index < 20; index += 1) {
+    const relativePath = `images/perfect-label-${index}.jpg`;
+    fs.writeFileSync(path.join(evalDir, relativePath), jpeg(30 + index));
+    const item = labelCase({
+      caseId: `perfect-label-${index}`,
+      primaryImage: relativePath,
+    });
+    item.groundTruth.weighedNutrition = nutrition(200);
+    cases.push(item);
+  }
+  assert.equal(fs.existsSync(imagesDir), true);
+  const maskingObserver = {
+    async observePrimary({ bytes }) {
+      if (bytes[3] < 20) {
+        return {
+          imageType: 'MEAL',
+          confidence: 0.9,
+          uncertaintyReasons: [],
+          components: [{
+            id: 'rice',
+            nameVi: 'Com trang',
+            confidence: 0.9,
+            isMajor: true,
+            suggestedPortion: { kind: 'GRAMS', grams: 150 },
+          }],
+          labelFacts: null,
+        };
+      }
+      return {
+        imageType: 'NUTRITION_LABEL',
+        confidence: 0.99,
+        uncertaintyReasons: [],
+        components: null,
+        labelFacts: {
+          nameVi: 'Nhan thu nghiem',
+          basis: 'PER_100G',
+          facts: nutrition(200),
+          servingSizeGrams: null,
+          servingsPerContainer: null,
+          netWeightGrams: 100,
+          confidence: 0.99,
+          missingFields: [],
+        },
+      };
+    },
+  };
+
+  const report = await evaluateManifest({
+    evalDir,
+    manifest: { schemaVersion: 1, cases },
+    observer: maskingObserver,
+    enforceMinimums: false,
+  });
+
+  assert.equal(report.metrics.medianAbsoluteCalorieErrorPercent, 95);
+  assert.equal(report.metrics.within35PercentCalorieErrorPercent, 0);
+  assert.equal(report.releaseGate.checks.medianAbsoluteCalorieError.passed, false);
+  assert.equal(report.releaseGate.checks.within35PercentCalorieError.passed, false);
+});
+
+test('rejects duplicate primary image bytes even when paths and case IDs differ', async (t) => {
+  const evalDir = createFixture();
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  fs.copyFileSync(
+    path.join(evalDir, 'images', 'meal.jpg'),
+    path.join(evalDir, 'images', 'meal-copy.jpg'),
   );
+  const duplicate = mealCase({
+    caseId: 'meal-copy',
+    primaryImage: 'images/meal-copy.jpg',
+  });
+
+  await assert.rejects(
+    evaluateManifest({
+      evalDir,
+      manifest: { schemaVersion: 1, cases: [mealCase(), duplicate] },
+      observer: observer(),
+      enforceMinimums: false,
+    }),
+    (error) => error.code === 'DUPLICATE_PRIMARY_IMAGE',
+  );
+});
+
+test('second-image rate counts requests even when the required image is absent', async (t) => {
+  const evalDir = createFixture();
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  const noSecondary = mealCase({ secondaryImage: undefined });
+
+  const report = await evaluateManifest({
+    evalDir,
+    manifest: { schemaVersion: 1, cases: [noSecondary] },
+    observer: observer(),
+    enforceMinimums: false,
+  });
+
+  assert.equal(report.metrics.secondImageRatePercent, 100);
+  assert.deepEqual(report.metrics.errorCodeCounts, { SECONDARY_IMAGE_REQUIRED: 1 });
+});
+
+test('latency excludes per-case service construction', async (t) => {
+  const evalDir = createFixture();
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  let currentTime = 0;
+  const fakeService = {
+    async start() {
+      currentTime += 40;
+      return {
+        analysisId: 'analysis-1',
+        imageType: 'NUTRITION_LABEL',
+        status: 'NEEDS_CONFIRMATION',
+        labelFacts: {
+          basis: 'PER_100G',
+          facts: nutrition(200),
+          servingSizeGrams: null,
+          netWeightGrams: 100,
+        },
+      };
+    },
+    async confirm() {
+      currentTime += 60;
+      return { estimate: { calories: { min: 200, mid: 200, max: 200 } } };
+    },
+  };
+
+  const report = await evaluateManifest({
+    evalDir,
+    manifest: { schemaVersion: 1, cases: [labelCase()] },
+    observer: observer(),
+    serviceFactory: () => {
+      currentTime += 1000;
+      return fakeService;
+    },
+    nowMs: () => currentTime,
+    enforceMinimums: false,
+  });
+
+  assert.deepEqual(report.metrics.latencyMs, { p50: 100, p95: 100 });
+});
+
+test('filesystem guards reject oversize images, wrong magic, and oversize manifests', async (t) => {
+  const evalDir = createFixture();
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  const largePath = path.join(evalDir, 'images', 'large.jpg');
+  const largeBytes = Buffer.alloc(5 * 1024 * 1024 + 1);
+  jpeg(9).copy(largeBytes);
+  fs.writeFileSync(largePath, largeBytes);
+  fs.writeFileSync(path.join(evalDir, 'images', 'wrong.jpg'), Buffer.from('not an image'));
+
+  for (const primaryImage of ['images/large.jpg', 'images/wrong.jpg']) {
+    await assert.rejects(evaluateManifest({
+      evalDir,
+      manifest: {
+        schemaVersion: 1,
+        cases: [mealCase({ primaryImage, secondaryImage: undefined })],
+      },
+      observer: observer(),
+      enforceMinimums: false,
+    }));
+  }
+
+  fs.writeFileSync(path.join(evalDir, 'manifest.json'), Buffer.alloc(1024 * 1024 + 1, 0x20));
+  assert.throws(() => loadPrivateManifest(evalDir), /size/i);
+});
+
+test('rejects a symlink that escapes FOOD_EVAL_DIR when the platform permits symlinks', async (t) => {
+  const evalDir = createFixture();
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'food-eval-outside-'));
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(outsideDir, { recursive: true, force: true }));
+  const outsideImage = path.join(outsideDir, 'outside.jpg');
+  fs.writeFileSync(outsideImage, jpeg(90));
+  const linkPath = path.join(evalDir, 'images', 'outside-link.jpg');
+  try {
+    fs.symlinkSync(outsideImage, linkPath, 'file');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+      t.skip('symlink creation is unavailable on this host');
+      return;
+    }
+    throw error;
+  }
+
+  await assert.rejects(evaluateManifest({
+    evalDir,
+    manifest: {
+      schemaVersion: 1,
+      cases: [mealCase({ primaryImage: 'images/outside-link.jpg' })],
+    },
+    observer: observer(),
+    enforceMinimums: false,
+  }), /symlink/i);
+});
+
+test('CLI validates FOOD_EVAL_DIR and writes only an aggregate failed-gate report', async (t) => {
+  await assert.rejects(runCli({ env: {} }), /FOOD_EVAL_DIR/);
+  await assert.rejects(
+    runCli({ env: { FOOD_EVAL_DIR: path.join(os.tmpdir(), 'does-not-exist-food-eval') } }),
+    /FOOD_EVAL_DIR/,
+  );
+
+  const evalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'food-eval-cli-'));
+  const imagesDir = path.join(evalDir, 'images');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'food-eval-cli-output-'));
+  fs.mkdirSync(imagesDir);
+  t.after(() => fs.rmSync(evalDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(outputDir, { recursive: true, force: true }));
+  const cases = [];
+  for (let index = 0; index < 50; index += 1) {
+    const relativePath = `images/case-${index}.jpg`;
+    fs.writeFileSync(path.join(evalDir, relativePath), jpeg(100 + index));
+    cases.push(index < 30
+      ? mealCase({
+        caseId: `meal-${index}`,
+        primaryImage: relativePath,
+        secondaryImage: undefined,
+      })
+      : labelCase({
+        caseId: `label-${index - 30}`,
+        primaryImage: relativePath,
+      }));
+  }
+  fs.writeFileSync(
+    path.join(evalDir, 'manifest.json'),
+    JSON.stringify({ schemaVersion: 1, cases }),
+  );
+  let stdout = '';
+  const result = await runCli({
+    env: { FOOD_EVAL_DIR: evalDir },
+    observer: {
+      async observePrimary() {
+        throw new FoodAnalysisError('ANALYSIS_UNAVAILABLE', 'private detail', 503);
+      },
+    },
+    outputDir,
+    generatedAt: '2026-07-22T00:00:00.000Z',
+    stdout: { write: (value) => { stdout += value; } },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(path.dirname(result.reportPath), fs.realpathSync(outputDir));
+  const written = fs.readFileSync(result.reportPath, 'utf8');
+  for (const serialized of [stdout, written]) {
+    const decoded = JSON.parse(serialized);
+    assert.deepEqual(Object.keys(decoded).sort(), [
+      'caseCounts',
+      'generatedAt',
+      'metrics',
+      'releaseGate',
+      'schemaVersion',
+    ]);
+    assert.equal(serialized.includes(evalDir), false);
+    assert.equal(serialized.includes('private detail'), false);
+    assert.equal(serialized.includes('meal-0'), false);
+  }
 });
 
 test('aggregate report writer never serializes per-case data', (t) => {
