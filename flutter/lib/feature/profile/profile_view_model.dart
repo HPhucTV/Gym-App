@@ -15,6 +15,7 @@ class ProfileNotifier extends Notifier<ProfileUiState> {
   }
 
   void _init() async {
+    final foodPhotoUploadConsent = await ref.read(foodPhotoConsentRepositoryProvider).hasConsent();
     final dbProfile = await ref.read(gymDatabaseProvider).personalizationDao.observeProfile().first;
     if (dbProfile != null) {
       state = ProfileUiStateContent(
@@ -27,6 +28,7 @@ class ProfileNotifier extends Notifier<ProfileUiState> {
         goalPace: dbProfile.goalPace,
         personalizationConsent: dbProfile.personalizationConsent,
         cloudAiConsent: dbProfile.cloudAiConsent,
+        foodPhotoUploadConsent: foodPhotoUploadConsent,
       );
     } else {
       // Default reasonable values
@@ -41,6 +43,7 @@ class ProfileNotifier extends Notifier<ProfileUiState> {
         goalPace: GoalPace.standard,
         personalizationConsent: false,
         cloudAiConsent: false,
+        foodPhotoUploadConsent: foodPhotoUploadConsent,
       );
     }
   }
@@ -108,6 +111,13 @@ class ProfileNotifier extends Notifier<ProfileUiState> {
     }
   }
 
+  void updateFoodPhotoUploadConsent(bool consent) {
+    final s = state;
+    if (s is ProfileUiStateContent) {
+      state = s.copyWith(foodPhotoUploadConsent: consent);
+    }
+  }
+
   void clearSuccess() {
     final s = state;
     if (s is ProfileUiStateContent) {
@@ -172,6 +182,7 @@ class ProfileNotifier extends Notifier<ProfileUiState> {
     state = s.copyWith(isSaving: true, validationErrors: const [], saveError: null);
 
     try {
+      await ref.read(foodPhotoConsentRepositoryProvider).setConsent(s.foodPhotoUploadConsent);
       final dao = ref.read(gymDatabaseProvider).personalizationDao;
       final epochDayVal = currentLocalEpochDay();
       

@@ -269,6 +269,14 @@ final class FoodPhotoFieldErrorPath {
   }) {
     final field = details['field'];
     if (field is! String || field.length > 120) return null;
+    final observationId = details['observationId'];
+    if (observationId is String) {
+      return _componentPath(
+        observationId,
+        field,
+        componentObservationIds,
+      );
+    }
     return switch (field) {
       'nameVi' => const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.name),
       'basis' => const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.basis),
@@ -284,36 +292,25 @@ final class FoodPhotoFieldErrorPath {
       'consumed' ||
       'consumed.amount' =>
         const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.consumed),
-      _ => _componentPath(field, componentObservationIds),
+      _ => null,
     };
   }
 
   static FoodPhotoFieldErrorPath? _componentPath(
+    String observationId,
     String field,
     List<String> componentObservationIds,
   ) {
-    final match = RegExp(
-      r'^components\.([A-Za-z0-9_-]{1,80})\.(?:portion(?:\.(?:kind|unit|quantity|size|grams))?|foodId|nameVi|observationId)$',
-    ).firstMatch(field);
-    if (match == null) return null;
-    final segment = match.group(1)!;
-    if (componentObservationIds.contains(segment)) {
-      return FoodPhotoFieldErrorPath(
-        FoodPhotoFieldKind.componentPortion,
-        componentId: segment,
-      );
-    }
-    final index = int.tryParse(segment);
-    if (index != null) {
-      if (index < 0 || index >= componentObservationIds.length) return null;
-      return FoodPhotoFieldErrorPath(
-        FoodPhotoFieldKind.componentPortion,
-        componentId: componentObservationIds[index],
-      );
+    if (observationId.isEmpty || observationId.length > 100) return null;
+    if (!componentObservationIds.contains(observationId)) return null;
+    if (!RegExp(
+      r'^(?:portion(?:\.(?:kind|unit|quantity|size|grams))?|foodId|nameVi|observationId)$',
+    ).hasMatch(field)) {
+      return null;
     }
     return FoodPhotoFieldErrorPath(
       FoodPhotoFieldKind.componentPortion,
-      componentId: segment,
+      componentId: observationId,
     );
   }
 }
@@ -436,7 +433,7 @@ final class FoodPhotoConsentRequired extends FoodPhotoState {
   final String message;
 
   const FoodPhotoConsentRequired({
-    this.message = 'Hãy bật đồng ý AI đám mây trong Hồ sơ trước khi gửi ảnh.',
+    this.message = 'Bạn chưa đồng ý tải ảnh món ăn để phân tích bằng AI.',
   });
 }
 

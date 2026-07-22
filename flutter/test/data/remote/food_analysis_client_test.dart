@@ -255,6 +255,22 @@ void main() {
       }
     });
 
+    test('rejects duplicate provider component identifiers', () {
+      final json = _mealReviewJson();
+      final component = Map<String, Object?>.from(
+        (json['components'] as List).single as Map<String, Object?>,
+      );
+      json['components'] = [
+        component,
+        {...component, 'nameVi': 'Trứng luộc'},
+      ];
+
+      expect(
+        () => FoodAnalysisReview.fromJson(json),
+        throwsA(isA<FoodAnalysisFormatException>()),
+      );
+    });
+
     test('rejects unordered ranges and invalid nutrient numbers', () {
       final minAboveMid = _readyJson();
       (minAboveMid['estimate'] as Map<String, Object?>)['calories'] = {
@@ -877,7 +893,7 @@ void main() {
           'error': {
             'code': 'INVALID_CONFIRMATION',
             'message': 'Xác nhận dinh dưỡng không hợp lệ.',
-            'details': {'field': 'components.0.portion'},
+            'details': {'observationId': 'component-1', 'field': 'portion'},
           },
         }, 400);
       });
@@ -899,7 +915,7 @@ void main() {
               .having(
             (error) => error.details,
             'details',
-            {'field': 'components.0.portion'},
+            {'observationId': 'component-1', 'field': 'portion'},
           ),
         ),
       );

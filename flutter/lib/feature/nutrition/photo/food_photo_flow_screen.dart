@@ -382,7 +382,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
           Text(message, textAlign: TextAlign.center),
           const SizedBox(height: 10),
           const Text(
-              'Bạn có thể bật đồng ý AI đám mây trong Hồ sơ, hoặc tiếp tục nhập tay.',
+              'Ảnh sẽ được tải lên máy chủ ứng dụng và nhà cung cấp AI đã cấu hình để nhận diện món hoặc nhãn và ước tính dinh dưỡng. Ảnh có thể chứa thông tin nhận diện, không được bảo đảm ẩn danh. Ứng dụng xóa dữ liệu ảnh khỏi bộ nhớ máy chủ sau khi xử lý; việc lưu hoặc xóa tại nhà cung cấp AI phụ thuộc chính sách của họ. Bạn có thể từ chối hoặc thu hồi quyền này và tiếp tục nhập tay.',
               textAlign: TextAlign.center),
           const SizedBox(height: 20),
           FilledButton(
@@ -391,7 +391,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
                 notifier.reset();
                 _complete(const FoodPhotoFlowResult.openProfile());
               },
-              child: const Text('Mở Hồ sơ')),
+              child: const Text('Mở Hồ sơ để đồng ý')),
           const SizedBox(height: 10),
           OutlinedButton(
               key: const Key('food-analysis-manual'),

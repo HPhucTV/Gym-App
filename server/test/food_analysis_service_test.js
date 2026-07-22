@@ -4,6 +4,7 @@ const { AnalysisSessionStore } = require('../src/food-analysis/analysis_session_
 const { FoodAnalysisService } = require('../src/food-analysis/food_analysis_service');
 const {
   mealConfirmationSchema,
+  parseConfirmation,
   providerObservationSchema,
 } = require('../src/food-analysis/contracts');
 
@@ -486,6 +487,36 @@ test('requires the confirmation kind and rejects client-controlled uncertainty r
     }),
     (error) => error.code === 'INVALID_CONFIRMATION',
   );
+});
+
+test('maps component array validation to an observation-aware relative field', () => {
+  const first = validMealConfirmation().components[0];
+  assert.throws(
+    () => parseConfirmation(mealConfirmationSchema, {
+      nameVi: 'Bữa ăn',
+      components: [
+        { ...first, observationId: '1' },
+        {
+          ...first,
+          observationId: 'other',
+          portion: { ...first.portion, unit: 'INVALID' },
+        },
+      ],
+    }),
+    (error) => error.code === 'INVALID_CONFIRMATION'
+      && error.details.observationId === 'other'
+      && error.details.field === 'portion.unit',
+  );
+});
+
+test('rejects duplicate provider component identifiers at the schema boundary', () => {
+  const observation = mealObservation(0.8);
+  observation.components.push({
+    ...observation.components[0],
+    nameVi: 'Trứng luộc',
+  });
+
+  assert.equal(providerObservationSchema.safeParse(observation).success, false);
 });
 
 test('keeps canonical nutrition-label confirmation working', async () => {

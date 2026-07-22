@@ -12,11 +12,8 @@ typedef FoodPhotoClock = DateTime Function();
 typedef FoodPhotoEpochDay = int Function();
 
 final foodPhotoConsentLookupProvider = Provider<FoodPhotoConsentLookup>((ref) {
-  final database = ref.watch(gymDatabaseProvider);
-  return () async {
-    final profile = await database.personalizationDao.profileNow();
-    return profile?.cloudAiConsent == true;
-  };
+  final consentRepository = ref.watch(foodPhotoConsentRepositoryProvider);
+  return consentRepository.hasConsent;
 });
 
 final foodPhotoClockProvider = Provider<FoodPhotoClock>((ref) => DateTime.now);

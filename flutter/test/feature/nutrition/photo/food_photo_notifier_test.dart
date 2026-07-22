@@ -782,20 +782,27 @@ void main() {
           isNull);
     });
 
-    test('indexed component field path maps to its observation id', () {
+    test('observation-aware component field path has no numeric ambiguity', () {
       final path = FoodPhotoFieldErrorPath.fromApiDetails(
-        const {'field': 'components.1.portion.unit'},
-        componentObservationIds: const ['first', 'second'],
+        const {'observationId': 'other', 'field': 'portion.unit'},
+        componentObservationIds: const ['1', 'other'],
       );
 
       expect(path?.kind, FoodPhotoFieldKind.componentPortion);
-      expect(path?.componentId, 'second');
+      expect(path?.componentId, 'other');
       expect(
         FoodPhotoFieldErrorPath.fromApiDetails(
-          const {'field': 'components.7.portion'},
-          componentObservationIds: const ['only'],
+          const {'field': 'components.1.portion'},
+          componentObservationIds: const ['1', 'other'],
         ),
         isNull,
+      );
+      expect(
+        FoodPhotoFieldErrorPath.fromApiDetails(
+          const {'observationId': '1', 'field': 'portion'},
+          componentObservationIds: const ['1', 'other'],
+        )?.componentId,
+        '1',
       );
     });
 

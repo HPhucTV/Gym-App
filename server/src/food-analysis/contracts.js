@@ -63,6 +63,11 @@ const providerComponentSchema = z.object({
   isMajor: z.boolean(),
   suggestedPortion: portionSchema.nullable(),
 }).strict();
+const providerComponentsSchema = z.array(providerComponentSchema).min(1).max(20)
+  .refine(
+    (components) => new Set(components.map((component) => component.id)).size === components.length,
+    'Provider component identifiers must be unique.',
+  );
 const providerMissingFieldSchema = z.enum([
   'BASIS',
   'CALORIES',
@@ -121,7 +126,7 @@ const providerObservationSchema = z.discriminatedUnion('imageType', [
   z.object({
     imageType: z.literal('MEAL'),
     ...providerObservationBase,
-    components: z.array(providerComponentSchema).min(1).max(20),
+    components: providerComponentsSchema,
     labelFacts: z.null(),
   }).strict(),
   z.object({
@@ -162,8 +167,33 @@ class FoodAnalysisError extends Error {
 function parseConfirmation(schema, value) {
   const parsed = schema.safeParse(value);
   if (parsed.success) return parsed.data;
-  const field = parsed.error.issues[0]?.path.join('.') || 'confirmation';
-  throw new FoodAnalysisError('INVALID_CONFIRMATION', 'Xác nhận dinh dưỡng không hợp lệ.', 400, { field });
+  const path = parsed.error.issues[0]?.path || [];
+  const details = confirmationErrorDetails(value, path);
+  throw new FoodAnalysisError(
+    'INVALID_CONFIRMATION',
+    'Xác nhận dinh dưỡng không hợp lệ.',
+    400,
+    details,
+  );
+}
+
+function confirmationErrorDetails(value, path) {
+  if (path[0] !== 'components' || !Number.isInteger(path[1])) {
+    return { field: path.join('.') || 'confirmation' };
+  }
+  const component = Array.isArray(value?.components)
+    ? value.components[path[1]]
+    : null;
+  const observationId = typeof component?.observationId === 'string'
+    ? component.observationId.trim()
+    : '';
+  if (!observationId || observationId.length > 100) {
+    return { field: 'components' };
+  }
+  return {
+    observationId,
+    field: path.slice(2).join('.') || 'component',
+  };
 }
 
 module.exports = {

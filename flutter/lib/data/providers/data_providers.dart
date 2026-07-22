@@ -14,10 +14,15 @@ import '../repositories/drift_adaptation_repository.dart';
 import '../repositories/workout_feedback_repository.dart';
 import '../repositories/drift_workout_feedback_repository.dart';
 import '../repositories/weekly_adaptation_coordinator.dart';
+import '../repositories/food_photo_consent_repository.dart';
 
 // Provider cho SharedPreferences, cần override ở ProviderScope lúc khởi chạy
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('sharedPreferencesProvider must be overridden');
+});
+
+final foodPhotoConsentRepositoryProvider = Provider<FoodPhotoConsentRepository>((ref) {
+  return SharedPrefsFoodPhotoConsentRepository(ref.watch(sharedPreferencesProvider));
 });
 
 // Provider cho AssetCatalogRepository, cần override ở ProviderScope sau khi load asset

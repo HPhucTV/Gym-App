@@ -590,6 +590,44 @@ class _ProfileContentState extends ConsumerState<ProfileContent> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+
+                      // Consent 3: Food-photo upload and AI analysis
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Checkbox(
+                            key: const Key('food-photo-upload-consent'),
+                            value: widget.state.foodPhotoUploadConsent,
+                            activeColor: AppColors.energyOrange,
+                            onChanged: (val) {
+                              if (val != null) {
+                                ref.read(profileNotifierProvider.notifier).updateFoodPhotoUploadConsent(val);
+                              }
+                            },
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Đồng ý tải ảnh món ăn để phân tích bằng AI",
+                                  style: TextStyle(
+                                    color: customColors.primaryText,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Ảnh được gửi tới máy chủ ứng dụng và nhà cung cấp AI đã cấu hình để nhận diện món hoặc nhãn và ước tính dinh dưỡng. Ảnh có thể chứa thông tin nhận diện nên không được bảo đảm ẩn danh. Ứng dụng xóa dữ liệu ảnh khỏi bộ nhớ máy chủ sau khi xử lý; thời gian lưu hoặc xóa tại nhà cung cấp AI phụ thuộc chính sách của họ và không thể được ứng dụng bảo đảm. Bạn có thể không đồng ý hoặc thu hồi quyền này và tiếp tục nhập tay.",
+                                  style: TextStyle(color: customColors.mutedText, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

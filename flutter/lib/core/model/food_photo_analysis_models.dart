@@ -910,6 +910,12 @@ final class FoodAnalysisReview {
         }
         components =
             values.map(ObservedFoodComponent.fromJson).toList(growable: false);
+        if (components.map((component) => component.id).toSet().length !=
+            components.length) {
+          throw const FoodAnalysisFormatException(
+            'Food component identifiers must be unique.',
+          );
+        }
         if (status == FoodAnalysisStatus.unrecognized) {
           throw FoodAnalysisFormatException(
             'MEAL cannot have UNRECOGNIZED status.',

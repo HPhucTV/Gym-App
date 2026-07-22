@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:drift/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gym_app/core/model/profile_models.dart';
 import 'package:gym_app/core/model/nutrition_models.dart';
@@ -10,7 +12,9 @@ import 'package:gym_app/data/providers/data_providers.dart';
 import 'package:gym_app/data/repositories/workout_repository.dart';
 import 'package:gym_app/data/repositories/nutrition_repository.dart';
 import 'package:gym_app/feature/profile/profile_ui_state.dart';
+import 'package:gym_app/feature/profile/profile_screen.dart';
 import 'package:gym_app/feature/profile/profile_view_model.dart';
+import 'package:gym_app/ui/theme/theme.dart';
 
 class MockWorkoutRepository extends Mock implements WorkoutRepository {}
 
@@ -22,6 +26,7 @@ void main() {
   late GymDatabase database;
   late MockWorkoutRepository mockWorkoutRepo;
   late MockNutritionRepository mockNutritionRepo;
+  late SharedPreferences preferences;
 
   setUpAll(() {
     registerFallbackValue(const NutritionTarget(
@@ -42,7 +47,9 @@ void main() {
     ));
   });
 
-  setUp(() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    preferences = await SharedPreferences.getInstance();
     database = GymDatabase(NativeDatabase.memory());
     mockWorkoutRepo = MockWorkoutRepository();
     mockNutritionRepo = MockNutritionRepository();
@@ -61,6 +68,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         gymDatabaseProvider.overrideWithValue(database),
+        sharedPreferencesProvider.overrideWithValue(preferences),
         workoutRepositoryProvider.overrideWithValue(mockWorkoutRepo),
         nutritionRepositoryProvider.overrideWithValue(mockNutritionRepo),
       ],
@@ -90,6 +98,7 @@ void main() {
     expect(content.goalPace, equals(GoalPace.standard));
     expect(content.personalizationConsent, isFalse);
     expect(content.cloudAiConsent, isFalse);
+    expect(content.foodPhotoUploadConsent, isFalse);
   });
 
   test('saving valid profile updates DB and registers weight measurement',
@@ -103,6 +112,7 @@ void main() {
     notifier.updateCurrentWeight("80");
     notifier.updateTargetWeight("75");
     notifier.updatePersonalizationConsent(true);
+    notifier.updateFoodPhotoUploadConsent(true);
 
     notifier.saveProfile();
     await Future.delayed(const Duration(milliseconds: 100));
@@ -113,6 +123,10 @@ void main() {
     expect(savedProfile.currentWeightKg, equals(80.0));
     expect(savedProfile.targetWeightKg, equals(75.0));
     expect(savedProfile.personalizationConsent, isTrue);
+    expect(
+      await container.read(foodPhotoConsentRepositoryProvider).hasConsent(),
+      isTrue,
+    );
 
     // Verify weight logged
     final weights = await database.personalizationDao.weightHistoryNow();
@@ -138,5 +152,35 @@ void main() {
     final state =
         container.read(profileNotifierProvider) as ProfileUiStateContent;
     expect(state.validationErrors, isNotEmpty);
+  });
+
+  testWidgets('profile presents informed dedicated food-photo consent copy',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      child: MaterialApp(
+        theme: getGymLightTheme(),
+        home: ProfileContent(
+          onBack: () {},
+          state: ProfileUiStateContent(
+            birthDateEpochDay: 0,
+            metabolicSex: MetabolicSex.male,
+            heightCmStr: '170',
+            currentWeightKgStr: '70',
+            targetWeightKgStr: '65',
+            activityLevel: ActivityLevel.moderate,
+            goalPace: GoalPace.standard,
+            personalizationConsent: true,
+            cloudAiConsent: true,
+            foodPhotoUploadConsent: false,
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.byKey(const Key('food-photo-upload-consent')), findsOneWidget);
+    expect(find.textContaining('máy chủ ứng dụng'), findsOneWidget);
+    expect(find.textContaining('không được bảo đảm ẩn danh'), findsOneWidget);
+    expect(find.textContaining('thu hồi quyền này'), findsOneWidget);
+    expect(find.textContaining('tiếp tục nhập tay'), findsOneWidget);
   });
 }

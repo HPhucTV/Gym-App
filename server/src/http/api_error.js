@@ -17,6 +17,7 @@ function normalizedError(error) {
       code: error.code,
       message: error.message,
       httpStatus: error.httpStatus,
+      details: error instanceof FoodAnalysisError ? error.details : undefined,
     };
   }
   if (error instanceof multer.MulterError) {
@@ -60,7 +61,7 @@ function sendApiError(res, error) {
     error: {
       code: normalized.code,
       message: normalized.message,
-      details: {},
+      details: normalized.details || {},
     },
   });
 }

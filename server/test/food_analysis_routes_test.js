@@ -279,6 +279,27 @@ test('maps invalid confirmation, expired session, wrong state, and provider time
   }
 });
 
+test('preserves bounded observation-aware confirmation details', async () => {
+  const response = await request(testApp(fakeService({
+    async confirm() {
+      throw new FoodAnalysisError(
+        'INVALID_CONFIRMATION',
+        'Xác nhận dinh dưỡng không hợp lệ.',
+        400,
+        { observationId: 'other', field: 'portion.unit' },
+      );
+    },
+  })))
+    .post('/api/food-analyses/analysis-1/confirmations')
+    .send({ kind: 'MEAL' });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body.error.details, {
+    observationId: 'other',
+    field: 'portion.unit',
+  });
+});
+
 test('returns the standard error shape when the route rate limit is exhausted', async () => {
   const app = testApp(fakeService(), { windowMs: 60_000, limit: 1 });
   await request(app)

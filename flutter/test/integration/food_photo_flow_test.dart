@@ -242,7 +242,12 @@ void main() {
     expect(client.startCalls, 0);
     expect((find.byType(FoodCaptureScreen)), findsNothing);
     expect(gateway.initializeCalls, 0);
+    expect(find.textContaining('chưa đồng ý tải ảnh'), findsOneWidget);
+    expect(find.textContaining('đồng ý AI đám mây'), findsNothing);
     expect(find.textContaining('Hồ sơ'), findsWidgets);
+    expect(find.textContaining('nhà cung cấp AI'), findsOneWidget);
+    expect(find.textContaining('không được bảo đảm ẩn danh'), findsOneWidget);
+    expect(find.textContaining('tiếp tục nhập tay'), findsOneWidget);
     await tester.tap(find.byKey(const Key('food-analysis-open-profile')));
     await tester.pumpAndSettle();
     expect(find.text('openProfile'), findsOneWidget);

@@ -32,12 +32,12 @@ function unavailable() {
   );
 }
 
-function invalidConfirmation(field = 'confirmation') {
+function invalidConfirmation(field = 'confirmation', observationId) {
   return new FoodAnalysisError(
     'INVALID_CONFIRMATION',
     'Xác nhận dinh dưỡng không hợp lệ.',
     400,
-    { field },
+    observationId ? { observationId, field } : { field },
   );
 }
 
@@ -303,7 +303,7 @@ class FoodAnalysisService {
       .filter((component) => component && component.portion)
       .map((component) => component.observationId));
     const missing = manualIds.find((id) => !confirmedIds.has(id));
-    if (missing) throw invalidConfirmation(`components.${missing}.portion`);
+    if (missing) throw invalidConfirmation('portion', missing);
   }
 }
 

@@ -14,6 +14,7 @@ class ProfileUiStateContent extends ProfileUiState {
   final GoalPace goalPace;
   final bool personalizationConsent;
   final bool cloudAiConsent;
+  final bool foodPhotoUploadConsent;
   final bool isSaving;
   final String? saveError;
   final bool success;
@@ -29,6 +30,7 @@ class ProfileUiStateContent extends ProfileUiState {
     required this.goalPace,
     required this.personalizationConsent,
     required this.cloudAiConsent,
+    required this.foodPhotoUploadConsent,
     this.isSaving = false,
     this.saveError,
     this.success = false,
@@ -45,6 +47,7 @@ class ProfileUiStateContent extends ProfileUiState {
     GoalPace? goalPace,
     bool? personalizationConsent,
     bool? cloudAiConsent,
+    bool? foodPhotoUploadConsent,
     bool? isSaving,
     String? saveError,
     bool? success,
@@ -60,6 +63,7 @@ class ProfileUiStateContent extends ProfileUiState {
       goalPace: goalPace ?? this.goalPace,
       personalizationConsent: personalizationConsent ?? this.personalizationConsent,
       cloudAiConsent: cloudAiConsent ?? this.cloudAiConsent,
+      foodPhotoUploadConsent: foodPhotoUploadConsent ?? this.foodPhotoUploadConsent,
       isSaving: isSaving ?? this.isSaving,
       saveError: saveError,
       success: success ?? this.success,
