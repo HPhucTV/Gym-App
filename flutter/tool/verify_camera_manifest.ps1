@@ -38,7 +38,7 @@ foreach ($permission in @('CAMERA', 'INTERNET')) {
     }
 }
 
-foreach ($permission in @('RECORD_AUDIO', 'WRITE_EXTERNAL_STORAGE')) {
+foreach ($permission in @('RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE')) {
     $removeRule = $sourcePermissions | Where-Object {
         $_.Name -eq "android.permission.$permission" -and $_.ToolsNode -eq 'remove'
     }
@@ -77,7 +77,7 @@ foreach ($mergedPath in $mergedCandidates) {
             throw "Required merged permission is missing: $permission ($mergedPath)"
         }
     }
-    foreach ($permission in @('RECORD_AUDIO', 'WRITE_EXTERNAL_STORAGE')) {
+    foreach ($permission in @('RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE')) {
         if ($mergedPermissions | Where-Object {
             $_.Name -eq "android.permission.$permission"
         }) {

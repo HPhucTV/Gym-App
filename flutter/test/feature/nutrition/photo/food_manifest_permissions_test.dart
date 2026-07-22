@@ -17,13 +17,20 @@ void main() {
     expect(
       manifest,
       contains(
+        'android:name="android.permission.READ_EXTERNAL_STORAGE"\n'
+        '        tools:node="remove"',
+      ),
+    );
+    expect(
+      manifest,
+      contains(
         'android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n'
         '        tools:node="remove"',
       ),
     );
     expect(
       RegExp(
-        r'<uses-permission\s+android:name="android.permission.(RECORD_AUDIO|WRITE_EXTERNAL_STORAGE)"\s*/>',
+        r'<uses-permission\s+android:name="android.permission.(RECORD_AUDIO|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE)"\s*/>',
       ).hasMatch(manifest),
       isFalse,
     );
@@ -99,6 +106,6 @@ bool _positivePermission(String manifest, String permission) {
 
 bool _hasNoForbiddenPermissions(String manifest) {
   return !RegExp(
-    r'android:name="android.permission.(RECORD_AUDIO|WRITE_EXTERNAL_STORAGE)"',
+    r'android:name="android.permission.(RECORD_AUDIO|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE)"',
   ).hasMatch(manifest);
 }
