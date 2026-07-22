@@ -490,15 +490,20 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   void selectKnownFood(String observationId, KnownFoodOption food) {
     final current = _mealReviewForEditing();
     if (current == null) return;
-    final components = current.draft.components
-        .map((component) => component.observationId == observationId
-            ? component.copyWith(foodId: food.foodId, nameVi: food.nameVi)
-            : component)
-        .toList(growable: false);
-    _setMealDraft(
-      current,
-      FoodPhotoMealDraft(nameVi: current.draft.nameVi, components: components),
-    );
+    final components = current.draft.components.map((component) {
+      if (component.observationId != observationId) return component;
+      final compatible = food.supportsPortion(component.portion);
+      return component.copyWith(
+        foodId: food.foodId,
+        nameVi: food.nameVi,
+        portion: compatible ? component.portion : null,
+        requiresManualPortion: !compatible,
+        manualPortionCompleted: compatible,
+      );
+    }).toList(growable: false);
+    final draft = FoodPhotoMealDraft(
+        nameVi: current.draft.nameVi, components: components);
+    state = FoodPhotoReviewingMeal(current.review, draft);
   }
 
   void updateLabelName(String nameVi) {
@@ -717,8 +722,12 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
               review,
               draft,
               validationMessage: error.message,
-              fieldErrorPath:
-                  FoodPhotoFieldErrorPath.fromApiDetails(error.details),
+              fieldErrorPath: FoodPhotoFieldErrorPath.fromApiDetails(
+                error.details,
+                componentObservationIds: draft.components
+                    .map((component) => component.observationId)
+                    .toList(growable: false),
+              ),
             );
           case FoodPhotoReviewingLabel(:final review, :final draft):
             state = FoodPhotoReviewingLabel(
@@ -773,6 +782,23 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       _setConfirmationRecaptureRequired(message: error.message);
       return;
     }
+    if ((error.code == 'UNSUPPORTED_PORTION' ||
+            error.code == 'UNSUPPORTED_FOOD_DATA') &&
+        reviewState is FoodPhotoReviewingMeal) {
+      final componentId = _affectedComponentId(error, reviewState.draft);
+      state = FoodPhotoReviewingMeal(
+        reviewState.review,
+        reviewState.draft,
+        validationMessage: error.message,
+        fieldErrorPath: componentId == null
+            ? null
+            : FoodPhotoFieldErrorPath(
+                FoodPhotoFieldKind.componentPortion,
+                componentId: componentId,
+              ),
+      );
+      return;
+    }
     if (error.code == 'ANALYSIS_UNAVAILABLE' ||
         error.code == 'DATABASE_NO_MATCH') {
       _retainConfirmationError(error, reviewState);
@@ -810,7 +836,22 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     FoodAnalysisApiException error,
     FoodPhotoMealDraft? draft,
   ) {
-    if (error.code != 'DATABASE_NO_MATCH' || draft == null) return null;
+    if (draft == null ||
+        !const {
+          'DATABASE_NO_MATCH',
+          'UNSUPPORTED_PORTION',
+          'UNSUPPORTED_FOOD_DATA',
+        }.contains(error.code)) {
+      return null;
+    }
+    final observationId = error.details['observationId'];
+    if (observationId is String &&
+        draft.components
+                .where((component) => component.observationId == observationId)
+                .length ==
+            1) {
+      return observationId;
+    }
     final foodId = error.details['foodId'];
     if (foodId is! String) return null;
     final matches = draft.components

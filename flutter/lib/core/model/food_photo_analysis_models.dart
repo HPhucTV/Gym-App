@@ -349,6 +349,16 @@ final class KnownFoodOption {
     }
     return List.unmodifiable(foods);
   }
+
+  bool supportsPortion(FoodPortion? portion) {
+    if (portion == null) return false;
+    return switch (portion) {
+      GramPortion() => supportsGrams,
+      HouseholdPortion(:final unit, :final size) => portionOptions.any(
+          (option) => option.unit == unit && option.sizes.contains(size),
+        ),
+    };
+  }
 }
 
 final class PreparedUpload {

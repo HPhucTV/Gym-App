@@ -569,9 +569,75 @@ void main() {
       }).single;
       harness.notifier.selectKnownFood('component-1', knownFood);
       final selected =
-          (harness.state as FoodPhotoError).mealDraft!.components.single;
+          (harness.state as FoodPhotoReviewingMeal).draft.components.single;
       expect(selected.foodId, 'known-food');
       expect(selected.nameVi, 'Món đã chọn');
+      expect(selected.portion, isNull,
+          reason: 'an incompatible portion must not survive food selection');
+      expect(selected.manualPortionCompleted, isFalse);
+    });
+
+    test('known food selection retains a compatible current portion', () async {
+      client.onStart = (_) async => _mealReview();
+      await harness.startPrimary(_upload(1));
+      final knownFood = KnownFoodOption.listFromJson({
+        'foods': [
+          {
+            'foodId': 'compatible-rice',
+            'nameVi': 'Cơm tương thích',
+            'supportsGrams': false,
+            'portionOptions': [
+              {
+                'unit': 'BOWL',
+                'sizes': ['MEDIUM']
+              }
+            ]
+          }
+        ]
+      }).single;
+
+      harness.notifier.selectKnownFood('component-1', knownFood);
+
+      final selected =
+          (harness.state as FoodPhotoReviewingMeal).draft.components.single;
+      expect(selected.portion, isA<HouseholdPortion>());
+      expect(selected.manualPortionCompleted, isTrue);
+    });
+
+    for (final code in ['UNSUPPORTED_PORTION', 'UNSUPPORTED_FOOD_DATA']) {
+      test('$code keeps the confirmation draft correctable', () async {
+        client.onStart = (_) async => _mealReview();
+        client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
+              code: code,
+              message: 'correct the portion',
+              details: const {'observationId': 'component-1'},
+            );
+        await harness.startPrimary(_upload(1));
+        await harness.notifier.confirm();
+
+        final reviewing = harness.state as FoodPhotoReviewingMeal;
+        expect(reviewing.draft.components.single.observationId, 'component-1');
+        expect(reviewing.validationMessage, 'correct the portion');
+        expect(reviewing.fieldErrorPath?.componentId, 'component-1');
+      });
+    }
+
+    test('null-id database mismatch uses observation context for chooser',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
+            code: 'DATABASE_NO_MATCH',
+            message: 'choose a known food',
+            details: const {
+              'foodId': 'unknown',
+              'observationId': 'component-1',
+            },
+          );
+      await harness.startPrimary(_upload(1));
+      await harness.notifier.confirm();
+
+      expect(
+          (harness.state as FoodPhotoError).affectedComponentId, 'component-1');
     });
 
     test('database no-match component is null when foodId is ambiguous',
@@ -714,6 +780,23 @@ void main() {
           FoodPhotoFieldErrorPath.fromApiDetails(
               const {'field': '../../../secret'}),
           isNull);
+    });
+
+    test('indexed component field path maps to its observation id', () {
+      final path = FoodPhotoFieldErrorPath.fromApiDetails(
+        const {'field': 'components.1.portion.unit'},
+        componentObservationIds: const ['first', 'second'],
+      );
+
+      expect(path?.kind, FoodPhotoFieldKind.componentPortion);
+      expect(path?.componentId, 'second');
+      expect(
+        FoodPhotoFieldErrorPath.fromApiDetails(
+          const {'field': 'components.7.portion'},
+          componentObservationIds: const ['only'],
+        ),
+        isNull,
+      );
     });
 
     test('renaming a meal component clears its old food selection', () async {

@@ -41,6 +41,12 @@ void main() {
     expect(find.byKey(const Key('portion-household-rice')), findsOneWidget);
     expect(find.textContaining('1 bát'), findsOneWidget);
     expect(find.byKey(const Key('portion-grams-rice')), findsOneWidget);
+    expect(
+        tester
+            .widget<IconButton>(
+                find.byKey(const Key('meal-component-remove-rice')))
+            .tooltip,
+        'Xóa món');
   });
 
   testWidgets('catalog unavailable does not invent grams for direct-unit food',

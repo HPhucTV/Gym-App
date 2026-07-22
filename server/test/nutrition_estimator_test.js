@@ -111,6 +111,22 @@ test('rejects unknown foods and implausible nutrition', () => {
   );
 });
 
+test('database no-match preserves the observation context for correction', () => {
+  assert.throws(
+    () => curatedEstimator.estimateMeal({
+      nameVi: 'Bữa ăn',
+      uncertaintyReasons: [],
+      components: [{
+        observationId: 'provider-component-7',
+        nameVi: 'Món hoàn toàn không biết',
+        portion: { kind: 'GRAMS', grams: 100 },
+      }],
+    }),
+    (error) => error.code === 'DATABASE_NO_MATCH'
+      && error.details.observationId === 'provider-component-7',
+  );
+});
+
 test('uses serving count and net weight conversion for labels', () => {
   const result = estimator.estimateLabel({
     nameVi: 'Bánh', basis: 'PER_SERVING',

@@ -44,7 +44,12 @@ class NutritionEstimator {
     for (const component of confirmation.components) {
       const record = this.database.require(component);
       for (const nutrient of NUTRIENTS) {
-        const range = this.#portionNutrientRange(record, component.portion, nutrient);
+        const range = this.#portionNutrientRange(
+          record,
+          component.portion,
+          nutrient,
+          component.observationId,
+        );
         total[nutrient] = addRange(total[nutrient], range);
       }
     }
@@ -82,10 +87,10 @@ class NutritionEstimator {
     };
   }
 
-  #portionNutrientRange(record, portion, nutrient) {
+  #portionNutrientRange(record, portion, nutrient, observationId) {
     if (portion.kind === 'GRAMS') {
       if (!record.nutrientsPer100g) {
-        throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id });
+        throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id, observationId });
       }
       return this.#per100gRange(record.nutrientsPer100g[nutrient], { min: portion.grams, mid: portion.grams, max: portion.grams });
     }
@@ -95,10 +100,10 @@ class NutritionEstimator {
     }
     const weights = record.householdPortions?.[portion.unit]?.[portion.size];
     if (!weights) {
-      throw new FoodAnalysisError('UNSUPPORTED_PORTION', 'Khẩu phần gia dụng chưa được hỗ trợ cho thực phẩm này.', 422, { unit: portion.unit });
+      throw new FoodAnalysisError('UNSUPPORTED_PORTION', 'Khẩu phần gia dụng chưa được hỗ trợ cho thực phẩm này.', 422, { unit: portion.unit, observationId });
     }
     if (!record.nutrientsPer100g) {
-      throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id });
+      throw new FoodAnalysisError('UNSUPPORTED_FOOD_DATA', 'Thực phẩm chưa có dữ liệu theo gram để ước tính.', 422, { foodId: record.id, observationId });
     }
     const grams = Object.fromEntries(['min', 'mid', 'max'].map((bound) => [bound, weights[`${bound}Grams`] * portion.quantity]));
     return this.#per100gRange(record.nutrientsPer100g[nutrient], grams);

@@ -11,6 +11,7 @@ function createFoodAnalysisRouter({
   service,
   logger,
   rateLimitOptions = { windowMs: 10 * 60 * 1000, limit: 10 },
+  catalogRateLimitOptions = { windowMs: 10 * 60 * 1000, limit: 120 },
 }) {
   if (!service) throw new TypeError('service is required');
   const router = express.Router();
@@ -27,9 +28,9 @@ function createFoodAnalysisRouter({
     req.analysisRequestId = randomUUID();
     next();
   });
-  router.use(rateLimit({
-    windowMs: rateLimitOptions.windowMs,
-    limit: rateLimitOptions.limit,
+  const limiter = (options) => rateLimit({
+    windowMs: options.windowMs,
+    limit: options.limit,
     standardHeaders: true,
     legacyHeaders: false,
     handler(req, res) {
@@ -43,16 +44,17 @@ function createFoodAnalysisRouter({
         429,
       ));
     },
-  }));
-  router.use(express.json({ limit: '32kb' }));
-
-  router.get('/foods', (req, res, next) => {
+  });
+  router.get('/foods', limiter(catalogRateLimitOptions), (req, res, next) => {
     try {
       res.status(200).json({ foods: service.listKnownFoods() });
     } catch (error) {
       next(error);
     }
   });
+
+  router.use(limiter(rateLimitOptions));
+  router.use(express.json({ limit: '32kb' }));
 
   router.post('/', upload.single('primaryImage'), imageHandler(201, (req, image) => (
     service.start({ ...image, requestId: req.analysisRequestId })

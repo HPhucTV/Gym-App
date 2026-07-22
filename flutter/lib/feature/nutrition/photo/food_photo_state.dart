@@ -79,6 +79,7 @@ final class FoodPhotoMealComponentDraft {
     String? nameVi,
     Object? foodId = _unset,
     Object? portion = _unset,
+    bool? requiresManualPortion,
     bool? manualPortionCompleted,
   }) {
     return FoodPhotoMealComponentDraft(
@@ -87,7 +88,8 @@ final class FoodPhotoMealComponentDraft {
       nameVi: nameVi ?? this.nameVi,
       portion:
           identical(portion, _unset) ? this.portion : portion as FoodPortion?,
-      requiresManualPortion: requiresManualPortion,
+      requiresManualPortion:
+          requiresManualPortion ?? this.requiresManualPortion,
       manualPortionCompleted:
           manualPortionCompleted ?? this.manualPortionCompleted,
     );
@@ -261,7 +263,10 @@ final class FoodPhotoFieldErrorPath {
 
   const FoodPhotoFieldErrorPath(this.kind, {this.componentId});
 
-  static FoodPhotoFieldErrorPath? fromApiDetails(Map<String, Object?> details) {
+  static FoodPhotoFieldErrorPath? fromApiDetails(
+    Map<String, Object?> details, {
+    List<String> componentObservationIds = const [],
+  }) {
     final field = details['field'];
     if (field is! String || field.length > 120) return null;
     return switch (field) {
@@ -279,17 +284,37 @@ final class FoodPhotoFieldErrorPath {
       'consumed' ||
       'consumed.amount' =>
         const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.consumed),
-      _ => _componentPath(field),
+      _ => _componentPath(field, componentObservationIds),
     };
   }
 
-  static FoodPhotoFieldErrorPath? _componentPath(String field) {
-    final match = RegExp(r'^components\.([A-Za-z0-9_-]{1,80})\.portion$')
-        .firstMatch(field);
-    return match == null
-        ? null
-        : FoodPhotoFieldErrorPath(FoodPhotoFieldKind.componentPortion,
-            componentId: match.group(1));
+  static FoodPhotoFieldErrorPath? _componentPath(
+    String field,
+    List<String> componentObservationIds,
+  ) {
+    final match = RegExp(
+      r'^components\.([A-Za-z0-9_-]{1,80})\.(?:portion(?:\.(?:kind|unit|quantity|size|grams))?|foodId|nameVi|observationId)$',
+    ).firstMatch(field);
+    if (match == null) return null;
+    final segment = match.group(1)!;
+    if (componentObservationIds.contains(segment)) {
+      return FoodPhotoFieldErrorPath(
+        FoodPhotoFieldKind.componentPortion,
+        componentId: segment,
+      );
+    }
+    final index = int.tryParse(segment);
+    if (index != null) {
+      if (index < 0 || index >= componentObservationIds.length) return null;
+      return FoodPhotoFieldErrorPath(
+        FoodPhotoFieldKind.componentPortion,
+        componentId: componentObservationIds[index],
+      );
+    }
+    return FoodPhotoFieldErrorPath(
+      FoodPhotoFieldKind.componentPortion,
+      componentId: segment,
+    );
   }
 }
 

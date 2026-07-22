@@ -190,7 +190,25 @@ class FoodAnalysisService {
         502,
       );
     }
-    return parsed.data;
+    return this.#sanitizeProviderPortions(parsed.data);
+  }
+
+  #sanitizeProviderPortions(observation) {
+    if (observation.imageType !== 'MEAL') return observation;
+    const database = this.estimator.database;
+    if (!database || typeof database.supportsPortion !== 'function') {
+      return observation;
+    }
+    return {
+      ...observation,
+      components: observation.components.map((component) => {
+        const portion = component.suggestedPortion;
+        const record = database.match(component.nameVi);
+        return portion && database.supportsPortion(record, portion)
+          ? component
+          : { ...component, suggestedPortion: null };
+      }),
+    };
   }
 
   #initialStatus(observation) {

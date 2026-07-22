@@ -65,6 +65,26 @@ class FoodDatabase {
     });
   }
 
+  supportsPortion(record, portion) {
+    if (!record || !portion) return false;
+    if (portion.kind === 'GRAMS') return Boolean(record.nutrientsPer100g);
+    if (portion.kind !== 'HOUSEHOLD') return false;
+    if (record.nutrientsPerUnit
+      && record.directUnit === portion.unit
+      && portion.size === 'MEDIUM') {
+      return true;
+    }
+    const weights = record.householdPortions?.[portion.unit]?.[portion.size];
+    return Boolean(record.nutrientsPer100g
+      && weights
+      && Number.isFinite(weights.minGrams)
+      && Number.isFinite(weights.midGrams)
+      && Number.isFinite(weights.maxGrams)
+      && weights.minGrams > 0
+      && weights.minGrams <= weights.midGrams
+      && weights.midGrams <= weights.maxGrams);
+  }
+
   match(name) {
     const normalized = normalizeVietnamese(name);
     const exact = this.aliases.get(normalized);
@@ -80,7 +100,15 @@ class FoodDatabase {
   require(component) {
     const record = component.foodId ? this.findById(component.foodId) : this.match(component.nameVi);
     if (!record) {
-      throw new FoodAnalysisError('DATABASE_NO_MATCH', 'Không tìm thấy thực phẩm phù hợp trong dữ liệu đã duyệt.', 422, { foodId: component.foodId || 'unknown' });
+      throw new FoodAnalysisError(
+        'DATABASE_NO_MATCH',
+        'Không tìm thấy thực phẩm phù hợp trong dữ liệu đã duyệt.',
+        422,
+        {
+          foodId: component.foodId || 'unknown',
+          observationId: component.observationId,
+        },
+      );
     }
     return record;
   }

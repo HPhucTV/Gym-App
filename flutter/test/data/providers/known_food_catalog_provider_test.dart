@@ -21,23 +21,32 @@ void main() {
         }
       ]
     });
+    final client = _FakeClient(food);
     final container = ProviderContainer(overrides: [
-      foodAnalysisClientProvider.overrideWithValue(_FakeClient(food)),
+      foodAnalysisClientProvider.overrideWithValue(client),
     ]);
     addTearDown(container.dispose);
 
     final result = await container.read(knownFoodCatalogProvider.future);
     expect(result.single.foodId, 'white-rice');
     expect(result.single.portionOptions.single.unit, HouseholdPortionUnit.bowl);
+    await Future<void>.delayed(Duration.zero);
+    final cachedAgain = await container.read(knownFoodCatalogProvider.future);
+    expect(cachedAgain.single.foodId, 'white-rice');
+    expect(client.calls, 1);
   });
 }
 
 class _FakeClient implements FoodAnalysisClient {
   final List<KnownFoodOption> foods;
   _FakeClient(this.foods);
+  int calls = 0;
 
   @override
-  Future<List<KnownFoodOption>> listKnownFoods() async => foods;
+  Future<List<KnownFoodOption>> listKnownFoods() async {
+    calls++;
+    return foods;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

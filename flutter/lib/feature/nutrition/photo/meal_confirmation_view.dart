@@ -218,6 +218,7 @@ class _MealComponentCardState extends State<_MealComponentCard> {
             ),
             IconButton(
               key: Key('meal-component-remove-${component.observationId}'),
+              tooltip: 'Xóa món',
               onPressed: widget.onRemove == null
                   ? null
                   : () => widget.onRemove!(component.observationId),

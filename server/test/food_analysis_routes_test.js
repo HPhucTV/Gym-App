@@ -65,6 +65,24 @@ test('lists the bounded public known-food capability catalog', async () => {
   assert.equal(JSON.stringify(response.body).includes('aliases'), false);
 });
 
+test('catalog reads do not consume the analysis mutation quota', async () => {
+  const app = testApp(fakeService(), { windowMs: 60_000, limit: 1 });
+  for (let index = 0; index < 5; index += 1) {
+    assert.equal((await request(app).get('/api/food-analyses/foods')).status, 200);
+  }
+
+  const firstUpload = await request(app)
+    .post('/api/food-analyses')
+    .attach('primaryImage', Buffer.from('invalid'), 'meal.jpg');
+  assert.equal(firstUpload.status, 400);
+  assert.equal(firstUpload.body.error.code, 'INVALID_IMAGE');
+
+  const secondUpload = await request(app)
+    .post('/api/food-analyses')
+    .attach('primaryImage', JPEG, 'meal.jpg');
+  assert.equal(secondUpload.status, 429);
+});
+
 function testApp(service = fakeService(), rateLimitOptions = { windowMs: 60_000, limit: 1_000 }) {
   const app = express();
   app.use('/api/food-analyses', createFoodAnalysisRouter({

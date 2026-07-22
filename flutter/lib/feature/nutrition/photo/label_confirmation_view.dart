@@ -52,6 +52,7 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
   late final TextEditingController _consumed;
   late final TextEditingController _servingsPerContainer;
   late final TextEditingController _netWeight;
+  late final Map<TextEditingController, FocusNode> _numericFocusNodes;
   TextEditingController? _editingController;
 
   @override
@@ -67,6 +68,28 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
     _consumed = _controller(draft.consumed?.amount);
     _servingsPerContainer = _controller(draft.servingsPerContainer);
     _netWeight = _controller(draft.netWeightGrams);
+    _numericFocusNodes = {
+      for (final controller in [
+        _calories,
+        _protein,
+        _carbs,
+        _fat,
+        _serving,
+        _consumed,
+        _servingsPerContainer,
+        _netWeight,
+      ])
+        controller: FocusNode(),
+    };
+    for (final entry in _numericFocusNodes.entries) {
+      entry.value.addListener(() {
+        if (entry.value.hasFocus) {
+          _editingController = entry.key;
+        } else if (identical(_editingController, entry.key)) {
+          _editingController = null;
+        }
+      });
+    }
   }
 
   TextEditingController _controller(double? value) =>
@@ -107,6 +130,9 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
 
   @override
   void dispose() {
+    for (final focusNode in _numericFocusNodes.values) {
+      focusNode.dispose();
+    }
     for (final controller in [
       _name,
       _calories,
@@ -228,11 +254,7 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
           TextField(
             key: const Key('label-consumed-amount'),
             controller: _consumed,
-            onTap: () => _editingController = _consumed,
-            onEditingComplete: () {
-              _editingController = null;
-              FocusScope.of(context).unfocus();
-            },
+            focusNode: _numericFocusNodes[_consumed],
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (value) {
               widget.onConsumedChanged?.call(
@@ -287,11 +309,7 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
       child: TextField(
         key: Key(key),
         controller: controller,
-        onTap: () => _editingController = controller,
-        onEditingComplete: () {
-          _editingController = null;
-          FocusScope.of(context).unfocus();
-        },
+        focusNode: _numericFocusNodes[controller],
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: (value) =>
             onChanged(double.tryParse(value.replaceAll(',', '.'))),

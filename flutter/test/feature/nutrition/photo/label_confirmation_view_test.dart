@@ -36,15 +36,15 @@ void main() {
     expect(
         find.byKey(const Key('label-servings-per-container')), findsOneWidget);
     expect(find.byKey(const Key('label-net-weight')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('label-calories')));
-    await tester.enterText(find.byKey(const Key('label-calories')), '1.5');
+    await tester.showKeyboard(find.byKey(const Key('label-calories')));
+    await tester.enterText(find.byKey(const Key('label-calories')), '1.');
     await tester.pump();
     expect(
         tester
             .widget<TextField>(find.byKey(const Key('label-calories')))
             .controller!
             .text,
-        '1.5');
+        '1.');
     expect(find.text('Kiểm tra lại giá trị này'), findsOneWidget);
   });
 }

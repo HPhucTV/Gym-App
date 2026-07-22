@@ -32,7 +32,6 @@ final foodAnalysisClientProvider = Provider<FoodAnalysisClient>((ref) {
   );
 });
 
-final knownFoodCatalogProvider =
-    FutureProvider.autoDispose<List<KnownFoodOption>>((ref) {
+final knownFoodCatalogProvider = FutureProvider<List<KnownFoodOption>>((ref) {
   return ref.watch(foodAnalysisClientProvider).listKnownFoods();
 });
