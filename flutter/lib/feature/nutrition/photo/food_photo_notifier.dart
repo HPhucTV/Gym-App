@@ -45,8 +45,6 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   FoodAnalysisReady? _readyResult;
   String? _savedAnalysisId;
   FoodPhotoCaptureToken? _activeCaptureToken;
-  FoodPhotoReviewingMeal? _mealReviewRecovery;
-  FoodPhotoReviewingLabel? _labelReviewRecovery;
   int _manualComponentSequence = 0;
   int _operationGeneration = 0;
   bool _disposed = false;
@@ -134,7 +132,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     final upload = _pendingUpload;
     final kind = _pendingUploadKind;
     if (current is! FoodPhotoError ||
-        current.code != 'ANALYSIS_UNAVAILABLE' ||
+        (current.code != 'ANALYSIS_UNAVAILABLE' &&
+            current.code != 'INVALID_PROVIDER_RESPONSE') ||
         !current.canRetry ||
         upload == null ||
         kind == null) {
@@ -195,21 +194,19 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       _handleApiError(error);
     } on FoodAnalysisFormatException {
       if (!_isCurrent(generation)) return;
-      _clearTransientData();
-      state = const FoodPhotoError(
-        code: 'INVALID_PROVIDER_RESPONSE',
-        message: 'Phản hồi phân tích ảnh không hợp lệ.',
-        canRetry: false,
-        requiresRecapture: false,
+      _handleApiError(
+        FoodAnalysisApiException(
+          code: 'INVALID_PROVIDER_RESPONSE',
+          message: 'Phản hồi phân tích ảnh không hợp lệ.',
+        ),
       );
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      _clearTransientData();
-      state = const FoodPhotoError(
-        code: 'ANALYSIS_UNAVAILABLE',
-        message: 'Không thể phân tích ảnh lúc này.',
-        canRetry: false,
-        requiresRecapture: false,
+      _handleApiError(
+        FoodAnalysisApiException(
+          code: 'ANALYSIS_UNAVAILABLE',
+          message: 'Không thể phân tích ảnh lúc này.',
+        ),
       );
     }
   }
@@ -219,30 +216,23 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     required _UploadKind kind,
     required String? expectedAnalysisId,
   }) {
-    _clearPendingUpload();
     _activeCaptureToken = null;
-    if (kind == _UploadKind.secondary &&
+    final invalidSecondary = kind == _UploadKind.secondary &&
         (expectedAnalysisId == null ||
             review.analysisId != expectedAnalysisId ||
-            review.status == FoodAnalysisStatus.needsSecondImage ||
-            review.status == FoodAnalysisStatus.ready)) {
-      _clearSessionData();
-      state = const FoodPhotoError(
-        code: 'INVALID_PROVIDER_RESPONSE',
-        message: 'Phản hồi ảnh thứ hai không khớp phiên phân tích.',
-        canRetry: false,
-        requiresRecapture: false,
-      );
-      return;
-    }
-    if (kind == _UploadKind.primary &&
-        review.status == FoodAnalysisStatus.ready) {
-      _clearSessionData();
-      state = const FoodPhotoError(
-        code: 'INVALID_PROVIDER_RESPONSE',
-        message: 'Phản hồi phân tích ảnh không hợp lệ.',
-        canRetry: false,
-        requiresRecapture: false,
+            review.status == FoodAnalysisStatus.needsSecondImage);
+    final invalidReview = invalidSecondary ||
+        review.status == FoodAnalysisStatus.ready ||
+        (review.status == FoodAnalysisStatus.needsConfirmation &&
+            review.imageType == FoodImageType.unknown);
+    if (invalidReview) {
+      _handleApiError(
+        FoodAnalysisApiException(
+          code: 'INVALID_PROVIDER_RESPONSE',
+          message: invalidSecondary
+              ? 'Phản hồi ảnh thứ hai không khớp phiên phân tích.'
+              : 'Phản hồi phân tích ảnh không hợp lệ.',
+        ),
       );
       return;
     }
@@ -252,6 +242,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       return;
     }
 
+    _clearPendingUpload();
     _activeAnalysisId = review.analysisId;
     _activeExpiresAt = review.expiresAt;
     final summary = FoodPhotoReviewSummary.fromReview(review);
@@ -266,16 +257,12 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
               summary,
               _mealDraftFromReview(review),
             );
-            _mealReviewRecovery = mealState;
-            _labelReviewRecovery = null;
             state = mealState;
           case FoodImageType.nutritionLabel:
             final labelState = FoodPhotoReviewingLabel(
               summary,
               _labelDraftFromReview(review),
             );
-            _labelReviewRecovery = labelState;
-            _mealReviewRecovery = null;
             state = labelState;
           case FoodImageType.unknown:
             _clearSessionData();
@@ -436,7 +423,6 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     FoodPhotoMealDraft draft,
   ) {
     final next = FoodPhotoReviewingMeal(current.review, draft);
-    _mealReviewRecovery = next;
     if (state is FoodPhotoError) {
       final error = state as FoodPhotoError;
       state = FoodPhotoError(
@@ -576,7 +562,6 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     FoodPhotoLabelDraft draft,
   ) {
     final next = FoodPhotoReviewingLabel(current.review, draft);
-    _labelReviewRecovery = next;
     if (state is FoodPhotoError) {
       final error = state as FoodPhotoError;
       state = FoodPhotoError(
@@ -667,12 +652,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       final ready = await _client.confirmAnalysis(analysisId, confirmation);
       if (!_isCurrent(generation)) return;
       if (ready.analysisId != analysisId) {
-        _retainConfirmationError(
-          FoodAnalysisApiException(
-            code: 'INVALID_PROVIDER_RESPONSE',
-            message: 'Phản hồi xác nhận không khớp phiên phân tích.',
-          ),
-          reviewState,
+        _setConfirmationRecaptureRequired(
+          message: 'Phản hồi xác nhận không khớp phiên phân tích.',
         );
         return;
       }
@@ -705,12 +686,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       state = const FoodPhotoCancelled();
     } on FoodAnalysisFormatException {
       if (!_isCurrent(generation)) return;
-      _retainConfirmationError(
-        FoodAnalysisApiException(
-          code: 'INVALID_PROVIDER_RESPONSE',
-          message: 'Phản hồi xác nhận không hợp lệ.',
-        ),
-        reviewState,
+      _setConfirmationRecaptureRequired(
+        message: 'Phản hồi xác nhận không hợp lệ.',
       );
     } catch (_) {
       if (!_isCurrent(generation)) return;
@@ -739,8 +716,11 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       _setExpired(message: error.message);
       return;
     }
+    if (error.code == 'INVALID_PROVIDER_RESPONSE') {
+      _setConfirmationRecaptureRequired(message: error.message);
+      return;
+    }
     if (error.code == 'ANALYSIS_UNAVAILABLE' ||
-        error.code == 'INVALID_PROVIDER_RESPONSE' ||
         error.code == 'DATABASE_NO_MATCH') {
       _retainConfirmationError(error, reviewState);
       return;
@@ -778,11 +758,12 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     FoodPhotoMealDraft? draft,
   ) {
     if (error.code != 'DATABASE_NO_MATCH' || draft == null) return null;
-    final value = error.details['observationId'];
-    if (value is! String) return null;
-    return draft.components.any((item) => item.observationId == value)
-        ? value
-        : null;
+    final foodId = error.details['foodId'];
+    if (foodId is! String) return null;
+    final matches = draft.components
+        .where((component) => component.foodId == foodId)
+        .toList(growable: false);
+    return matches.length == 1 ? matches.single.observationId : null;
   }
 
   Future<void> save() async {
@@ -828,18 +809,10 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   void editFromReady() {
     final current = state;
     if (current is! FoodPhotoReady && current is! FoodPhotoSaveFailed) return;
-    if (_isExpired) {
-      _setExpired();
-      return;
-    }
-    final meal = _mealReviewRecovery;
-    final label = _labelReviewRecovery;
-    _readyResult = null;
-    if (meal != null) {
-      state = meal;
-    } else if (label != null) {
-      state = label;
-    }
+    _setConfirmationRecaptureRequired(
+      code: 'ANALYSIS_UNAVAILABLE',
+      message: 'Kết quả đã được xác nhận. Hãy chụp ảnh mới để chỉnh sửa.',
+    );
   }
 
   void useManualEntry() {
@@ -881,7 +854,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       return;
     }
 
-    final canRetry = error.code == 'ANALYSIS_UNAVAILABLE' &&
+    final canRetry = (error.code == 'ANALYSIS_UNAVAILABLE' ||
+            error.code == 'INVALID_PROVIDER_RESPONSE') &&
         _pendingUpload != null &&
         _pendingUploadKind != null;
     if (!canRetry) {
@@ -918,6 +892,20 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     );
   }
 
+  void _setConfirmationRecaptureRequired({
+    String code = 'INVALID_PROVIDER_RESPONSE',
+    required String message,
+  }) {
+    _clearTransientData();
+    state = FoodPhotoError(
+      code: code,
+      message: message,
+      canRetry: false,
+      requiresRecapture: true,
+      canUseManualEntry: true,
+    );
+  }
+
   bool get _isExpired {
     final expiresAt = _activeExpiresAt;
     return expiresAt != null && !expiresAt.isAfter(_clock());
@@ -940,8 +928,6 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     _activeAnalysisId = null;
     _activeExpiresAt = null;
     _readyResult = null;
-    _mealReviewRecovery = null;
-    _labelReviewRecovery = null;
   }
 
   void _clearTransientData() {

@@ -317,14 +317,37 @@ void main() {
       expect(client.confirmations, isEmpty);
     });
 
-    test('analysis errors expose an explicit manual-entry route signal',
+    test('malformed upload response retains bytes for retry and manual entry',
         () async {
+      var attempts = 0;
+      client.onStart = (_) async {
+        attempts++;
+        if (attempts == 1) {
+          throw const FoodAnalysisFormatException('malformed provider output');
+        }
+        return _mealReview();
+      };
+      await harness.startPrimary(_upload(1));
+
+      final error = harness.state as FoodPhotoError;
+      expect(error.code, 'INVALID_PROVIDER_RESPONSE');
+      expect(error.canRetry, isTrue);
+      expect(error.canUseManualEntry, isTrue);
+      expect(error.requiresRecapture, isFalse);
+
+      await harness.notifier.retry();
+      expect(harness.state, isA<FoodPhotoReviewingMeal>());
+      expect(client.startUploads, hasLength(2));
+      expect(client.startUploads[1].bytes, client.startUploads[0].bytes);
+    });
+
+    test('upload provider API error offers retry and manual entry', () async {
       client.onStart = (_) async => throw FoodAnalysisApiException(
             code: 'INVALID_PROVIDER_RESPONSE',
             message: 'invalid provider response',
           );
       await harness.startPrimary(_upload(1));
-      expect(harness.state, isA<FoodPhotoError>());
+      expect((harness.state as FoodPhotoError).canRetry, isTrue);
 
       harness.notifier.useManualEntry();
 
@@ -363,7 +386,32 @@ void main() {
 
       final error = harness.state as FoodPhotoError;
       expect(error.code, 'INVALID_PROVIDER_RESPONSE');
+      expect(error.canRetryConfirm, isFalse);
+      expect(error.requiresRecapture, isTrue);
+      expect(error.canUseManualEntry, isTrue);
+      expect(error.mealDraft, isNull);
+      await harness.notifier.retryConfirm();
+      expect(client.confirmations, hasLength(1));
       expect(repository.logs, isEmpty);
+    });
+
+    test('malformed confirmation response requires recapture, not reconfirm',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async =>
+          throw const FoodAnalysisFormatException('malformed ready response');
+      await harness.startPrimary(_upload(1));
+
+      await harness.notifier.confirm();
+
+      final error = harness.state as FoodPhotoError;
+      expect(error.code, 'INVALID_PROVIDER_RESPONSE');
+      expect(error.canRetryConfirm, isFalse);
+      expect(error.requiresRecapture, isTrue);
+      expect(error.canUseManualEntry, isTrue);
+      expect(error.reviewSummary, isNull);
+      await harness.notifier.retryConfirm();
+      expect(client.confirmations, hasLength(1));
     });
 
     test('dispose cancels work and late completion has no side effects',
@@ -426,8 +474,17 @@ void main() {
         _upload(2),
         token: secondaryToken,
       );
+      final mismatch = harness.state as FoodPhotoError;
+      expect(mismatch.code, 'INVALID_PROVIDER_RESPONSE');
+      expect(mismatch.canRetry, isTrue);
+      expect(mismatch.canUseManualEntry, isTrue);
+      client.onSecondary =
+          (_, __) async => _mealReview(analysisId: 'expected-session');
+      await harness.notifier.retry();
+      expect(harness.state, isA<FoodPhotoReviewingMeal>());
+      expect(client.secondaryUploads, hasLength(2));
       expect(
-          (harness.state as FoodPhotoError).code, 'INVALID_PROVIDER_RESPONSE');
+          client.secondaryUploads[1].bytes, client.secondaryUploads[0].bytes);
 
       // A second-photo response is terminal for this capture; it cannot loop.
       client.onStart = (_) async => _mealReview(
@@ -490,7 +547,7 @@ void main() {
       client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
             code: 'DATABASE_NO_MATCH',
             message: 'choose a known food',
-            details: const {'observationId': 'component-1'},
+            details: const {'foodId': 'white-rice'},
           );
       final token = harness.notifier.beginPrimaryCapture();
       await harness.notifier.submitPrimary(_upload(1), token: token);
@@ -504,6 +561,23 @@ void main() {
       expect(
           (harness.state as FoodPhotoError).mealDraft!.components.single.foodId,
           'known-food');
+    });
+
+    test('database no-match component is null when foodId is ambiguous',
+        () async {
+      client.onStart = (_) async => _mealReview(duplicateFoodId: true);
+      client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
+            code: 'DATABASE_NO_MATCH',
+            message: 'choose a known food',
+            details: const {'foodId': 'white-rice'},
+          );
+      await harness.startPrimary(_upload(1));
+
+      await harness.notifier.confirm();
+
+      final failed = harness.state as FoodPhotoError;
+      expect(failed.affectedComponentId, isNull);
+      expect(failed.mealDraft!.components, hasLength(2));
     });
 
     test('save failure retains ready result and retrySave writes once',
@@ -527,7 +601,7 @@ void main() {
       expect(repository.logs, hasLength(1));
     });
 
-    test('editFromReady returns to preserved draft without persistence',
+    test('editFromReady requires recapture and never advertises reconfirmation',
         () async {
       client.onStart = (_) async => _mealReview();
       client.onConfirm = (_, __) async => _ready();
@@ -538,9 +612,17 @@ void main() {
       harness.notifier.renameMealComponent('component-1', 'ignored');
       expect(harness.state, isA<FoodPhotoReady>());
       harness.notifier.editFromReady();
-      expect(harness.state, isA<FoodPhotoReviewingMeal>());
+      final error = harness.state as FoodPhotoError;
+      expect(error.requiresRecapture, isTrue);
+      expect(error.canUseManualEntry, isTrue);
+      expect(error.canRetryConfirm, isFalse);
+      expect(error.reviewSummary, isNull);
+      expect(error.mealDraft, isNull);
       expect(repository.logs, isEmpty);
-      harness.notifier.renameMealComponent('component-1', 'Sửa trước khi lưu');
+      await harness.notifier.retryConfirm();
+      expect(client.confirmations, hasLength(1));
+      harness.notifier.renameMealComponent('component-1', 'ignored again');
+      expect(harness.state, same(error));
     });
 
     test('clearing a label consumed amount removes stale value', () async {
@@ -850,6 +932,7 @@ FoodAnalysisReview _mealReview({
   String status = 'NEEDS_CONFIRMATION',
   String analysisId = 'analysis-1',
   bool manualPortion = false,
+  bool duplicateFoodId = false,
   DateTime? expiresAt,
 }) {
   return FoodAnalysisReview.fromJson({
@@ -873,6 +956,21 @@ FoodAnalysisReview _mealReview({
                 'size': 'MEDIUM',
               },
       },
+      if (duplicateFoodId)
+        {
+          'id': 'component-2',
+          'nameVi': 'Cơm trắng thêm',
+          'matchedFoodId': 'white-rice',
+          'confidence': 0.9,
+          'isMajor': false,
+          'requiresManualPortion': false,
+          'suggestedPortion': {
+            'kind': 'HOUSEHOLD',
+            'unit': 'BOWL',
+            'quantity': 0.5,
+            'size': 'SMALL',
+          },
+        },
     ],
     'labelFacts': null,
     'confidence': 0.82,
