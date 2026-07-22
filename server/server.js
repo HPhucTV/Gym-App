@@ -15,6 +15,7 @@ const { AnalysisLogger } = require('./src/http/analysis_logger');
 const { sendApiError } = require('./src/http/api_error');
 
 const app = express();
+app.set('trust proxy', 1);
 const port = process.env.PORT || 3000;
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
 
