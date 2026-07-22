@@ -4,6 +4,7 @@ import '../remote/backend_config.dart';
 import '../remote/coach_explanation_client.dart';
 import '../remote/coach_review_client.dart';
 import '../remote/food_analysis_client.dart';
+import '../../core/model/food_photo_analysis_models.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   return Dio(BaseOptions(
@@ -29,4 +30,9 @@ final foodAnalysisClientProvider = Provider<FoodAnalysisClient>((ref) {
     dio: dio,
     endpointProvider: () => BackendConfig.baseUrl,
   );
+});
+
+final knownFoodCatalogProvider =
+    FutureProvider.autoDispose<List<KnownFoodOption>>((ref) {
+  return ref.watch(foodAnalysisClientProvider).listKnownFoods();
 });

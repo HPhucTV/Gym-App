@@ -249,6 +249,108 @@ enum FoodUncertaintyReason {
       };
 }
 
+final class KnownFoodPortionOption {
+  final HouseholdPortionUnit unit;
+  final List<HouseholdPortionSize> sizes;
+
+  KnownFoodPortionOption._(
+      {required this.unit, required List<HouseholdPortionSize> sizes})
+      : sizes = List.unmodifiable(sizes);
+
+  factory KnownFoodPortionOption.fromJson(Object? value) {
+    final json = _strictJsonMap(
+      value,
+      'known food portion option',
+      const {'unit', 'sizes'},
+    );
+    final unit = HouseholdPortionUnit.fromWire(json['unit']);
+    final rawSizes = _jsonList(json['sizes'], 'knownFood.portionOptions.sizes');
+    if (rawSizes.isEmpty ||
+        rawSizes.length > HouseholdPortionSize.values.length) {
+      throw const FoodAnalysisFormatException(
+        'Known food portion sizes must contain 1 to 3 values.',
+      );
+    }
+    final sizes =
+        rawSizes.map(HouseholdPortionSize.fromWire).toList(growable: false);
+    if (sizes.toSet().length != sizes.length) {
+      throw const FoodAnalysisFormatException(
+        'Known food portion sizes must be unique.',
+      );
+    }
+    return KnownFoodPortionOption._(unit: unit, sizes: sizes);
+  }
+}
+
+final class KnownFoodOption {
+  final String foodId;
+  final String nameVi;
+  final bool supportsGrams;
+  final List<KnownFoodPortionOption> portionOptions;
+
+  KnownFoodOption._({
+    required this.foodId,
+    required this.nameVi,
+    required this.supportsGrams,
+    required List<KnownFoodPortionOption> portionOptions,
+  }) : portionOptions = List.unmodifiable(portionOptions);
+
+  factory KnownFoodOption.fromJson(Object? value) {
+    final json = _strictJsonMap(
+      value,
+      'known food',
+      const {'foodId', 'nameVi', 'supportsGrams', 'portionOptions'},
+    );
+    final rawOptions = _jsonList(
+      json['portionOptions'],
+      'knownFood.portionOptions',
+    );
+    if (rawOptions.length > HouseholdPortionUnit.values.length) {
+      throw const FoodAnalysisFormatException(
+        'Known food has too many portion options.',
+      );
+    }
+    final options =
+        rawOptions.map(KnownFoodPortionOption.fromJson).toList(growable: false);
+    if (options.map((option) => option.unit).toSet().length != options.length) {
+      throw const FoodAnalysisFormatException(
+        'Known food portion units must be unique.',
+      );
+    }
+    return KnownFoodOption._(
+      foodId: _requiredText(json['foodId'], 'knownFood.foodId', maxLength: 100),
+      nameVi: _requiredText(json['nameVi'], 'knownFood.nameVi', maxLength: 160),
+      supportsGrams: _requiredBool(
+        json['supportsGrams'],
+        'knownFood.supportsGrams',
+      ),
+      portionOptions: options,
+    );
+  }
+
+  static List<KnownFoodOption> listFromJson(Object? value) {
+    final json = _strictJsonMap(
+      value,
+      'known food catalog',
+      const {'foods'},
+    );
+    final rawFoods = _jsonList(json['foods'], 'knownFoodCatalog.foods');
+    if (rawFoods.length > 100) {
+      throw const FoodAnalysisFormatException(
+        'Known food catalog cannot exceed 100 entries.',
+      );
+    }
+    final foods =
+        rawFoods.map(KnownFoodOption.fromJson).toList(growable: false);
+    if (foods.map((food) => food.foodId).toSet().length != foods.length) {
+      throw const FoodAnalysisFormatException(
+        'Known food identifiers must be unique.',
+      );
+    }
+    return List.unmodifiable(foods);
+  }
+}
+
 final class PreparedUpload {
   static const int maxBytes = 5 * 1024 * 1024;
   static const Set<String> supportedMimeTypes = {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/model/food_photo_analysis_models.dart';
+import '../../../data/providers/remote_providers.dart';
 import '../../../ui/theme/colors.dart';
 import '../../../ui/theme/theme.dart';
 import 'food_capture_screen.dart';
@@ -13,7 +14,7 @@ import 'label_confirmation_view.dart';
 import 'meal_confirmation_view.dart';
 import 'nutrition_estimate_view.dart';
 
-enum FoodPhotoFlowAction { saved, cancelled, manualEntry }
+enum FoodPhotoFlowAction { saved, cancelled, manualEntry, openProfile }
 
 final class FoodPhotoFlowResult {
   final FoodPhotoFlowAction action;
@@ -24,6 +25,8 @@ final class FoodPhotoFlowResult {
   const FoodPhotoFlowResult.cancelled() : this._(FoodPhotoFlowAction.cancelled);
   const FoodPhotoFlowResult.manualEntry()
       : this._(FoodPhotoFlowAction.manualEntry);
+  const FoodPhotoFlowResult.openProfile()
+      : this._(FoodPhotoFlowAction.openProfile);
 
   bool get isManualEntry => action == FoodPhotoFlowAction.manualEntry;
 }
@@ -63,6 +66,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
       }
     });
     final state = ref.watch(foodPhotoNotifierProvider);
+    final catalog = ref.watch(knownFoodCatalogProvider).asData?.value;
     final notifier = ref.read(foodPhotoNotifierProvider.notifier);
     final saving = state is FoodPhotoSaving;
     return PopScope(
@@ -85,7 +89,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
             icon: const Icon(Icons.close),
           ),
         ),
-        body: SafeArea(child: _body(context, state, notifier)),
+        body: SafeArea(child: _body(context, state, notifier, catalog)),
       ),
     );
   }
@@ -102,8 +106,8 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
         _ => 'Chụp món ăn',
       };
 
-  Widget _body(
-      BuildContext context, FoodPhotoState state, FoodPhotoNotifier notifier) {
+  Widget _body(BuildContext context, FoodPhotoState state,
+      FoodPhotoNotifier notifier, List<KnownFoodOption>? catalog) {
     return switch (state) {
       FoodPhotoIdle() => _entry(context, notifier),
       FoodPhotoCapturing() ||
@@ -112,21 +116,36 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
         _progress(state),
       FoodPhotoNeedsSecondPhoto(:final review) =>
         _secondPhoto(context, review, notifier),
-      FoodPhotoReviewingMeal(:final draft, :final validationMessage) =>
+      FoodPhotoReviewingMeal(
+        :final draft,
+        :final validationMessage,
+        :final fieldErrorPath
+      ) =>
         MealConfirmationView(
           draft: draft,
+          catalog: catalog,
           validationMessage: validationMessage,
+          fieldErrorPath: fieldErrorPath,
           onNameChanged: notifier.updateMealName,
           onRenameComponent: notifier.renameMealComponent,
           onRemoveComponent: notifier.removeMealComponent,
           onPortionChanged: notifier.updateMealComponentPortion,
+          onChooseKnownFood: (id) =>
+              _chooseKnownFood(context, notifier, id, catalog),
+          onRetryCatalog: () => ref.invalidate(knownFoodCatalogProvider),
+          onManualEntry: notifier.useManualEntry,
           onAddComponent: () => _addComponent(context, notifier),
           onConfirm: notifier.confirm,
         ),
-      FoodPhotoReviewingLabel(:final draft, :final validationMessage) =>
+      FoodPhotoReviewingLabel(
+        :final draft,
+        :final validationMessage,
+        :final fieldErrorPath
+      ) =>
         LabelConfirmationView(
           draft: draft,
           validationMessage: validationMessage,
+          fieldErrorPath: fieldErrorPath,
           onNameChanged: notifier.updateLabelName,
           onBasisChanged: notifier.updateLabelBasis,
           onFactsChanged: ({calories, proteinGrams, carbsGrams, fatGrams}) =>
@@ -137,6 +156,9 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
             fatGrams: fatGrams,
           ),
           onServingSizeChanged: notifier.updateLabelServingSize,
+          onServingsPerContainerChanged:
+              notifier.updateLabelServingsPerContainer,
+          onNetWeightChanged: notifier.updateLabelNetWeight,
           onConsumedChanged: ({kind, amount}) =>
               notifier.updateLabelConsumed(kind: kind, amount: amount),
           onConfirm: notifier.confirm,
@@ -160,7 +182,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
         _consent(context, message, notifier),
       FoodPhotoManualEntryRequested() => _manualRequested(),
       FoodPhotoCancelled() => _cancelled(),
-      FoodPhotoError() => _error(context, state, notifier),
+      FoodPhotoError() => _error(context, state, notifier, catalog),
     };
   }
 
@@ -211,7 +233,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
     final label = review.imageType == FoodImageType.meal
         ? 'Chụp góc bên để thấy chiều cao và tách rõ từng món.'
         : 'Chụp cận cảnh, thẳng và đủ sáng phần chữ còn thiếu.';
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Icon(Icons.add_a_photo_outlined,
@@ -223,7 +245,7 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
                 color: colors.primaryText,
                 fontSize: 16,
                 fontWeight: FontWeight.w700)),
-        const Spacer(),
+        const SizedBox(height: 32),
         FilledButton.icon(
           key: const Key('food-photo-secondary-action'),
           onPressed: () => _openCapture(notifier, isSecondary: true),
@@ -254,8 +276,8 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
     ]));
   }
 
-  Widget _error(
-      BuildContext context, FoodPhotoError error, FoodPhotoNotifier notifier) {
+  Widget _error(BuildContext context, FoodPhotoError error,
+      FoodPhotoNotifier notifier, List<KnownFoodOption>? catalog) {
     final mapped = _errorMessage(error.code, error.message);
     final needsRecapture = error.requiresRecapture ||
         error.code == 'IMAGE_TOO_BLURRY' ||
@@ -280,9 +302,8 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
           OutlinedButton(
             key: const Key('food-analysis-choose-known-food'),
             onPressed: () {
-              notifier.updateMealComponentFoodId(
-                  error.affectedComponentId!, null);
-              notifier.retryConfirm();
+              _chooseKnownFood(
+                  context, notifier, error.affectedComponentId!, catalog);
             },
             child: const Text('Chọn lại món theo tên đã sửa'),
           ),
@@ -352,9 +373,9 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
 
   Widget _consent(
           BuildContext context, String message, FoodPhotoNotifier notifier) =>
-      Padding(
+      SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        child: Column(children: [
           const Icon(Icons.lock_outline,
               size: 54, color: AppColors.energyOrange),
           const SizedBox(height: 16),
@@ -364,6 +385,14 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
               'Bạn có thể bật đồng ý AI đám mây trong Hồ sơ, hoặc tiếp tục nhập tay.',
               textAlign: TextAlign.center),
           const SizedBox(height: 20),
+          FilledButton(
+              key: const Key('food-analysis-open-profile'),
+              onPressed: () {
+                notifier.reset();
+                _complete(const FoodPhotoFlowResult.openProfile());
+              },
+              child: const Text('Mở Hồ sơ')),
+          const SizedBox(height: 10),
           OutlinedButton(
               key: const Key('food-analysis-manual'),
               onPressed: notifier.useManualEntry,
@@ -378,11 +407,14 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
   Future<void> _openCapture(FoodPhotoNotifier notifier,
       {required bool isSecondary}) async {
     if (_captureOpen) return;
+    _captureOpen = true;
     final token = isSecondary
         ? notifier.beginSecondaryCapture()
-        : notifier.beginPrimaryCapture();
-    if (token == null) return;
-    _captureOpen = true;
+        : await notifier.requestPrimaryCapture();
+    if (!mounted || token == null) {
+      _captureOpen = false;
+      return;
+    }
     final upload =
         await Navigator.of(context).push<PreparedUpload>(MaterialPageRoute(
       builder: (_) => FoodCaptureScreen(
@@ -459,6 +491,36 @@ class _FoodPhotoFlowScreenState extends ConsumerState<FoodPhotoFlowScreen> {
           'Phản hồi phân tích không hợp lệ. Hãy thử lại hoặc nhập tay.',
         'DATABASE_NO_MATCH' => 'Chưa tìm thấy món phù hợp trong dữ liệu.',
         'INVALID_CONFIRMATION' => fallback,
+        'EDIT_REQUIRES_RECAPTURE' => fallback,
         _ => fallback,
       };
+
+  Future<void> _chooseKnownFood(
+    BuildContext context,
+    FoodPhotoNotifier notifier,
+    String observationId,
+    List<KnownFoodOption>? catalog,
+  ) async {
+    if (catalog == null || catalog.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Chưa tải được danh sách món. Hãy tải lại hoặc nhập tay.')));
+      return;
+    }
+    final selected = await showDialog<KnownFoodOption>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Chọn món quen thuộc'),
+        children: [
+          for (final food in catalog)
+            SimpleDialogOption(
+              key: Key('known-food-${food.foodId}'),
+              onPressed: () => Navigator.pop(dialogContext, food),
+              child: Text(food.nameVi),
+            ),
+        ],
+      ),
+    );
+    if (selected != null) notifier.selectKnownFood(observationId, selected);
+  }
 }

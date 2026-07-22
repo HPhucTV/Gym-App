@@ -24,6 +24,14 @@ function review(status = 'NEEDS_CONFIRMATION') {
 
 function fakeService(overrides = {}) {
   return {
+    listKnownFoods() {
+      return [{
+        foodId: 'white-rice',
+        nameVi: 'Cơm trắng',
+        supportsGrams: true,
+        portionOptions: [{ unit: 'BOWL', sizes: ['SMALL', 'MEDIUM', 'LARGE'] }],
+      }];
+    },
     async start() {
       return review();
     },
@@ -40,6 +48,22 @@ function fakeService(overrides = {}) {
     ...overrides,
   };
 }
+
+test('lists the bounded public known-food capability catalog', async () => {
+  const response = await request(testApp()).get('/api/food-analyses/foods');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    foods: [{
+      foodId: 'white-rice',
+      nameVi: 'Cơm trắng',
+      supportsGrams: true,
+      portionOptions: [{ unit: 'BOWL', sizes: ['SMALL', 'MEDIUM', 'LARGE'] }],
+    }],
+  });
+  assert.equal(JSON.stringify(response.body).includes('nutrients'), false);
+  assert.equal(JSON.stringify(response.body).includes('aliases'), false);
+});
 
 function testApp(service = fakeService(), rateLimitOptions = { windowMs: 60_000, limit: 1_000 }) {
   const app = express();

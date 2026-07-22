@@ -46,6 +46,14 @@ function createFoodAnalysisRouter({
   }));
   router.use(express.json({ limit: '32kb' }));
 
+  router.get('/foods', (req, res, next) => {
+    try {
+      res.status(200).json({ foods: service.listKnownFoods() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/', upload.single('primaryImage'), imageHandler(201, (req, image) => (
     service.start({ ...image, requestId: req.analysisRequestId })
   )));

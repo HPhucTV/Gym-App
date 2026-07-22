@@ -27,6 +27,44 @@ class FoodDatabase {
     return this.records.get(id) || null;
   }
 
+  publicCatalog() {
+    const sizeOrder = ['SMALL', 'MEDIUM', 'LARGE'];
+    const unitOrder = ['BOWL', 'PIECE', 'SPOON', 'SERVING'];
+    return [...this.records.values()].slice(0, 100).map((record) => {
+      const byUnit = new Map();
+      if (record.directUnit && unitOrder.includes(record.directUnit)) {
+        byUnit.set(record.directUnit, new Set(['MEDIUM']));
+      }
+      for (const [unit, portions] of Object.entries(record.householdPortions || {})) {
+        if (!unitOrder.includes(unit) || !portions || typeof portions !== 'object') continue;
+        const sizes = byUnit.get(unit) || new Set();
+        for (const size of sizeOrder) {
+          const range = portions[size];
+          if (range && Number.isFinite(range.minGrams)
+            && Number.isFinite(range.midGrams)
+            && Number.isFinite(range.maxGrams)
+            && range.minGrams > 0
+            && range.minGrams <= range.midGrams
+            && range.midGrams <= range.maxGrams) {
+            sizes.add(size);
+          }
+        }
+        if (sizes.size > 0) byUnit.set(unit, sizes);
+      }
+      return {
+        foodId: record.id,
+        nameVi: record.nameVi,
+        supportsGrams: Boolean(record.nutrientsPer100g),
+        portionOptions: unitOrder
+          .filter((unit) => byUnit.has(unit))
+          .map((unit) => ({
+            unit,
+            sizes: sizeOrder.filter((size) => byUnit.get(unit).has(size)),
+          })),
+      };
+    });
+  }
+
   match(name) {
     const normalized = normalizeVietnamese(name);
     const exact = this.aliases.get(normalized);

@@ -17,7 +17,13 @@
     "nameVi": "Ức gà luộc/hấp",
     "aliases": ["ức gà", "ức gà luộc", "ức gà hấp"],
     "nutrientsPer100g": { "calories": 165, "proteinGrams": 31, "carbsGrams": 0, "fatGrams": 3.6 },
-    "householdPortions": {}
+    "householdPortions": {
+      "PIECE": {
+        "SMALL": { "minGrams": 70, "midGrams": 90, "maxGrams": 110 },
+        "MEDIUM": { "minGrams": 110, "midGrams": 140, "maxGrams": 170 },
+        "LARGE": { "minGrams": 170, "midGrams": 210, "maxGrams": 250 }
+      }
+    }
   },
   {
     "id": "fried-egg",
@@ -56,21 +62,39 @@
     "nameVi": "Thịt heo kho",
     "aliases": ["thịt heo kho"],
     "nutrientsPer100g": { "calories": 260, "proteinGrams": 16.5, "carbsGrams": 1.5, "fatGrams": 21.5 },
-    "householdPortions": {}
+    "householdPortions": {
+      "PIECE": {
+        "SMALL": { "minGrams": 35, "midGrams": 50, "maxGrams": 65 },
+        "MEDIUM": { "minGrams": 65, "midGrams": 85, "maxGrams": 105 },
+        "LARGE": { "minGrams": 105, "midGrams": 135, "maxGrams": 165 }
+      }
+    }
   },
   {
     "id": "fried-fish",
     "nameVi": "Cá chiên",
     "aliases": ["cá chiên"],
     "nutrientsPer100g": { "calories": 200, "proteinGrams": 18, "carbsGrams": 0, "fatGrams": 14 },
-    "householdPortions": {}
+    "householdPortions": {
+      "PIECE": {
+        "SMALL": { "minGrams": 60, "midGrams": 80, "maxGrams": 100 },
+        "MEDIUM": { "minGrams": 100, "midGrams": 130, "maxGrams": 160 },
+        "LARGE": { "minGrams": 160, "midGrams": 210, "maxGrams": 260 }
+      }
+    }
   },
   {
     "id": "boiled-vegetables",
     "nameVi": "Rau luộc",
     "aliases": ["rau luộc", "rau xanh"],
     "nutrientsPer100g": { "calories": 35, "proteinGrams": 1.5, "carbsGrams": 7, "fatGrams": 0.2 },
-    "householdPortions": {}
+    "householdPortions": {
+      "SERVING": {
+        "SMALL": { "minGrams": 50, "midGrams": 70, "maxGrams": 90 },
+        "MEDIUM": { "minGrams": 90, "midGrams": 120, "maxGrams": 150 },
+        "LARGE": { "minGrams": 150, "midGrams": 200, "maxGrams": 250 }
+      }
+    }
   },
   {
     "id": "beef-pho",

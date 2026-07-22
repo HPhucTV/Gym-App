@@ -7,6 +7,7 @@ import '../../core/model/nutrition_models.dart';
 import 'backend_config.dart';
 
 abstract class FoodAnalysisClient {
+  Future<List<KnownFoodOption>> listKnownFoods();
   Future<FoodAnalysisReview> startPhotoAnalysis(PreparedUpload upload);
   Future<FoodAnalysisReview> addSecondaryPhoto(
     String analysisId,
@@ -43,6 +44,17 @@ class DioFoodAnalysisClient implements FoodAnalysisClient {
               ),
             ),
         _endpointProvider = endpointProvider ?? (() => BackendConfig.baseUrl);
+
+  @override
+  Future<List<KnownFoodOption>> listKnownFoods() {
+    return _photoRequest(
+      (baseUrl, cancelToken) => _dio.get(
+        '$baseUrl/api/food-analyses/foods',
+        cancelToken: cancelToken,
+      ),
+      KnownFoodOption.listFromJson,
+    );
+  }
 
   @override
   Future<FoodAnalysisReview> startPhotoAnalysis(PreparedUpload upload) {

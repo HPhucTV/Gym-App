@@ -147,6 +147,8 @@ final class FoodPhotoLabelDraft {
   final double? carbsGrams;
   final double? fatGrams;
   final double? servingSizeGrams;
+  final double? servingsPerContainer;
+  final double? netWeightGrams;
   final LabelConsumedAmount? consumed;
 
   const FoodPhotoLabelDraft({
@@ -157,6 +159,8 @@ final class FoodPhotoLabelDraft {
     required this.carbsGrams,
     required this.fatGrams,
     required this.servingSizeGrams,
+    this.servingsPerContainer,
+    this.netWeightGrams,
     required this.consumed,
   });
 
@@ -168,6 +172,8 @@ final class FoodPhotoLabelDraft {
     Object? carbsGrams = _unset,
     Object? fatGrams = _unset,
     Object? servingSizeGrams = _unset,
+    Object? servingsPerContainer = _unset,
+    Object? netWeightGrams = _unset,
     Object? consumed = _unset,
   }) {
     return FoodPhotoLabelDraft(
@@ -186,6 +192,12 @@ final class FoodPhotoLabelDraft {
       servingSizeGrams: identical(servingSizeGrams, _unset)
           ? this.servingSizeGrams
           : servingSizeGrams as double?,
+      servingsPerContainer: identical(servingsPerContainer, _unset)
+          ? this.servingsPerContainer
+          : servingsPerContainer as double?,
+      netWeightGrams: identical(netWeightGrams, _unset)
+          ? this.netWeightGrams
+          : netWeightGrams as double?,
       consumed: identical(consumed, _unset)
           ? this.consumed
           : consumed as LabelConsumedAmount?,
@@ -231,15 +243,67 @@ final class FoodPhotoLabelDraft {
   }
 }
 
+enum FoodPhotoFieldKind {
+  name,
+  basis,
+  calories,
+  protein,
+  carbs,
+  fat,
+  servingSize,
+  consumed,
+  componentPortion,
+}
+
+final class FoodPhotoFieldErrorPath {
+  final FoodPhotoFieldKind kind;
+  final String? componentId;
+
+  const FoodPhotoFieldErrorPath(this.kind, {this.componentId});
+
+  static FoodPhotoFieldErrorPath? fromApiDetails(Map<String, Object?> details) {
+    final field = details['field'];
+    if (field is! String || field.length > 120) return null;
+    return switch (field) {
+      'nameVi' => const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.name),
+      'basis' => const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.basis),
+      'facts.calories' =>
+        const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.calories),
+      'facts.proteinGrams' =>
+        const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.protein),
+      'facts.carbsGrams' =>
+        const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.carbs),
+      'facts.fatGrams' => const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.fat),
+      'servingSizeGrams' =>
+        const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.servingSize),
+      'consumed' ||
+      'consumed.amount' =>
+        const FoodPhotoFieldErrorPath(FoodPhotoFieldKind.consumed),
+      _ => _componentPath(field),
+    };
+  }
+
+  static FoodPhotoFieldErrorPath? _componentPath(String field) {
+    final match = RegExp(r'^components\.([A-Za-z0-9_-]{1,80})\.portion$')
+        .firstMatch(field);
+    return match == null
+        ? null
+        : FoodPhotoFieldErrorPath(FoodPhotoFieldKind.componentPortion,
+            componentId: match.group(1));
+  }
+}
+
 final class FoodPhotoReviewingMeal extends FoodPhotoState {
   final FoodPhotoReviewSummary review;
   final FoodPhotoMealDraft draft;
   final String? validationMessage;
+  final FoodPhotoFieldErrorPath? fieldErrorPath;
 
   const FoodPhotoReviewingMeal(
     this.review,
     this.draft, {
     this.validationMessage,
+    this.fieldErrorPath,
   });
 }
 
@@ -247,11 +311,13 @@ final class FoodPhotoReviewingLabel extends FoodPhotoState {
   final FoodPhotoReviewSummary review;
   final FoodPhotoLabelDraft draft;
   final String? validationMessage;
+  final FoodPhotoFieldErrorPath? fieldErrorPath;
 
   const FoodPhotoReviewingLabel(
     this.review,
     this.draft, {
     this.validationMessage,
+    this.fieldErrorPath,
   });
 }
 

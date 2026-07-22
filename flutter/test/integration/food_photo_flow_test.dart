@@ -10,6 +10,7 @@ import 'package:gym_app/data/providers/remote_providers.dart';
 import 'package:gym_app/data/remote/food_analysis_client.dart';
 import 'package:gym_app/data/repositories/nutrition_repository.dart';
 import 'package:gym_app/feature/nutrition/photo/food_camera_gateway.dart';
+import 'package:gym_app/feature/nutrition/photo/food_capture_screen.dart';
 import 'package:gym_app/feature/nutrition/photo/food_photo_flow_screen.dart';
 import 'package:gym_app/feature/nutrition/photo/food_photo_notifier.dart';
 import 'package:gym_app/feature/nutrition/photo/food_photo_preprocessor.dart';
@@ -23,8 +24,10 @@ void main() {
     client.confirmResult = _ready();
     final repository = _FakeRepository();
     await _pumpFlow(tester,
-        client: client, repository: repository, consent: true);
+        client: client, repository: repository, consent: true, launcher: true);
 
+    await tester.tap(find.byKey(const Key('flow-launcher-open')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('food-photo-primary-action')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('capture-food-photo')));
@@ -42,6 +45,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.saveCalls, 1);
     expect(client.confirmCalls, 1);
+    expect(find.byKey(const Key('food-analysis-done')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('food-analysis-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('saved'), findsOneWidget);
   });
 
   testWidgets('save state disables cancellation until repository completes',
@@ -92,7 +99,8 @@ void main() {
         actionKey: 'food-photo-secondary-action');
     expect(client.secondaryCalls, 1);
 
-    await tester.tap(find.byKey(const Key('portion-choice-rice-one-bowl')));
+    await tester
+        .tap(find.byKey(const Key('portion-choice-rice-bowl-1-medium')));
     await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('food-analysis-confirm')));
     await tester.tap(find.byKey(const Key('food-analysis-confirm')));
@@ -214,29 +222,30 @@ void main() {
   });
 
   testWidgets(
-      'no consent calls no provider and manual fallback returns typed result',
+      'no consent opens no camera/provider and profile fallback returns typed result',
       (tester) async {
     final client = _FakeClient()..startResult = _mealReview();
     final repository = _FakeRepository();
+    final gateway = _FakeGateway();
     await tester.pumpWidget(ProviderScope(
       overrides: _overrides(client, repository, false),
       child: MaterialApp(
         theme: getGymLightTheme(),
-        home: _FlowLauncher(
-            gateway: _FakeGateway(), preprocessor: _FakePreprocessor()),
+        home:
+            _FlowLauncher(gateway: gateway, preprocessor: _FakePreprocessor()),
       ),
     ));
     await tester.tap(find.text('Mở'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('food-photo-primary-action')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('capture-food-photo')));
-    await tester.pumpAndSettle();
     expect(client.startCalls, 0);
+    expect((find.byType(FoodCaptureScreen)), findsNothing);
+    expect(gateway.initializeCalls, 0);
     expect(find.textContaining('Hồ sơ'), findsWidgets);
-    await tester.tap(find.byKey(const Key('food-analysis-manual')));
+    await tester.tap(find.byKey(const Key('food-analysis-open-profile')));
     await tester.pumpAndSettle();
-    expect(find.text('manualEntry'), findsOneWidget);
+    expect(find.text('openProfile'), findsOneWidget);
     expect(repository.saveCalls, 0);
   });
 
@@ -260,6 +269,39 @@ void main() {
     expect(repository.saveCalls, 0);
     expect(find.text('cancelled'), findsOneWidget);
   });
+
+  testWidgets('camera route cancellation resets flow with one cancelled result',
+      (tester) async {
+    final client = _FakeClient()..startResult = _mealReview();
+    final repository = _FakeRepository();
+    await _pumpFlow(tester,
+        client: client, repository: repository, consent: true, launcher: true);
+    await tester.tap(find.byKey(const Key('flow-launcher-open')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('food-photo-primary-action')));
+    await tester.pumpAndSettle();
+    expect(find.byType(FoodCaptureScreen), findsOneWidget);
+    await tester.tap(find.byKey(const Key('close-food-camera')));
+    await tester.pumpAndSettle();
+    expect(find.text('cancelled'), findsOneWidget);
+    expect(client.startCalls, 0);
+    expect(repository.saveCalls, 0);
+  });
+
+  testWidgets('manual fallback returns exactly one typed result',
+      (tester) async {
+    final client = _FakeClient()..startResult = _mealReview();
+    final repository = _FakeRepository();
+    await _pumpFlow(tester,
+        client: client, repository: repository, consent: true, launcher: true);
+    await tester.tap(find.byKey(const Key('flow-launcher-open')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('food-photo-manual-fallback')));
+    await tester.pumpAndSettle();
+    expect(find.text('manualEntry'), findsOneWidget);
+    expect(client.startCalls, 0);
+    expect(repository.saveCalls, 0);
+  });
 }
 
 Future<void> _pumpFlow(
@@ -267,13 +309,17 @@ Future<void> _pumpFlow(
   required _FakeClient client,
   required _FakeRepository repository,
   required bool consent,
+  bool launcher = false,
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: _overrides(client, repository, consent),
     child: MaterialApp(
       theme: getGymLightTheme(),
-      home: FoodPhotoFlowScreen(
-          gateway: _FakeGateway(), preprocessor: _FakePreprocessor()),
+      home: launcher
+          ? _FlowLauncher(
+              gateway: _FakeGateway(), preprocessor: _FakePreprocessor())
+          : FoodPhotoFlowScreen(
+              gateway: _FakeGateway(), preprocessor: _FakePreprocessor()),
     ),
   ));
   await tester.pump();
@@ -300,12 +346,16 @@ dynamic _overrides(
     ];
 
 final class _FakeGateway implements FoodCameraGateway {
+  int initializeCalls = 0;
   @override
   Widget buildPreview() => const ColoredBox(color: Colors.black);
   @override
   Future<void> dispose() async {}
   @override
-  Future<void> initialize() async {}
+  Future<void> initialize() async {
+    initializeCalls++;
+  }
+
   @override
   Future<Uint8List> takePicture() async => Uint8List.fromList([1, 2, 3]);
 }
@@ -332,6 +382,24 @@ final class _FakeClient implements FoodAnalysisClient {
   int confirmCalls = 0;
   final List<PreparedUpload> startUploads = [];
   final List<FoodAnalysisConfirmation> confirmations = [];
+
+  @override
+  Future<List<KnownFoodOption>> listKnownFoods() async =>
+      KnownFoodOption.listFromJson({
+        'foods': [
+          {
+            'foodId': 'white-rice',
+            'nameVi': 'Cơm trắng',
+            'supportsGrams': true,
+            'portionOptions': [
+              {
+                'unit': 'BOWL',
+                'sizes': ['SMALL', 'MEDIUM', 'LARGE']
+              }
+            ]
+          }
+        ]
+      });
 
   @override
   Future<FoodAnalysisReview> startPhotoAnalysis(PreparedUpload upload) async {
@@ -405,6 +473,7 @@ class _FlowLauncherState extends State<_FlowLauncher> {
         body: Column(children: [
           Text(result),
           FilledButton(
+            key: const Key('flow-launcher-open'),
             onPressed: () async {
               final value = await Navigator.of(context)
                   .push<FoodPhotoFlowResult>(MaterialPageRoute(

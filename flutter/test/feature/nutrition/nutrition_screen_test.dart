@@ -8,6 +8,7 @@ import 'package:gym_app/data/local/database.dart';
 import 'package:gym_app/data/providers/data_providers.dart';
 import 'package:gym_app/data/repositories/drift_nutrition_repository.dart';
 import 'package:gym_app/feature/nutrition/nutrition_screen.dart';
+import 'package:gym_app/feature/nutrition/photo/food_photo_flow_screen.dart';
 import 'package:gym_app/ui/theme/theme.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,8 @@ void main() {
       updatedAtEpochMillis: 0,
     ));
 
+    var profileCalls = 0;
+    var flowCalls = 0;
     await tester.pumpWidget(ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
@@ -52,8 +55,16 @@ void main() {
         assetCatalogRepositoryProvider.overrideWithValue(catalog),
         nutritionRepositoryProvider.overrideWithValue(repository),
       ],
-      child:
-          MaterialApp(theme: getGymLightTheme(), home: const NutritionScreen()),
+      child: MaterialApp(
+        theme: getGymLightTheme(),
+        home: NutritionScreen(
+          onOpenProfile: () => profileCalls++,
+          launchFoodPhotoFlow: (_) async {
+            flowCalls++;
+            return const FoodPhotoFlowResult.openProfile();
+          },
+        ),
+      ),
     ));
     for (var i = 0;
         i < 20 &&
@@ -69,6 +80,13 @@ void main() {
     expect(find.textContaining('Chụp món ăn'), findsOneWidget);
     expect(find.text('Nhập tay'), findsOneWidget);
     expect(find.textContaining('Quét mã vạch'), findsNothing);
+
+    await tester
+        .ensureVisible(find.byKey(const Key('food-photo-primary-action')));
+    await tester.tap(find.byKey(const Key('food-photo-primary-action')));
+    await tester.pump();
+    expect(flowCalls, 1);
+    expect(profileCalls, 1);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

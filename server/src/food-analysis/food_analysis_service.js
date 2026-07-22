@@ -49,6 +49,10 @@ class FoodAnalysisService {
     this.logger = logger;
   }
 
+  listKnownFoods() {
+    return this.estimator.database.publicCatalog();
+  }
+
   async start({ bytes, mimeType, requestId }) {
     const startedAt = Date.now();
     try {

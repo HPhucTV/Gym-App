@@ -15,8 +15,16 @@ import '../../ui/theme/theme.dart';
 
 class NutritionScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onOpenProfile;
+  final Future<FoodPhotoFlowResult?> Function(BuildContext context)?
+      launchFoodPhotoFlow;
 
-  const NutritionScreen({super.key, this.onBack});
+  const NutritionScreen({
+    super.key,
+    this.onBack,
+    this.onOpenProfile,
+    this.launchFoodPhotoFlow,
+  });
 
   @override
   ConsumerState<NutritionScreen> createState() => _NutritionScreenState();
@@ -359,13 +367,17 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
   final TextEditingController _renameController = TextEditingController();
 
   Future<void> _openFoodPhotoFlow(NutritionNotifier notifier) async {
-    final result = await Navigator.of(context).push<FoodPhotoFlowResult>(
-      MaterialPageRoute(builder: (_) => const FoodPhotoFlowScreen()),
-    );
+    final result = await (widget.launchFoodPhotoFlow?.call(context) ??
+        Navigator.of(context).push<FoodPhotoFlowResult>(
+          MaterialPageRoute(builder: (_) => const FoodPhotoFlowScreen()),
+        ));
     if (!mounted) return;
     // Manual fallback is a typed result; only this parent owns the legacy
     // draft entry point, so it is invoked exactly once.
     if (result?.isManualEntry == true) notifier.startManualEntry();
+    if (result?.action == FoodPhotoFlowAction.openProfile) {
+      widget.onOpenProfile?.call();
+    }
   }
 
   @override

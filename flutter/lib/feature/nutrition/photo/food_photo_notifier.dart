@@ -48,6 +48,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   int _manualComponentSequence = 0;
   int _operationGeneration = 0;
   bool _disposed = false;
+  bool _checkingConsent = false;
 
   @override
   FoodPhotoState build() {
@@ -80,6 +81,21 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     _activeCaptureToken = token;
     state = const FoodPhotoCapturing(isSecondary: false);
     return token;
+  }
+
+  Future<FoodPhotoCaptureToken?> requestPrimaryCapture() async {
+    if (_isBusy || _checkingConsent) return null;
+    _checkingConsent = true;
+    final generation = ++_operationGeneration;
+    final hasConsent = await _readConsent(generation);
+    _checkingConsent = false;
+    if (!_isCurrent(generation)) return null;
+    if (!hasConsent) {
+      _clearTransientData();
+      state = const FoodPhotoConsentRequired();
+      return null;
+    }
+    return beginPrimaryCapture();
   }
 
   FoodPhotoCaptureToken? beginSecondaryCapture() {
@@ -329,6 +345,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       carbsGrams: label.facts.carbsGrams,
       fatGrams: label.facts.fatGrams,
       servingSizeGrams: label.servingSizeGrams,
+      servingsPerContainer: label.servingsPerContainer,
+      netWeightGrams: label.netWeightGrams,
       consumed: consumed,
     );
   }
@@ -469,6 +487,20 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     );
   }
 
+  void selectKnownFood(String observationId, KnownFoodOption food) {
+    final current = _mealReviewForEditing();
+    if (current == null) return;
+    final components = current.draft.components
+        .map((component) => component.observationId == observationId
+            ? component.copyWith(foodId: food.foodId, nameVi: food.nameVi)
+            : component)
+        .toList(growable: false);
+    _setMealDraft(
+      current,
+      FoodPhotoMealDraft(nameVi: current.draft.nameVi, components: components),
+    );
+  }
+
   void updateLabelName(String nameVi) {
     final current = _labelReviewForEditing();
     if (current == null) return;
@@ -506,6 +538,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
         carbsGrams: carbsGrams,
         fatGrams: fatGrams,
         servingSizeGrams: draft.servingSizeGrams,
+        servingsPerContainer: draft.servingsPerContainer,
+        netWeightGrams: draft.netWeightGrams,
         consumed: draft.consumed,
       ),
     );
@@ -525,9 +559,24 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
         carbsGrams: draft.carbsGrams,
         fatGrams: draft.fatGrams,
         servingSizeGrams: servingSizeGrams,
+        servingsPerContainer: draft.servingsPerContainer,
+        netWeightGrams: draft.netWeightGrams,
         consumed: draft.consumed,
       ),
     );
+  }
+
+  void updateLabelServingsPerContainer(double? value) {
+    final current = _labelReviewForEditing();
+    if (current == null) return;
+    _setLabelDraft(
+        current, current.draft.copyWith(servingsPerContainer: value));
+  }
+
+  void updateLabelNetWeight(double? value) {
+    final current = _labelReviewForEditing();
+    if (current == null) return;
+    _setLabelDraft(current, current.draft.copyWith(netWeightGrams: value));
   }
 
   void updateLabelConsumed({
@@ -668,12 +717,16 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
               review,
               draft,
               validationMessage: error.message,
+              fieldErrorPath:
+                  FoodPhotoFieldErrorPath.fromApiDetails(error.details),
             );
           case FoodPhotoReviewingLabel(:final review, :final draft):
             state = FoodPhotoReviewingLabel(
               review,
               draft,
               validationMessage: error.message,
+              fieldErrorPath:
+                  FoodPhotoFieldErrorPath.fromApiDetails(error.details),
             );
           default:
         }
@@ -810,7 +863,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     final current = state;
     if (current is! FoodPhotoReady && current is! FoodPhotoSaveFailed) return;
     _setConfirmationRecaptureRequired(
-      code: 'ANALYSIS_UNAVAILABLE',
+      code: 'EDIT_REQUIRES_RECAPTURE',
       message: 'Kết quả đã được xác nhận. Hãy chụp ảnh mới để chỉnh sửa.',
     );
   }

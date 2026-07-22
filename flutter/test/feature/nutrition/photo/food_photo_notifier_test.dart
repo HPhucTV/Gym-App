@@ -557,10 +557,21 @@ void main() {
       expect(failed.canRetryConfirm, isTrue);
       expect(failed.canUseManualEntry, isTrue);
       expect(failed.affectedComponentId, 'component-1');
-      harness.notifier.updateMealComponentFoodId('component-1', 'known-food');
-      expect(
-          (harness.state as FoodPhotoError).mealDraft!.components.single.foodId,
-          'known-food');
+      final knownFood = KnownFoodOption.listFromJson({
+        'foods': [
+          {
+            'foodId': 'known-food',
+            'nameVi': 'Món đã chọn',
+            'supportsGrams': true,
+            'portionOptions': []
+          }
+        ]
+      }).single;
+      harness.notifier.selectKnownFood('component-1', knownFood);
+      final selected =
+          (harness.state as FoodPhotoError).mealDraft!.components.single;
+      expect(selected.foodId, 'known-food');
+      expect(selected.nameVi, 'Món đã chọn');
     });
 
     test('database no-match component is null when foodId is ambiguous',
@@ -664,6 +675,45 @@ void main() {
       expect(invalid.draft.consumed, isNull);
       expect(invalid.draft.canConfirm, isFalse);
       expect(invalid.validationMessage, isNotNull);
+    });
+
+    test('label package metadata is editable but excluded from confirmation',
+        () async {
+      client.onStart = (_) async => _labelReview();
+      await harness.startPrimary(_upload(1));
+
+      var draft = (harness.state as FoodPhotoReviewingLabel).draft;
+      expect(draft.netWeightGrams, 57);
+      expect(draft.consumed!.amount, 57);
+      harness.notifier.updateLabelServingsPerContainer(2.5);
+      harness.notifier.updateLabelNetWeight(142.5);
+      draft = (harness.state as FoodPhotoReviewingLabel).draft;
+      expect(draft.servingsPerContainer, 2.5);
+      expect(draft.netWeightGrams, 142.5);
+      expect(draft.consumed!.amount, 57,
+          reason: 'editing package metadata must not overwrite consumption');
+      final json = draft.toConfirmation().toJson();
+      expect(json, isNot(contains('servingsPerContainer')));
+      expect(json, isNot(contains('netWeightGrams')));
+    });
+
+    test('invalid confirmation exposes only a sanitized typed field path',
+        () async {
+      client.onStart = (_) async => _labelReview();
+      client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
+            code: 'INVALID_CONFIRMATION',
+            message: 'invalid calories',
+            details: const {'field': 'facts.calories'},
+          );
+      await harness.startPrimary(_upload(1));
+      await harness.notifier.confirm();
+
+      final state = harness.state as FoodPhotoReviewingLabel;
+      expect(state.fieldErrorPath?.kind, FoodPhotoFieldKind.calories);
+      expect(
+          FoodPhotoFieldErrorPath.fromApiDetails(
+              const {'field': '../../../secret'}),
+          isNull);
     });
 
     test('renaming a meal component clears its old food selection', () async {
@@ -847,6 +897,9 @@ final class _FakeFoodAnalysisClient implements FoodAnalysisClient {
 
   int get photoCallCount =>
       startUploads.length + secondaryUploads.length + confirmations.length;
+
+  @override
+  Future<List<KnownFoodOption>> listKnownFoods() async => const [];
 
   @override
   Future<FoodAnalysisReview> startPhotoAnalysis(PreparedUpload upload) {

@@ -15,10 +15,13 @@ class LabelConfirmationView extends StatefulWidget {
       double? carbsGrams,
       double? fatGrams})? onFactsChanged;
   final ValueChanged<double?>? onServingSizeChanged;
+  final ValueChanged<double?>? onServingsPerContainerChanged;
+  final ValueChanged<double?>? onNetWeightChanged;
   final void Function({LabelConsumedKind? kind, double? amount})?
       onConsumedChanged;
   final VoidCallback onConfirm;
   final String? validationMessage;
+  final FoodPhotoFieldErrorPath? fieldErrorPath;
 
   const LabelConfirmationView({
     super.key,
@@ -27,9 +30,12 @@ class LabelConfirmationView extends StatefulWidget {
     this.onBasisChanged,
     this.onFactsChanged,
     this.onServingSizeChanged,
+    this.onServingsPerContainerChanged,
+    this.onNetWeightChanged,
     this.onConsumedChanged,
     required this.onConfirm,
     this.validationMessage,
+    this.fieldErrorPath,
   });
 
   @override
@@ -44,6 +50,9 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
   late final TextEditingController _fat;
   late final TextEditingController _serving;
   late final TextEditingController _consumed;
+  late final TextEditingController _servingsPerContainer;
+  late final TextEditingController _netWeight;
+  TextEditingController? _editingController;
 
   @override
   void initState() {
@@ -56,6 +65,8 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
     _fat = _controller(draft.fatGrams);
     _serving = _controller(draft.servingSizeGrams);
     _consumed = _controller(draft.consumed?.amount);
+    _servingsPerContainer = _controller(draft.servingsPerContainer);
+    _netWeight = _controller(draft.netWeightGrams);
   }
 
   TextEditingController _controller(double? value) =>
@@ -78,10 +89,20 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
             : _format(draft.servingSizeGrams!));
     _sync(_consumed,
         draft.consumed == null ? null : _format(draft.consumed!.amount));
+    _sync(
+        _servingsPerContainer,
+        draft.servingsPerContainer == null
+            ? null
+            : _format(draft.servingsPerContainer!));
+    _sync(_netWeight,
+        draft.netWeightGrams == null ? null : _format(draft.netWeightGrams!));
   }
 
   void _sync(TextEditingController controller, String? value) {
-    if (controller.text != (value ?? '')) controller.text = value ?? '';
+    if (!identical(controller, _editingController) &&
+        controller.text != (value ?? '')) {
+      controller.text = value ?? '';
+    }
   }
 
   @override
@@ -93,7 +114,9 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
       _carbs,
       _fat,
       _serving,
-      _consumed
+      _consumed,
+      _servingsPerContainer,
+      _netWeight,
     ]) {
       controller.dispose();
     }
@@ -125,7 +148,12 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
               key: const Key('label-name'),
               controller: _name,
               onChanged: widget.onNameChanged,
-              decoration: const InputDecoration(labelText: 'Tên sản phẩm')),
+              decoration: InputDecoration(
+                  labelText: 'Tên sản phẩm',
+                  errorText:
+                      widget.fieldErrorPath?.kind == FoodPhotoFieldKind.name
+                          ? 'Kiểm tra lại tên sản phẩm'
+                          : null)),
           const SizedBox(height: 16),
           Text('Cơ sở hiển thị',
               style: TextStyle(
@@ -144,6 +172,12 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
                   style: TextStyle(
                       color: colors.warningAmber, fontWeight: FontWeight.w600)),
             ),
+          if (widget.fieldErrorPath?.kind == FoodPhotoFieldKind.basis)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Kiểm tra lại cơ sở hiển thị',
+                  style: TextStyle(color: Colors.red)),
+            ),
           const SizedBox(height: 16),
           _numberField('label-calories', 'Calo (kcal)', _calories,
               (v) => _emitFacts(calories: v)),
@@ -158,6 +192,13 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
             _numberField('label-serving-size', 'Khối lượng một khẩu phần (g)',
                 _serving, (v) => widget.onServingSizeChanged?.call(v)),
           ],
+          _numberField(
+              'label-servings-per-container',
+              'Số khẩu phần trong bao bì',
+              _servingsPerContainer,
+              widget.onServingsPerContainerChanged ?? (_) {}),
+          _numberField('label-net-weight', 'Khối lượng tịnh (g)', _netWeight,
+              widget.onNetWeightChanged ?? (_) {}),
           const SizedBox(height: 10),
           Text('Lượng đã dùng',
               style: TextStyle(
@@ -187,6 +228,11 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
           TextField(
             key: const Key('label-consumed-amount'),
             controller: _consumed,
+            onTap: () => _editingController = _consumed,
+            onEditingComplete: () {
+              _editingController = null;
+              FocusScope.of(context).unfocus();
+            },
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (value) {
               widget.onConsumedChanged?.call(
@@ -197,7 +243,11 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
             decoration: InputDecoration(
                 labelText: consumedKind == LabelConsumedKind.grams
                     ? 'Số gram đã dùng'
-                    : 'Số khẩu phần đã dùng'),
+                    : 'Số khẩu phần đã dùng',
+                errorText:
+                    widget.fieldErrorPath?.kind == FoodPhotoFieldKind.consumed
+                        ? 'Kiểm tra lại lượng đã dùng'
+                        : null),
           ),
           if (widget.validationMessage != null) ...[
             const SizedBox(height: 8),
@@ -237,10 +287,18 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
       child: TextField(
         key: Key(key),
         controller: controller,
+        onTap: () => _editingController = controller,
+        onEditingComplete: () {
+          _editingController = null;
+          FocusScope.of(context).unfocus();
+        },
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: (value) =>
             onChanged(double.tryParse(value.replaceAll(',', '.'))),
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(
+          labelText: label,
+          errorText: _fieldHasError(key) ? 'Kiểm tra lại giá trị này' : null,
+        ),
       ),
     );
   }
@@ -259,6 +317,18 @@ class _LabelConfirmationViewState extends State<LabelConfirmationView> {
           carbsGrams ?? double.tryParse(_carbs.text.replaceAll(',', '.')),
       fatGrams: fatGrams ?? double.tryParse(_fat.text.replaceAll(',', '.')),
     );
+  }
+
+  bool _fieldHasError(String key) {
+    final kind = widget.fieldErrorPath?.kind;
+    return switch (key) {
+      'label-calories' => kind == FoodPhotoFieldKind.calories,
+      'label-protein' => kind == FoodPhotoFieldKind.protein,
+      'label-carbs' => kind == FoodPhotoFieldKind.carbs,
+      'label-fat' => kind == FoodPhotoFieldKind.fat,
+      'label-serving-size' => kind == FoodPhotoFieldKind.servingSize,
+      _ => false,
+    };
   }
 }
 

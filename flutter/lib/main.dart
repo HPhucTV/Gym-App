@@ -178,6 +178,8 @@ class _AppRouterRootState extends ConsumerState<AppRouterRoot> {
     } else if (subRoute == 'nutrition') {
       child = NutritionScreen(
         onBack: () => ref.read(currentSubRouteProvider.notifier).state = null,
+        onOpenProfile: () =>
+            ref.read(currentSubRouteProvider.notifier).state = 'profile',
       );
     } else {
       child = const MainNavigationShell();
@@ -238,7 +240,10 @@ class MainNavigationShell extends ConsumerWidget {
           ref.read(currentSubRouteProvider.notifier).state = 'recommendations';
         },
       ),
-      const NutritionScreen(),
+      NutritionScreen(
+        onOpenProfile: () =>
+            ref.read(currentSubRouteProvider.notifier).state = 'profile',
+      ),
       SettingsScreen(
         onNavigateToProfile: () {
           ref.read(currentSubRouteProvider.notifier).state = 'profile';

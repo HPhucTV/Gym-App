@@ -127,6 +127,74 @@ void main() {
     });
   });
 
+  group('known food capability catalog', () {
+    test('strictly parses bounded public capability entries', () {
+      final foods = KnownFoodOption.listFromJson({
+        'foods': [
+          {
+            'foodId': 'white-rice',
+            'nameVi': 'Cơm trắng',
+            'supportsGrams': true,
+            'portionOptions': [
+              {
+                'unit': 'BOWL',
+                'sizes': ['SMALL', 'MEDIUM', 'LARGE'],
+              }
+            ],
+          }
+        ],
+      });
+
+      expect(foods.single.foodId, 'white-rice');
+      expect(foods.single.supportsGrams, isTrue);
+      expect(
+          foods.single.portionOptions.single.unit, HouseholdPortionUnit.bowl);
+      expect(foods.single.portionOptions.single.sizes,
+          HouseholdPortionSize.values);
+    });
+
+    test(
+        'rejects unknown keys, duplicate ids, duplicate units and oversized catalogs',
+        () {
+      Map<String, Object?> food(String id) => {
+            'foodId': id,
+            'nameVi': 'Món $id',
+            'supportsGrams': true,
+            'portionOptions': <Object?>[],
+          };
+      final invalid = <Object?>[
+        {
+          'foods': [food('one')..['nutrientsPer100g'] = {}],
+        },
+        {
+          'foods': [food('same'), food('same')],
+        },
+        {
+          'foods': [
+            {
+              ...food('one'),
+              'portionOptions': [
+                {
+                  'unit': 'BOWL',
+                  'sizes': ['MEDIUM']
+                },
+                {
+                  'unit': 'BOWL',
+                  'sizes': ['SMALL']
+                },
+              ],
+            }
+          ],
+        },
+        {'foods': List.generate(101, (index) => food('food-$index'))},
+      ];
+      for (final value in invalid) {
+        expect(() => KnownFoodOption.listFromJson(value),
+            throwsA(isA<FoodAnalysisFormatException>()));
+      }
+    });
+  });
+
   group('strict response parsing', () {
     test('accepts shapes that match each image discriminator', () {
       final meal = FoodAnalysisReview.fromJson(_mealReviewJson());
@@ -700,6 +768,35 @@ void main() {
   });
 
   group('DioFoodAnalysisClient', () {
+    test('listKnownFoods gets and strictly parses the public catalog',
+        () async {
+      late RequestOptions captured;
+      final adapter = _StubAdapter((options, _, __) async {
+        captured = options;
+        return _jsonResponse({
+          'foods': [
+            {
+              'foodId': 'white-rice',
+              'nameVi': 'Cơm trắng',
+              'supportsGrams': true,
+              'portionOptions': [
+                {
+                  'unit': 'BOWL',
+                  'sizes': ['SMALL', 'MEDIUM', 'LARGE'],
+                }
+              ],
+            }
+          ],
+        }, 200);
+      });
+
+      final foods = await _client(adapter).listKnownFoods();
+
+      expect(captured.method, 'GET');
+      expect(captured.uri.toString(),
+          'https://backend.test/api/food-analyses/foods');
+      expect(foods.single.foodId, 'white-rice');
+    });
     test('startPhotoAnalysis sends primaryImage to the collection path',
         () async {
       late RequestOptions captured;
