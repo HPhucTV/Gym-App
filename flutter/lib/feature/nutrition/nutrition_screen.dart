@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../core/model/nutrition_models.dart';
 import 'nutrition_ui_state.dart';
 import 'nutrition_view_model.dart';
@@ -9,7 +8,7 @@ import 'nutrition_logged_meals_section.dart';
 import 'nutrition_cart_section.dart';
 import 'food_catalog_section.dart';
 import 'nutrition_draft_dialog.dart';
-import 'barcode_scanner_view.dart';
+import 'photo/food_photo_flow_screen.dart';
 import '../../core/nutrition/nutrition_score_calculator.dart';
 import '../../ui/theme/colors.dart';
 import '../../ui/theme/theme.dart';
@@ -25,12 +24,12 @@ class NutritionScreen extends ConsumerStatefulWidget {
 
 class _FoodScanEntryRow extends StatelessWidget {
   final bool enabled;
-  final VoidCallback onScanBarcode;
+  final VoidCallback onCaptureFood;
   final VoidCallback onStartManual;
 
   const _FoodScanEntryRow({
     required this.enabled,
-    required this.onScanBarcode,
+    required this.onCaptureFood,
     required this.onStartManual,
   });
 
@@ -44,7 +43,8 @@ class _FoodScanEntryRow extends StatelessWidget {
           child: SizedBox(
             height: 56,
             child: ElevatedButton(
-              onPressed: enabled ? onScanBarcode : null,
+              key: const Key('food-photo-primary-action'),
+              onPressed: enabled ? onCaptureFood : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFF97316),
                 foregroundColor: Colors.white,
@@ -53,7 +53,7 @@ class _FoodScanEntryRow extends StatelessWidget {
                 elevation: 0,
               ),
               child: const Text(
-                "📸 Quét mã vạch",
+                "📸 Chụp món ăn",
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
@@ -103,8 +103,8 @@ class _ScanRecommendationsDialog extends StatelessWidget {
 
     return AlertDialog(
       title: Text("Gợi ý từ AI 📸",
-          style:
-              TextStyle(fontWeight: FontWeight.bold, color: customColors.primaryText)),
+          style: TextStyle(
+              fontWeight: FontWeight.bold, color: customColors.primaryText)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -122,7 +122,9 @@ class _ScanRecommendationsDialog extends StatelessWidget {
               return Card(
                 color: isLowConfidence
                     ? Colors.red.withValues(alpha: 0.08)
-                    : (isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceGray),
+                    : (isDark
+                        ? AppColors.darkSurfaceVariant
+                        : AppColors.surfaceGray),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -290,7 +292,8 @@ class _HistoryItemCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: isDark
                                   ? AppColors.darkText.withValues(alpha: 0.08)
-                                  : const Color(0xFF14213D).withValues(alpha: 0.08),
+                                  : const Color(0xFF14213D)
+                                      .withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(8.0),
                             ),
                             padding: const EdgeInsets.symmetric(
@@ -353,8 +356,17 @@ class _HistoryItemCard extends StatelessWidget {
 }
 
 class _NutritionScreenState extends ConsumerState<NutritionScreen> {
-  bool _showBarcodeScanner = false;
   final TextEditingController _renameController = TextEditingController();
+
+  Future<void> _openFoodPhotoFlow(NutritionNotifier notifier) async {
+    final result = await Navigator.of(context).push<FoodPhotoFlowResult>(
+      MaterialPageRoute(builder: (_) => const FoodPhotoFlowScreen()),
+    );
+    if (!mounted) return;
+    // Manual fallback is a typed result; only this parent owns the legacy
+    // draft entry point, so it is invoked exactly once.
+    if (result?.isManualEntry == true) notifier.startManualEntry();
+  }
 
   @override
   void dispose() {
@@ -465,11 +477,7 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                   ] else ...[
                     _FoodScanEntryRow(
                       enabled: !uiState.savingDraft,
-                      onScanBarcode: () {
-                        setState(() {
-                          _showBarcodeScanner = true;
-                        });
-                      },
+                      onCaptureFood: () => _openFoodPhotoFlow(notifier),
                       onStartManual: notifier.startManualEntry,
                     ),
                     const SizedBox(height: 16),
@@ -548,7 +556,9 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                   const SizedBox(height: 12),
                   if (uiState.history.isEmpty)
                     Card(
-                      color: isDark ? AppColors.darkSurface : AppColors.surfaceGray,
+                      color: isDark
+                          ? AppColors.darkSurface
+                          : AppColors.surfaceGray,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16.0)),
@@ -566,21 +576,6 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                 ],
               ),
             ),
-          if (_showBarcodeScanner)
-            BarcodeScannerView(
-              onBarcodeDetected: (barcode) {
-                setState(() {
-                  _showBarcodeScanner = false;
-                });
-                notifier.scanBarcode(barcode);
-              },
-              onClose: () {
-                setState(() {
-                  _showBarcodeScanner = false;
-                });
-              },
-            ),
-
           // Scan Recommendations Dialog
           if (uiState is NutritionContent &&
               uiState.scanResult != null &&
@@ -614,7 +609,8 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
             AlertDialog(
               title: Text("Xóa bữa ăn đã lưu?",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: customColors.primaryText)),
+                      fontWeight: FontWeight.bold,
+                      color: customColors.primaryText)),
               content:
                   const Text("Lịch sử dinh dưỡng đã ghi sẽ không bị thay đổi."),
               actions: [
@@ -637,7 +633,8 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
             AlertDialog(
               title: Text("Sửa tên bữa ăn",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: customColors.primaryText)),
+                      fontWeight: FontWeight.bold,
+                      color: customColors.primaryText)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -649,13 +646,18 @@ class _NutritionScreenState extends ConsumerState<NutritionScreen> {
                     style: TextStyle(color: customColors.primaryText),
                     decoration: InputDecoration(
                       labelText: "Tên món",
-                      labelStyle: TextStyle(color: customColors.primaryText.withValues(alpha: 0.7)),
+                      labelStyle: TextStyle(
+                          color:
+                              customColors.primaryText.withValues(alpha: 0.7)),
                       errorText: uiState.templateNameEdit!.error,
                       focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Color(0xFFF97316)),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: isDark ? AppColors.darkSurface : AppColors.surfaceGray),
+                        borderSide: BorderSide(
+                            color: isDark
+                                ? AppColors.darkSurface
+                                : AppColors.surfaceGray),
                       ),
                       border: const OutlineInputBorder(),
                     ),
