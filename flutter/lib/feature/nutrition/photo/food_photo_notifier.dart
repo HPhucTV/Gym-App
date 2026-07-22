@@ -43,7 +43,10 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   String? _activeAnalysisId;
   DateTime? _activeExpiresAt;
   FoodAnalysisReady? _readyResult;
-  final Set<String> _completedAnalysisIds = {};
+  String? _savedAnalysisId;
+  FoodPhotoCaptureToken? _activeCaptureToken;
+  FoodPhotoReviewingMeal? _mealReviewRecovery;
+  FoodPhotoReviewingLabel? _labelReviewRecovery;
   int _manualComponentSequence = 0;
   int _operationGeneration = 0;
   bool _disposed = false;
@@ -63,43 +66,62 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       _operationGeneration++;
       client.cancelPending();
       _clearTransientData();
-      _completedAnalysisIds.clear();
+      _savedAnalysisId = null;
+      _activeCaptureToken = null;
     });
     return const FoodPhotoIdle();
   }
 
-  void beginPrimaryCapture() {
-    if (_isBusy) return;
+  FoodPhotoCaptureToken beginPrimaryCapture() {
+    if (_isBusy) {
+      throw StateError('A food-photo operation is already in progress.');
+    }
     _operationGeneration++;
-    _client.cancelPending();
-    _clearTransientData();
+    _startNewWorkflow();
+    final token = FoodPhotoCaptureToken.create();
+    _activeCaptureToken = token;
     state = const FoodPhotoCapturing(isSecondary: false);
+    return token;
   }
 
-  void beginSecondaryCapture() {
+  FoodPhotoCaptureToken? beginSecondaryCapture() {
     if (state is! FoodPhotoNeedsSecondPhoto || _isExpired) {
       if (_isExpired) _setExpired();
-      return;
+      return null;
     }
+    final token = FoodPhotoCaptureToken.create();
+    _activeCaptureToken = token;
     state = const FoodPhotoCapturing(isSecondary: true);
+    return token;
   }
 
-  Future<void> submitPrimary(PreparedUpload upload) async {
+  Future<void> submitPrimary(
+    PreparedUpload upload, {
+    required FoodPhotoCaptureToken token,
+  }) async {
     final current = state;
     if (_isBusy ||
-        (current is FoodPhotoCapturing && current.isSecondary) ||
-        current is FoodPhotoNeedsSecondPhoto) {
+        current is! FoodPhotoCapturing ||
+        current.isSecondary ||
+        !identical(token, _activeCaptureToken)) {
       return;
     }
-    _clearTransientData();
+    _startNewWorkflow(clearSavedId: false);
     await _submitUpload(upload, _UploadKind.primary);
   }
 
-  Future<void> submitSecondary(PreparedUpload upload) async {
+  Future<void> submitSecondary(
+    PreparedUpload upload, {
+    required FoodPhotoCaptureToken token,
+  }) async {
     final current = state;
     final validState = current is FoodPhotoNeedsSecondPhoto ||
         (current is FoodPhotoCapturing && current.isSecondary);
     if (!validState || _isBusy || _activeAnalysisId == null) return;
+    if (!identical(token, _activeCaptureToken) ||
+        current is! FoodPhotoCapturing) {
+      return;
+    }
     if (_isExpired) {
       _setExpired();
       return;
@@ -159,7 +181,11 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
           await _client.addSecondaryPhoto(analysisId!, upload),
       };
       if (!_isCurrent(generation)) return;
-      _applyReview(review);
+      _applyReview(
+        review,
+        kind: kind,
+        expectedAnalysisId: analysisId,
+      );
     } on FoodAnalysisCancelledException {
       if (!_isCurrent(generation)) return;
       _clearTransientData();
@@ -188,8 +214,38 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     }
   }
 
-  void _applyReview(FoodAnalysisReview review) {
+  void _applyReview(
+    FoodAnalysisReview review, {
+    required _UploadKind kind,
+    required String? expectedAnalysisId,
+  }) {
     _clearPendingUpload();
+    _activeCaptureToken = null;
+    if (kind == _UploadKind.secondary &&
+        (expectedAnalysisId == null ||
+            review.analysisId != expectedAnalysisId ||
+            review.status == FoodAnalysisStatus.needsSecondImage ||
+            review.status == FoodAnalysisStatus.ready)) {
+      _clearSessionData();
+      state = const FoodPhotoError(
+        code: 'INVALID_PROVIDER_RESPONSE',
+        message: 'Phản hồi ảnh thứ hai không khớp phiên phân tích.',
+        canRetry: false,
+        requiresRecapture: false,
+      );
+      return;
+    }
+    if (kind == _UploadKind.primary &&
+        review.status == FoodAnalysisStatus.ready) {
+      _clearSessionData();
+      state = const FoodPhotoError(
+        code: 'INVALID_PROVIDER_RESPONSE',
+        message: 'Phản hồi phân tích ảnh không hợp lệ.',
+        canRetry: false,
+        requiresRecapture: false,
+      );
+      return;
+    }
     if (!review.expiresAt.isAfter(_clock())) {
       _clearSessionData();
       _setExpired();
@@ -206,15 +262,21 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       case FoodAnalysisStatus.needsConfirmation:
         switch (review.imageType) {
           case FoodImageType.meal:
-            state = FoodPhotoReviewingMeal(
+            final mealState = FoodPhotoReviewingMeal(
               summary,
               _mealDraftFromReview(review),
             );
+            _mealReviewRecovery = mealState;
+            _labelReviewRecovery = null;
+            state = mealState;
           case FoodImageType.nutritionLabel:
-            state = FoodPhotoReviewingLabel(
+            final labelState = FoodPhotoReviewingLabel(
               summary,
               _labelDraftFromReview(review),
             );
+            _labelReviewRecovery = labelState;
+            _mealReviewRecovery = null;
+            state = labelState;
           case FoodImageType.unknown:
             _clearSessionData();
             state = const FoodPhotoError(
@@ -285,8 +347,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void updateMealName(String nameVi) {
-    final current = state;
-    if (current is! FoodPhotoReviewingMeal) return;
+    final current = _mealReviewForEditing();
+    if (current == null) return;
     _setMealDraft(
       current,
       FoodPhotoMealDraft(nameVi: nameVi, components: current.draft.components),
@@ -294,12 +356,12 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void renameMealComponent(String observationId, String nameVi) {
-    final current = state;
-    if (current is! FoodPhotoReviewingMeal) return;
+    final current = _mealReviewForEditing();
+    if (current == null) return;
     final components = current.draft.components
         .map(
           (component) => component.observationId == observationId
-              ? component.copyWith(nameVi: nameVi)
+              ? component.copyWith(nameVi: nameVi, foodId: null)
               : component,
         )
         .toList(growable: false);
@@ -313,8 +375,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     String observationId,
     FoodPortion portion,
   ) {
-    final current = state;
-    if (current is! FoodPhotoReviewingMeal) return;
+    final current = _mealReviewForEditing();
+    if (current == null) return;
     final components = current.draft.components
         .map(
           (component) => component.observationId == observationId
@@ -336,8 +398,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     String? foodId,
     FoodPortion? portion,
   }) {
-    final current = state;
-    if (current is! FoodPhotoReviewingMeal) return;
+    final current = _mealReviewForEditing();
+    if (current == null) return;
     final component = FoodPhotoMealComponentDraft(
       observationId: 'manual-${++_manualComponentSequence}',
       foodId: foodId,
@@ -356,8 +418,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void removeMealComponent(String observationId) {
-    final current = state;
-    if (current is! FoodPhotoReviewingMeal) return;
+    final current = _mealReviewForEditing();
+    if (current == null) return;
     _setMealDraft(
       current,
       FoodPhotoMealDraft(
@@ -373,24 +435,69 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     FoodPhotoReviewingMeal current,
     FoodPhotoMealDraft draft,
   ) {
-    state = FoodPhotoReviewingMeal(current.review, draft);
+    final next = FoodPhotoReviewingMeal(current.review, draft);
+    _mealReviewRecovery = next;
+    if (state is FoodPhotoError) {
+      final error = state as FoodPhotoError;
+      state = FoodPhotoError(
+        code: error.code,
+        message: error.message,
+        canRetry: error.canRetry,
+        requiresRecapture: error.requiresRecapture,
+        canRetryConfirm: error.canRetryConfirm,
+        canUseManualEntry: error.canUseManualEntry,
+        reviewSummary: error.reviewSummary,
+        mealDraft: draft,
+        labelDraft: null,
+        affectedComponentId: error.affectedComponentId,
+      );
+    } else {
+      state = next;
+    }
+  }
+
+  FoodPhotoReviewingMeal? _mealReviewForEditing() {
+    final current = state;
+    if (current is FoodPhotoReviewingMeal) return current;
+    if (current is FoodPhotoError &&
+        current.mealDraft != null &&
+        current.reviewSummary != null) {
+      return FoodPhotoReviewingMeal(current.reviewSummary!, current.mealDraft!);
+    }
+    return null;
+  }
+
+  void updateMealComponentFoodId(String observationId, String? foodId) {
+    final current = _mealReviewForEditing();
+    if (current == null) return;
+    final components = current.draft.components
+        .map(
+          (component) => component.observationId == observationId
+              ? component.copyWith(foodId: foodId)
+              : component,
+        )
+        .toList(growable: false);
+    _setMealDraft(
+      current,
+      FoodPhotoMealDraft(nameVi: current.draft.nameVi, components: components),
+    );
   }
 
   void updateLabelName(String nameVi) {
-    final current = state;
-    if (current is! FoodPhotoReviewingLabel) return;
+    final current = _labelReviewForEditing();
+    if (current == null) return;
     _setLabelDraft(
       current,
-      _copyLabelDraft(current.draft, nameVi: nameVi),
+      current.draft.copyWith(nameVi: nameVi),
     );
   }
 
   void updateLabelBasis(LabelBasis basis) {
-    final current = state;
-    if (current is! FoodPhotoReviewingLabel) return;
+    final current = _labelReviewForEditing();
+    if (current == null) return;
     _setLabelDraft(
       current,
-      _copyLabelDraft(current.draft, basis: basis),
+      current.draft.copyWith(basis: basis),
     );
   }
 
@@ -400,8 +507,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     required double? carbsGrams,
     required double? fatGrams,
   }) {
-    final current = state;
-    if (current is! FoodPhotoReviewingLabel) return;
+    final current = _labelReviewForEditing();
+    if (current == null) return;
     final draft = current.draft;
     _setLabelDraft(
       current,
@@ -419,8 +526,8 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void updateLabelServingSize(double? servingSizeGrams) {
-    final current = state;
-    if (current is! FoodPhotoReviewingLabel) return;
+    final current = _labelReviewForEditing();
+    if (current == null) return;
     final draft = current.draft;
     _setLabelDraft(
       current,
@@ -438,55 +545,80 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void updateLabelConsumed({
-    required LabelConsumedKind kind,
-    required double amount,
+    required LabelConsumedKind? kind,
+    required double? amount,
   }) {
-    final current = state;
-    if (current is! FoodPhotoReviewingLabel) return;
+    final current = _labelReviewForEditing();
+    if (current == null) return;
     try {
+      final consumed = kind == null || amount == null
+          ? null
+          : LabelConsumedAmount(kind: kind, amount: amount);
       _setLabelDraft(
         current,
-        _copyLabelDraft(
-          current.draft,
-          consumed: LabelConsumedAmount(kind: kind, amount: amount),
-        ),
+        current.draft.copyWith(consumed: consumed),
       );
     } on FoodAnalysisFormatException catch (error) {
-      state = FoodPhotoReviewingLabel(
-        current.review,
-        current.draft,
-        validationMessage: error.message,
-      );
+      final cleared = current.draft.copyWith(consumed: null);
+      _setLabelDraft(current, cleared);
+      if (state is FoodPhotoReviewingLabel) {
+        state = FoodPhotoReviewingLabel(
+          current.review,
+          cleared,
+          validationMessage: error.message,
+        );
+      }
     }
-  }
-
-  FoodPhotoLabelDraft _copyLabelDraft(
-    FoodPhotoLabelDraft draft, {
-    String? nameVi,
-    LabelBasis? basis,
-    LabelConsumedAmount? consumed,
-  }) {
-    return FoodPhotoLabelDraft(
-      nameVi: nameVi ?? draft.nameVi,
-      basis: basis ?? draft.basis,
-      calories: draft.calories,
-      proteinGrams: draft.proteinGrams,
-      carbsGrams: draft.carbsGrams,
-      fatGrams: draft.fatGrams,
-      servingSizeGrams: draft.servingSizeGrams,
-      consumed: consumed ?? draft.consumed,
-    );
   }
 
   void _setLabelDraft(
     FoodPhotoReviewingLabel current,
     FoodPhotoLabelDraft draft,
   ) {
-    state = FoodPhotoReviewingLabel(current.review, draft);
+    final next = FoodPhotoReviewingLabel(current.review, draft);
+    _labelReviewRecovery = next;
+    if (state is FoodPhotoError) {
+      final error = state as FoodPhotoError;
+      state = FoodPhotoError(
+        code: error.code,
+        message: error.message,
+        canRetry: error.canRetry,
+        requiresRecapture: error.requiresRecapture,
+        canRetryConfirm: error.canRetryConfirm,
+        canUseManualEntry: error.canUseManualEntry,
+        reviewSummary: error.reviewSummary,
+        mealDraft: null,
+        labelDraft: draft,
+        affectedComponentId: error.affectedComponentId,
+      );
+    } else {
+      state = next;
+    }
+  }
+
+  FoodPhotoReviewingLabel? _labelReviewForEditing() {
+    final current = state;
+    if (current is FoodPhotoReviewingLabel) return current;
+    if (current is FoodPhotoError &&
+        current.labelDraft != null &&
+        current.reviewSummary != null) {
+      return FoodPhotoReviewingLabel(
+        current.reviewSummary!,
+        current.labelDraft!,
+      );
+    }
+    return null;
   }
 
   Future<void> confirm() async {
-    final reviewState = state;
+    final reviewState = switch (state) {
+      FoodPhotoReviewingMeal() => state as FoodPhotoReviewingMeal,
+      FoodPhotoReviewingLabel() => state as FoodPhotoReviewingLabel,
+      FoodPhotoError(canRetryConfirm: true) =>
+        _mealReviewForEditing() ?? _labelReviewForEditing(),
+      _ => null,
+    };
+    if (reviewState == null) return;
     FoodAnalysisConfirmation confirmation;
     try {
       if (reviewState case FoodPhotoReviewingMeal(:final draft)) {
@@ -535,17 +667,16 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       final ready = await _client.confirmAnalysis(analysisId, confirmation);
       if (!_isCurrent(generation)) return;
       if (ready.analysisId != analysisId) {
-        _clearTransientData();
-        state = const FoodPhotoError(
-          code: 'INVALID_PROVIDER_RESPONSE',
-          message: 'Phản hồi xác nhận không khớp phiên phân tích.',
-          canRetry: false,
-          requiresRecapture: false,
+        _retainConfirmationError(
+          FoodAnalysisApiException(
+            code: 'INVALID_PROVIDER_RESPONSE',
+            message: 'Phản hồi xác nhận không khớp phiên phân tích.',
+          ),
+          reviewState,
         );
         return;
       }
       _readyResult = ready;
-      _activeExpiresAt = null;
       state = FoodPhotoReady(FoodPhotoEstimateResult.fromReady(ready));
     } on FoodAnalysisApiException catch (error) {
       if (!_isCurrent(generation)) return;
@@ -566,7 +697,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
           default:
         }
       } else {
-        _handleApiError(error);
+        _handleConfirmApiError(error, reviewState);
       }
     } on FoodAnalysisCancelledException {
       if (!_isCurrent(generation)) return;
@@ -574,23 +705,84 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       state = const FoodPhotoCancelled();
     } on FoodAnalysisFormatException {
       if (!_isCurrent(generation)) return;
-      _clearTransientData();
-      state = const FoodPhotoError(
-        code: 'INVALID_PROVIDER_RESPONSE',
-        message: 'Phản hồi xác nhận không hợp lệ.',
-        canRetry: false,
-        requiresRecapture: false,
+      _retainConfirmationError(
+        FoodAnalysisApiException(
+          code: 'INVALID_PROVIDER_RESPONSE',
+          message: 'Phản hồi xác nhận không hợp lệ.',
+        ),
+        reviewState,
       );
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      _clearTransientData();
-      state = const FoodPhotoError(
-        code: 'ANALYSIS_UNAVAILABLE',
-        message: 'Không thể xác nhận kết quả lúc này.',
-        canRetry: false,
-        requiresRecapture: false,
+      _retainConfirmationError(
+        FoodAnalysisApiException(
+          code: 'ANALYSIS_UNAVAILABLE',
+          message: 'Không thể xác nhận kết quả lúc này.',
+        ),
+        reviewState,
       );
     }
+  }
+
+  Future<void> retryConfirm() async {
+    final current = state;
+    if (current is FoodPhotoError && current.canRetryConfirm) {
+      await confirm();
+    }
+  }
+
+  void _handleConfirmApiError(
+    FoodAnalysisApiException error,
+    FoodPhotoState reviewState,
+  ) {
+    if (error.code == 'ANALYSIS_EXPIRED') {
+      _setExpired(message: error.message);
+      return;
+    }
+    if (error.code == 'ANALYSIS_UNAVAILABLE' ||
+        error.code == 'INVALID_PROVIDER_RESPONSE' ||
+        error.code == 'DATABASE_NO_MATCH') {
+      _retainConfirmationError(error, reviewState);
+      return;
+    }
+    _handleApiError(error);
+  }
+
+  void _retainConfirmationError(
+    FoodAnalysisApiException error,
+    FoodPhotoState reviewState,
+  ) {
+    final summary = reviewState is FoodPhotoReviewingMeal
+        ? reviewState.review
+        : (reviewState as FoodPhotoReviewingLabel).review;
+    final mealDraft =
+        reviewState is FoodPhotoReviewingMeal ? reviewState.draft : null;
+    final labelDraft =
+        reviewState is FoodPhotoReviewingLabel ? reviewState.draft : null;
+    state = FoodPhotoError(
+      code: error.code,
+      message: error.message,
+      canRetry: false,
+      requiresRecapture: false,
+      canRetryConfirm: true,
+      canUseManualEntry: true,
+      reviewSummary: summary,
+      mealDraft: mealDraft,
+      labelDraft: labelDraft,
+      affectedComponentId: _affectedComponentId(error, mealDraft),
+    );
+  }
+
+  String? _affectedComponentId(
+    FoodAnalysisApiException error,
+    FoodPhotoMealDraft? draft,
+  ) {
+    if (error.code != 'DATABASE_NO_MATCH' || draft == null) return null;
+    final value = error.details['observationId'];
+    if (value is! String) return null;
+    return draft.components.any((item) => item.observationId == value)
+        ? value
+        : null;
   }
 
   Future<void> save() async {
@@ -598,7 +790,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     final ready = _readyResult;
     if (current is! FoodPhotoReady ||
         ready == null ||
-        _completedAnalysisIds.contains(ready.analysisId)) {
+        _savedAnalysisId == ready.analysisId) {
       return;
     }
 
@@ -616,22 +808,42 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
           calculationSummary: ready.calculationSummary,
         ),
       );
-      _completedAnalysisIds.add(ready.analysisId);
       if (!_isCurrent(generation)) return;
+      _savedAnalysisId = ready.analysisId;
       _clearTransientData();
       state = const FoodPhotoSaved();
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      state = const FoodPhotoError(
-        code: 'SAVE_FAILED',
-        message: 'Không thể lưu kết quả dinh dưỡng.',
-        canRetry: false,
-        requiresRecapture: false,
-      );
+      state = FoodPhotoSaveFailed(current.result);
+    }
+  }
+
+  Future<void> retrySave() async {
+    final current = state;
+    if (current is! FoodPhotoSaveFailed || _readyResult == null) return;
+    state = FoodPhotoReady(current.result);
+    await save();
+  }
+
+  void editFromReady() {
+    final current = state;
+    if (current is! FoodPhotoReady && current is! FoodPhotoSaveFailed) return;
+    if (_isExpired) {
+      _setExpired();
+      return;
+    }
+    final meal = _mealReviewRecovery;
+    final label = _labelReviewRecovery;
+    _readyResult = null;
+    if (meal != null) {
+      state = meal;
+    } else if (label != null) {
+      state = label;
     }
   }
 
   void useManualEntry() {
+    if (state is FoodPhotoSaving) return;
     _operationGeneration++;
     _client.cancelPending();
     _clearTransientData();
@@ -639,6 +851,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   }
 
   void cancel() {
+    if (state is FoodPhotoSaving) return;
     _operationGeneration++;
     _client.cancelPending();
     _clearTransientData();
@@ -648,7 +861,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
   void reset() {
     if (_isBusy) return;
     _operationGeneration++;
-    _clearTransientData();
+    _startNewWorkflow();
     state = const FoodPhotoIdle();
   }
 
@@ -679,6 +892,7 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
       message: error.message,
       canRetry: canRetry,
       requiresRecapture: _requiresRecapture(error.code),
+      canUseManualEntry: true,
     );
   }
 
@@ -726,11 +940,19 @@ final class FoodPhotoNotifier extends Notifier<FoodPhotoState> {
     _activeAnalysisId = null;
     _activeExpiresAt = null;
     _readyResult = null;
+    _mealReviewRecovery = null;
+    _labelReviewRecovery = null;
   }
 
   void _clearTransientData() {
     _clearPendingUpload();
     _clearSessionData();
+    _activeCaptureToken = null;
+  }
+
+  void _startNewWorkflow({bool clearSavedId = true}) {
+    _clearTransientData();
+    if (clearSavedId) _savedAnalysisId = null;
   }
 
   String _mealTimeFor(DateTime now) {

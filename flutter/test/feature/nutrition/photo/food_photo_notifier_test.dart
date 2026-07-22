@@ -17,6 +17,7 @@ void main() {
     late _FakeFoodAnalysisClient client;
     late _FakeNutritionRepository repository;
     late bool consent;
+    late Completer<bool>? consentGate;
     late DateTime now;
     late _NotifierHarness harness;
 
@@ -24,11 +25,12 @@ void main() {
       client = _FakeFoodAnalysisClient();
       repository = _FakeNutritionRepository();
       consent = true;
+      consentGate = null;
       now = DateTime(2026, 7, 22, 12, 30);
       harness = _NotifierHarness(
         client: client,
         repository: repository,
-        consent: () async => consent,
+        consent: () => consentGate?.future ?? Future.value(consent),
         now: () => now,
         epochDay: () => 20656,
       );
@@ -43,11 +45,12 @@ void main() {
       final response = Completer<FoodAnalysisReview>();
       client.onStart = (_) => response.future;
 
-      harness.notifier.beginPrimaryCapture();
+      final primaryToken = harness.notifier.beginPrimaryCapture();
       expect(harness.state, isA<FoodPhotoCapturing>());
       expect((harness.state as FoodPhotoCapturing).isSecondary, isFalse);
 
-      final submit = harness.notifier.submitPrimary(_upload(1));
+      final submit =
+          harness.notifier.submitPrimary(_upload(1), token: primaryToken);
       expect(harness.state, isA<FoodPhotoUploading>());
       response.complete(_mealReview(status: 'NEEDS_SECOND_IMAGE'));
       await submit;
@@ -62,12 +65,13 @@ void main() {
     test('recognized primary images enter the matching review variant',
         () async {
       client.onStart = (_) async => _mealReview();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       expect(harness.state, isA<FoodPhotoReviewingMeal>());
 
-      harness.notifier.beginPrimaryCapture();
+      final secondPrimaryToken = harness.notifier.beginPrimaryCapture();
       client.onStart = (_) async => _labelReview();
-      await harness.notifier.submitPrimary(_upload(2));
+      await harness.notifier
+          .submitPrimary(_upload(2), token: secondPrimaryToken);
       expect(harness.state, isA<FoodPhotoReviewingLabel>());
     });
 
@@ -75,13 +79,13 @@ void main() {
         () async {
       client.onStart = (_) async =>
           _mealReview(status: 'NEEDS_SECOND_IMAGE', analysisId: 'meal-session');
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
-      harness.notifier.beginSecondaryCapture();
+      final secondaryToken = harness.notifier.beginSecondaryCapture()!;
       expect((harness.state as FoodPhotoCapturing).isSecondary, isTrue);
       client.onSecondary =
           (_, __) async => _mealReview(analysisId: 'meal-session');
-      await harness.notifier.submitSecondary(_upload(2));
+      await harness.notifier.submitSecondary(_upload(2), token: secondaryToken);
 
       expect(harness.state, isA<FoodPhotoReviewingMeal>());
       expect(client.secondaryAnalysisIds, ['meal-session']);
@@ -90,7 +94,7 @@ void main() {
     test('no persisted consent makes zero analysis calls', () async {
       consent = false;
 
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
       expect(harness.state, isA<FoodPhotoConsentRequired>());
       expect(client.photoCallCount, 0);
@@ -100,7 +104,7 @@ void main() {
         () async {
       client.onStart = (_) async =>
           _mealReview(status: 'NEEDS_SECOND_IMAGE', analysisId: 'session');
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
       var secondaryAttempt = 0;
       client.onSecondary = (_, __) async {
@@ -113,7 +117,8 @@ void main() {
         }
         return _mealReview(analysisId: 'session');
       };
-      await harness.notifier.submitSecondary(_upload(9));
+      final secondaryToken = harness.notifier.beginSecondaryCapture()!;
+      await harness.notifier.submitSecondary(_upload(9), token: secondaryToken);
 
       final error = harness.state as FoodPhotoError;
       expect(error.canRetry, isTrue);
@@ -128,7 +133,7 @@ void main() {
 
     test('meal edits replace immutable drafts', () async {
       client.onStart = (_) async => _mealReview();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       final original = (harness.state as FoodPhotoReviewingMeal).draft;
 
       harness.notifier.renameMealComponent('component-1', 'Cơm gạo lứt');
@@ -173,7 +178,7 @@ void main() {
     test('label basis, facts, serving size, and consumed edits are immutable',
         () async {
       client.onStart = (_) async => _labelReview(incomplete: true);
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       final original = (harness.state as FoodPhotoReviewingLabel).draft;
 
       harness.notifier.updateLabelBasis(LabelBasis.perServing);
@@ -203,7 +208,7 @@ void main() {
         () async {
       client.onStart = (_) async => _mealReview(manualPortion: true);
       client.onConfirm = (_, confirmation) async => _ready();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
       await harness.notifier.confirm();
       expect(harness.state, isA<FoodPhotoReviewingMeal>());
@@ -222,7 +227,7 @@ void main() {
     test('confirmation sends the edited strict payload', () async {
       client.onStart = (_) async => _mealReview();
       client.onConfirm = (_, __) async => _ready();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       harness.notifier.updateMealName('Bữa trưa mới');
       harness.notifier.renameMealComponent('component-1', 'Cơm mới');
       harness.notifier.updateMealComponentPortion(
@@ -243,7 +248,7 @@ void main() {
 
     test('persisted consent is checked again before confirmation', () async {
       client.onStart = (_) async => _mealReview();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       consent = false;
 
       await harness.notifier.confirm();
@@ -256,7 +261,7 @@ void main() {
         () async {
       client.onStart = (_) async => _mealReview();
       client.onConfirm = (_, __) async => _ready();
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       await harness.notifier.confirm();
       expect(repository.logs, isEmpty);
 
@@ -282,7 +287,9 @@ void main() {
         () async {
       final response = Completer<FoodAnalysisReview>();
       client.onStart = (_) => response.future;
-      final submit = harness.notifier.submitPrimary(_upload(1));
+      final primaryToken = harness.notifier.beginPrimaryCapture();
+      final submit =
+          harness.notifier.submitPrimary(_upload(1), token: primaryToken);
 
       harness.notifier.cancel();
       expect(harness.state, isA<FoodPhotoCancelled>());
@@ -301,7 +308,7 @@ void main() {
       client.onStart = (_) async => _mealReview(
             expiresAt: now.subtract(const Duration(seconds: 1)),
           );
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
       final error = harness.state as FoodPhotoError;
       expect(error.code, 'ANALYSIS_EXPIRED');
@@ -316,7 +323,7 @@ void main() {
             code: 'INVALID_PROVIDER_RESPONSE',
             message: 'invalid provider response',
           );
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
       expect(harness.state, isA<FoodPhotoError>());
 
       harness.notifier.useManualEntry();
@@ -329,8 +336,11 @@ void main() {
         () async {
       final review = Completer<FoodAnalysisReview>();
       client.onStart = (_) => review.future;
-      final firstSubmit = harness.notifier.submitPrimary(_upload(1));
-      final secondSubmit = harness.notifier.submitPrimary(_upload(2));
+      final primaryToken = harness.notifier.beginPrimaryCapture();
+      final firstSubmit =
+          harness.notifier.submitPrimary(_upload(1), token: primaryToken);
+      final secondSubmit =
+          harness.notifier.submitPrimary(_upload(2), token: primaryToken);
       review.complete(_mealReview());
       await Future.wait([firstSubmit, secondSubmit]);
       expect(client.startUploads, hasLength(1));
@@ -347,7 +357,7 @@ void main() {
     test('mismatched confirmation session cannot become ready', () async {
       client.onStart = (_) async => _mealReview(analysisId: 'expected');
       client.onConfirm = (_, __) async => _ready(analysisId: 'stale');
-      await harness.notifier.submitPrimary(_upload(1));
+      await harness.startPrimary(_upload(1));
 
       await harness.notifier.confirm();
 
@@ -360,7 +370,9 @@ void main() {
         () async {
       final response = Completer<FoodAnalysisReview>();
       client.onStart = (_) => response.future;
-      final submit = harness.notifier.submitPrimary(_upload(1));
+      final primaryToken = harness.notifier.beginPrimaryCapture();
+      final submit =
+          harness.notifier.submitPrimary(_upload(1), token: primaryToken);
 
       harness.dispose();
       response.complete(_mealReview());
@@ -368,6 +380,328 @@ void main() {
 
       expect(client.cancelCount, 1);
       expect(repository.logs, isEmpty);
+    });
+
+    test('stale primary capture token cannot submit after reset or new capture',
+        () async {
+      final staleToken = harness.notifier.beginPrimaryCapture();
+      harness.notifier.reset();
+      client.onStart = (_) async => _mealReview();
+
+      await harness.notifier.submitPrimary(
+        _upload(1),
+        token: staleToken,
+      );
+
+      expect(client.startUploads, isEmpty);
+      expect(harness.state, isA<FoodPhotoIdle>());
+
+      final replacedToken = harness.notifier.beginPrimaryCapture();
+      final currentToken = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(2), token: replacedToken);
+      expect(client.startUploads, isEmpty);
+      expect(harness.state, isA<FoodPhotoCapturing>());
+
+      await harness.notifier.submitPrimary(_upload(3), token: currentToken);
+      expect(client.startUploads, hasLength(1));
+      expect(harness.state, isA<FoodPhotoReviewingMeal>());
+    });
+
+    test(
+        'secondary response must match session and cannot loop for another photo',
+        () async {
+      client.onStart = (_) async => _mealReview(
+            status: 'NEEDS_SECOND_IMAGE',
+            analysisId: 'expected-session',
+          );
+      final primaryToken = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: primaryToken);
+      final secondaryToken = harness.notifier.beginSecondaryCapture()!;
+
+      client.onSecondary = (_, __) async => _mealReview(
+            status: 'NEEDS_CONFIRMATION',
+            analysisId: 'different-session',
+          );
+      await harness.notifier.submitSecondary(
+        _upload(2),
+        token: secondaryToken,
+      );
+      expect(
+          (harness.state as FoodPhotoError).code, 'INVALID_PROVIDER_RESPONSE');
+
+      // A second-photo response is terminal for this capture; it cannot loop.
+      client.onStart = (_) async => _mealReview(
+            status: 'NEEDS_SECOND_IMAGE',
+            analysisId: 'expected-session',
+          );
+      final nextToken = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(3), token: nextToken);
+      final anotherSecondaryToken = harness.notifier.beginSecondaryCapture()!;
+      client.onSecondary = (_, __) async => _mealReview(
+            status: 'NEEDS_SECOND_IMAGE',
+            analysisId: 'expected-session',
+          );
+      await harness.notifier.submitSecondary(
+        _upload(4),
+        token: anotherSecondaryToken,
+      );
+      expect(
+          (harness.state as FoodPhotoError).code, 'INVALID_PROVIDER_RESPONSE');
+    });
+
+    test('transient confirmation failure retains editable review and retries',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      var confirmations = 0;
+      client.onConfirm = (_, __) async {
+        confirmations++;
+        if (confirmations == 1) {
+          throw FoodAnalysisApiException(
+            code: 'ANALYSIS_UNAVAILABLE',
+            message: 'timeout',
+          );
+        }
+        return _ready();
+      };
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+
+      await harness.notifier.confirm();
+      final failed = harness.state as FoodPhotoError;
+      expect(failed.canRetryConfirm, isTrue);
+      expect(failed.canUseManualEntry, isTrue);
+      expect(failed.mealDraft, isNotNull);
+      harness.notifier.renameMealComponent('component-1', 'Đã sửa');
+      await harness.notifier.retryConfirm();
+
+      expect(harness.state, isA<FoodPhotoReady>());
+      expect(
+          (client.confirmations.last as MealConfirmation)
+              .components
+              .single
+              .nameVi,
+          'Đã sửa');
+    });
+
+    test(
+        'database no-match confirmation retains review and accepts food selection',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => throw FoodAnalysisApiException(
+            code: 'DATABASE_NO_MATCH',
+            message: 'choose a known food',
+            details: const {'observationId': 'component-1'},
+          );
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      await harness.notifier.confirm();
+
+      final failed = harness.state as FoodPhotoError;
+      expect(failed.canRetryConfirm, isTrue);
+      expect(failed.canUseManualEntry, isTrue);
+      expect(failed.affectedComponentId, 'component-1');
+      harness.notifier.updateMealComponentFoodId('component-1', 'known-food');
+      expect(
+          (harness.state as FoodPhotoError).mealDraft!.components.single.foodId,
+          'known-food');
+    });
+
+    test('save failure retains ready result and retrySave writes once',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => _ready();
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      await harness.notifier.confirm();
+      repository.failSave = true;
+
+      await harness.notifier.save();
+      expect(harness.state, isA<FoodPhotoSaveFailed>());
+      expect((harness.state as FoodPhotoSaveFailed).result.nameVi,
+          'Cơm với ức gà');
+
+      repository.failSave = false;
+      await harness.notifier.retrySave();
+      expect(harness.state, isA<FoodPhotoSaved>());
+      expect(repository.saveCalls, 2);
+      expect(repository.logs, hasLength(1));
+    });
+
+    test('editFromReady returns to preserved draft without persistence',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => _ready();
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      await harness.notifier.confirm();
+
+      harness.notifier.renameMealComponent('component-1', 'ignored');
+      expect(harness.state, isA<FoodPhotoReady>());
+      harness.notifier.editFromReady();
+      expect(harness.state, isA<FoodPhotoReviewingMeal>());
+      expect(repository.logs, isEmpty);
+      harness.notifier.renameMealComponent('component-1', 'Sửa trước khi lưu');
+    });
+
+    test('clearing a label consumed amount removes stale value', () async {
+      client.onStart = (_) async => _labelReview();
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      harness.notifier.updateLabelConsumed(
+        kind: null,
+        amount: null,
+      );
+
+      final state = harness.state as FoodPhotoReviewingLabel;
+      expect(state.draft.consumed, isNull);
+      expect(state.draft.canConfirm, isFalse);
+    });
+
+    test('label field edits preserve or explicitly clear nullable values',
+        () async {
+      client.onStart = (_) async => _labelReview();
+      await harness.startPrimary(_upload(1));
+      final originalConsumed =
+          (harness.state as FoodPhotoReviewingLabel).draft.consumed;
+
+      harness.notifier.updateLabelName('Updated product');
+      harness.notifier.updateLabelBasis(LabelBasis.perServing);
+      var draft = (harness.state as FoodPhotoReviewingLabel).draft;
+      expect(draft.consumed, same(originalConsumed));
+
+      harness.notifier.updateLabelServingSize(45);
+      harness.notifier.updateLabelServingSize(null);
+      draft = (harness.state as FoodPhotoReviewingLabel).draft;
+      expect(draft.servingSizeGrams, isNull);
+
+      harness.notifier.updateLabelConsumed(
+        kind: LabelConsumedKind.grams,
+        amount: -1,
+      );
+      final invalid = harness.state as FoodPhotoReviewingLabel;
+      expect(invalid.draft.consumed, isNull);
+      expect(invalid.draft.canConfirm, isFalse);
+      expect(invalid.validationMessage, isNotNull);
+    });
+
+    test('renaming a meal component clears its old food selection', () async {
+      client.onStart = (_) async => _mealReview();
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+
+      harness.notifier.renameMealComponent('component-1', 'Món khác');
+      expect(
+          (harness.state as FoodPhotoReviewingMeal)
+              .draft
+              .components
+              .single
+              .foodId,
+          isNull);
+    });
+
+    test('cancel during saving is explicitly disallowed and preserves outcome',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => _ready();
+      final token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      await harness.notifier.confirm();
+      repository.saveCompleter = Completer<void>();
+      final save = harness.notifier.save();
+      harness.notifier.cancel();
+      expect(harness.state, isA<FoodPhotoSaving>());
+      repository.saveCompleter!.complete();
+      await save;
+      expect(harness.state, isA<FoodPhotoSaved>());
+    });
+
+    test('dispose during save ignores the late repository completion',
+        () async {
+      client.onStart = (_) async => _mealReview();
+      client.onConfirm = (_, __) async => _ready();
+      await harness.startPrimary(_upload(1));
+      await harness.notifier.confirm();
+      repository.saveCompleter = Completer<void>();
+
+      final save = harness.notifier.save();
+      expect(harness.state, isA<FoodPhotoSaving>());
+      harness.dispose();
+      repository.saveCompleter!.complete();
+      await save;
+
+      expect(client.cancelCount, 1);
+      expect(repository.saveCalls, 1);
+    });
+
+    test('reset starts a new workflow and permits its own save', () async {
+      client.onStart = (_) async => _mealReview(analysisId: 'same-id');
+      client.onConfirm = (_, __) async => _ready(analysisId: 'same-id');
+      var token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(1), token: token);
+      await harness.notifier.confirm();
+      await harness.notifier.save();
+
+      harness.notifier.reset();
+      token = harness.notifier.beginPrimaryCapture();
+      await harness.notifier.submitPrimary(_upload(2), token: token);
+      await harness.notifier.confirm();
+      await harness.notifier.save();
+      expect(repository.logs, hasLength(2));
+    });
+
+    test('controlled consent must resolve before any client call', () async {
+      consentGate = Completer<bool>();
+      final token = harness.notifier.beginPrimaryCapture();
+      final submit = harness.notifier.submitPrimary(_upload(1), token: token);
+      await Future<void>.delayed(Duration.zero);
+      expect(client.photoCallCount, 0);
+      consentGate!.complete(false);
+      await submit;
+      expect(client.photoCallCount, 0);
+
+      consentGate = Completer<bool>();
+      final secondToken = harness.notifier.beginPrimaryCapture();
+      final secondSubmit =
+          harness.notifier.submitPrimary(_upload(2), token: secondToken);
+      consentGate!.complete(true);
+      client.onStart = (_) async => _mealReview();
+      await secondSubmit;
+      expect(client.startUploads, hasLength(1));
+    });
+
+    test('secondary upload and retry each recheck controlled consent',
+        () async {
+      client.onStart = (_) async => _mealReview(
+            status: 'NEEDS_SECOND_IMAGE',
+            analysisId: 'session',
+          );
+      await harness.startPrimary(_upload(1));
+
+      consentGate = Completer<bool>();
+      final secondaryToken = harness.notifier.beginSecondaryCapture()!;
+      client.onSecondary = (_, __) async => throw FoodAnalysisApiException(
+            code: 'ANALYSIS_UNAVAILABLE',
+            message: 'timeout',
+          );
+      final secondary = harness.notifier.submitSecondary(
+        _upload(2),
+        token: secondaryToken,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(client.secondaryUploads, isEmpty);
+      consentGate!.complete(true);
+      await secondary;
+      expect(client.secondaryUploads, hasLength(1));
+
+      consentGate = Completer<bool>();
+      client.onSecondary = (_, __) async => _mealReview(analysisId: 'session');
+      final retry = harness.notifier.retry();
+      await Future<void>.delayed(Duration.zero);
+      expect(client.secondaryUploads, hasLength(1));
+      consentGate!.complete(false);
+      await retry;
+      expect(client.secondaryUploads, hasLength(1));
+      expect(harness.state, isA<FoodPhotoConsentRequired>());
     });
   });
 }
@@ -403,6 +737,11 @@ final class _NotifierHarness {
       container.read(foodPhotoNotifierProvider.notifier);
 
   FoodPhotoState get state => container.read(foodPhotoNotifierProvider);
+
+  Future<void> startPrimary(PreparedUpload upload) async {
+    final token = notifier.beginPrimaryCapture();
+    await notifier.submitPrimary(upload, token: token);
+  }
 
   void dispose() {
     if (_disposed) return;
@@ -480,12 +819,18 @@ final class _SavedPhotoLog {
 final class _FakeNutritionRepository implements NutritionRepository {
   final List<_SavedPhotoLog> logs = [];
   Completer<void>? saveCompleter;
+  bool failSave = false;
+  int saveCalls = 0;
 
   @override
   Future<void> logPhotoEstimate({
     required int epochDay,
     required PhotoNutritionLog log,
   }) async {
+    saveCalls++;
+    if (failSave) {
+      throw StateError('save failed');
+    }
     logs.add(_SavedPhotoLog(epochDay, log));
     await saveCompleter?.future;
   }

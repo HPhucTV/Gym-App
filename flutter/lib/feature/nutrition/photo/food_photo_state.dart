@@ -4,6 +4,13 @@ sealed class FoodPhotoState {
   const FoodPhotoState();
 }
 
+/// Opaque capture identity used to reject late camera results.
+final class FoodPhotoCaptureToken {
+  FoodPhotoCaptureToken._();
+
+  static FoodPhotoCaptureToken create() => FoodPhotoCaptureToken._();
+}
+
 final class FoodPhotoIdle extends FoodPhotoState {
   const FoodPhotoIdle();
 }
@@ -51,6 +58,7 @@ final class FoodPhotoNeedsSecondPhoto extends FoodPhotoState {
 }
 
 final class FoodPhotoMealComponentDraft {
+  static const Object _unset = Object();
   final String observationId;
   final String? foodId;
   final String nameVi;
@@ -69,14 +77,16 @@ final class FoodPhotoMealComponentDraft {
 
   FoodPhotoMealComponentDraft copyWith({
     String? nameVi,
-    FoodPortion? portion,
+    Object? foodId = _unset,
+    Object? portion = _unset,
     bool? manualPortionCompleted,
   }) {
     return FoodPhotoMealComponentDraft(
       observationId: observationId,
-      foodId: foodId,
+      foodId: identical(foodId, _unset) ? this.foodId : foodId as String?,
       nameVi: nameVi ?? this.nameVi,
-      portion: portion ?? this.portion,
+      portion:
+          identical(portion, _unset) ? this.portion : portion as FoodPortion?,
       requiresManualPortion: requiresManualPortion,
       manualPortionCompleted:
           manualPortionCompleted ?? this.manualPortionCompleted,
@@ -129,6 +139,7 @@ final class FoodPhotoMealDraft {
 }
 
 final class FoodPhotoLabelDraft {
+  static const Object _unset = Object();
   final String nameVi;
   final LabelBasis basis;
   final double? calories;
@@ -152,22 +163,32 @@ final class FoodPhotoLabelDraft {
   FoodPhotoLabelDraft copyWith({
     String? nameVi,
     LabelBasis? basis,
-    double? calories,
-    double? proteinGrams,
-    double? carbsGrams,
-    double? fatGrams,
-    double? servingSizeGrams,
-    LabelConsumedAmount? consumed,
+    Object? calories = _unset,
+    Object? proteinGrams = _unset,
+    Object? carbsGrams = _unset,
+    Object? fatGrams = _unset,
+    Object? servingSizeGrams = _unset,
+    Object? consumed = _unset,
   }) {
     return FoodPhotoLabelDraft(
       nameVi: nameVi ?? this.nameVi,
       basis: basis ?? this.basis,
-      calories: calories ?? this.calories,
-      proteinGrams: proteinGrams ?? this.proteinGrams,
-      carbsGrams: carbsGrams ?? this.carbsGrams,
-      fatGrams: fatGrams ?? this.fatGrams,
-      servingSizeGrams: servingSizeGrams ?? this.servingSizeGrams,
-      consumed: consumed ?? this.consumed,
+      calories:
+          identical(calories, _unset) ? this.calories : calories as double?,
+      proteinGrams: identical(proteinGrams, _unset)
+          ? this.proteinGrams
+          : proteinGrams as double?,
+      carbsGrams: identical(carbsGrams, _unset)
+          ? this.carbsGrams
+          : carbsGrams as double?,
+      fatGrams:
+          identical(fatGrams, _unset) ? this.fatGrams : fatGrams as double?,
+      servingSizeGrams: identical(servingSizeGrams, _unset)
+          ? this.servingSizeGrams
+          : servingSizeGrams as double?,
+      consumed: identical(consumed, _unset)
+          ? this.consumed
+          : consumed as LabelConsumedAmount?,
     );
   }
 
@@ -289,12 +310,34 @@ final class FoodPhotoError extends FoodPhotoState {
   final String message;
   final bool canRetry;
   final bool requiresRecapture;
+  final bool canRetryConfirm;
+  final bool canUseManualEntry;
+  final FoodPhotoReviewSummary? reviewSummary;
+  final FoodPhotoMealDraft? mealDraft;
+  final FoodPhotoLabelDraft? labelDraft;
+  final String? affectedComponentId;
 
   const FoodPhotoError({
     required this.code,
     required this.message,
     required this.canRetry,
     required this.requiresRecapture,
+    this.canRetryConfirm = false,
+    this.canUseManualEntry = false,
+    this.reviewSummary,
+    this.mealDraft,
+    this.labelDraft,
+    this.affectedComponentId,
+  });
+}
+
+final class FoodPhotoSaveFailed extends FoodPhotoState {
+  final FoodPhotoEstimateResult result;
+  final String message;
+
+  const FoodPhotoSaveFailed(
+    this.result, {
+    this.message = 'Không thể lưu kết quả dinh dưỡng.',
   });
 }
 
