@@ -205,6 +205,91 @@ void main() {
     );
   });
 
+  test('budgets the actual image 4.8 PNG channels for every tRNS case', () {
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.grayscale, 16, transparencyBytes: 2),
+      ),
+      8,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.rgb, 16, transparencyBytes: 6),
+      ),
+      8,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.grayscale, 8, transparencyBytes: 2),
+      ),
+      1,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.rgb, 8, transparencyBytes: 6),
+      ),
+      4,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.indexed, 8, transparencyBytes: 2),
+      ),
+      1,
+    );
+  });
+
+  test('keeps non-tRNS PNG channel estimates conservative and exact', () {
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.grayscale, 16),
+      ),
+      2,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.rgb, 16),
+      ),
+      6,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.indexed, 8),
+      ),
+      1,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.grayscaleAlpha, 16),
+      ),
+      4,
+    );
+    expect(
+      estimatedPngDecodedBytesPerPixel(
+        _pngInfo(img.PngColorType.rgba, 16),
+      ),
+      8,
+    );
+  });
+
+  test('rejects an over-budget 16-bit RGB tRNS header without decoding', () {
+    final transparent = _pngInfo(
+      img.PngColorType.rgb,
+      16,
+      width: 2049,
+      height: 2048,
+      transparencyBytes: 6,
+    );
+    final opaque = _pngInfo(
+      img.PngColorType.rgb,
+      16,
+      width: 2049,
+      height: 2048,
+    );
+
+    expect(isPngWithinDecodedByteBudget(transparent), isFalse);
+    expect(isPngWithinDecodedByteBudget(opaque), isTrue);
+  });
+
   test('accepts sparse full-frame label geometry', () async {
     final image = _solidImage(900, 800, 120);
     for (var x = 0; x < image.width; x++) {
@@ -388,6 +473,22 @@ img.Image _detailedColorImage({
   }
   return image;
 }
+
+img.PngInfo _pngInfo(
+  int colorType,
+  int bits, {
+  int width = 1,
+  int height = 1,
+  int? transparencyBytes,
+}) =>
+    img.PngInfo()
+      ..width = width
+      ..height = height
+      ..colorType = colorType
+      ..bits = bits
+      ..transparency = transparencyBytes == null
+          ? null
+          : List<int>.filled(transparencyBytes, 0);
 
 Uint8List _largeOrientedFixture(int orientation) {
   return base64Decode(

@@ -113,7 +113,7 @@ Flutter, camera, or image APIs:
 - output long edge: at most 1600 px;
 - JPEG quality: 85 with 4:2:0 chroma, then bounded quality retries at
   75/65/55 while stepping the long edge through 1440/1280/1024 only if needed;
-- defensive source-byte cap: 30 MB.
+- defensive source-byte cap: 15 MiB.
 
 These values are verified only by deterministic synthetic fixtures in this
 task. They have not been calibrated against a physical-device Vietnamese food
@@ -214,7 +214,12 @@ pixel, lifecycle, manifest, memory, and occlusion edge cases.
   explicit source/merged fixture paths for repeatable verifier checks.
 - The practical decode cap is now 4096 px per dimension, 8,000,000 pixels,
   32 MiB estimated decoded pixel storage, and a 15 MiB source-byte cap. PNG
-  headers are checked before decode; 16-bit RGBA is budgeted at 8 bytes/pixel.
+  headers are checked before decode. The estimate follows image 4.8's decoded
+  channel layout for every PNG color type: 16-bit grayscale or RGB with tRNS
+  expands to four-channel `uint16` and is budgeted at 8 bytes/pixel, while
+  low-bit grayscale and indexed+tRNS retain one indexed pixel channel plus a
+  bounded palette. A 2049x2048 RGB16+tRNS header regression is rejected by the
+  32 MiB byte budget without allocating its decoded image.
   Correct orientation requires one bounded full-resolution bake before resize.
   The reportable worst case is approximately 15 MiB source + 32 MiB decoded +
   32 MiB oriented + 20 MiB resized + 10 MiB normalized + 8 MiB RGB, before a
@@ -234,5 +239,5 @@ powershell -NoProfile -File .\tool\verify_camera_manifest.ps1
 powershell -NoProfile -File .\tool\verify_camera_manifest.ps1 -RequireMerged
 ```
 
-Result: preprocessing 24/24, capture-screen 11/11, manifest 3/3, and both
+Result: preprocessing 27/27, capture-screen 11/11, manifest 3/3, and both
 manifest verifier modes passed. No physical-device camera behavior is claimed.

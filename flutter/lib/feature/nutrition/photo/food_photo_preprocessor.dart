@@ -2,6 +2,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:image/image.dart' as img;
 
 import '../../../core/model/food_photo_analysis_models.dart';
@@ -218,8 +219,7 @@ img.Image? _decodeBounded(Uint8List sourceBytes) {
           DeterministicFoodPhotoPreprocessor.maximumDecodedDimensionPixels ||
       info.width * info.height >
           DeterministicFoodPhotoPreprocessor.maximumDecodedPixels ||
-      info.width * info.height * _decodedBytesPerPixel(decoder) >
-          DeterministicFoodPhotoPreprocessor.maximumDecodedPixelBytes) {
+      !_isWithinDecodedByteBudget(decoder, info)) {
     return null;
   }
   return decoder.decodeFrame(0);
@@ -238,13 +238,24 @@ bool _isSingleSupportedFrame(img.Decoder decoder, img.DecodeInfo info) {
   return info.numFrames == 1;
 }
 
-int _decodedBytesPerPixel(img.Decoder decoder) {
-  if (decoder is! img.PngDecoder) return 4;
-  final info = decoder.info;
+bool _isWithinDecodedByteBudget(img.Decoder decoder, img.DecodeInfo info) =>
+    decoder is img.PngDecoder
+        ? isPngWithinDecodedByteBudget(info as img.PngInfo)
+        : info.width * info.height * 4 <=
+            DeterministicFoodPhotoPreprocessor.maximumDecodedPixelBytes;
+
+@visibleForTesting
+int estimatedPngDecodedBytesPerPixel(img.PngInfo info) {
+  final hasTransparency = info.transparency != null;
   final channels = switch (info.colorType) {
+    // image 4.8 expands 16-bit grayscale+tRNS and every RGB+tRNS image to
+    // four channels. Low-bit grayscale and indexed inputs retain one indexed
+    // channel and carry transparency in their small palette instead.
+    img.PngColorType.grayscale when hasTransparency && info.bits > 8 => 4,
     img.PngColorType.grayscale => 1,
+    img.PngColorType.rgb when hasTransparency => 4,
     img.PngColorType.rgb => 3,
-    img.PngColorType.indexed => 4,
+    img.PngColorType.indexed => 1,
     img.PngColorType.grayscaleAlpha => 2,
     img.PngColorType.rgba => 4,
     _ => 4,
@@ -252,6 +263,11 @@ int _decodedBytesPerPixel(img.Decoder decoder) {
   final bytesPerChannel = info.bits > 8 ? 2 : 1;
   return channels * bytesPerChannel;
 }
+
+@visibleForTesting
+bool isPngWithinDecodedByteBudget(img.PngInfo info) =>
+    info.width * info.height * estimatedPngDecodedBytesPerPixel(info) <=
+    DeterministicFoodPhotoPreprocessor.maximumDecodedPixelBytes;
 
 img.Decoder? _decoderForSupportedFormat(Uint8List bytes) {
   if (bytes.length >= 2 && bytes[0] == 0xff && bytes[1] == 0xd8) {
